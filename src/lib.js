@@ -30,6 +30,18 @@ export function monthInfo(ym) {
   };
 }
 
+// Calendar day states -> CSS class of the same name in style.css "/* day states */".
+// Add a state: one predicate here + one CSS rule. All matching states apply.
+export const DAY_STATES = {
+  all: ({ who, members }) => who.length > 0 && who.length >= members, // everyone free: green + check
+  mine: ({ mine }) => mine,                                           // I am free: accent outline
+};
+export const dayClass = ctx => Object.keys(DAY_STATES).filter(k => DAY_STATES[k](ctx)).join(' ');
+
+// User colors: palette index -> .c0 .. .c12 in style.css. Add a .cN rule there and bump COLORS.
+export const COLORS = 13;
+export const randomColor = () => Math.floor(Math.random() * COLORS);
+
 // Most "yes", then fewest "no", then earliest. votes: [{ date, answer }]
 export function bestDate(dates, votes) {
   const score = Object.fromEntries(dates.map(d => [d, { yes: 0, no: 0 }]));
@@ -55,7 +67,7 @@ export function fold(line) {
 
 // items: [{ uid, date 'YYYY-MM-DD', summary, stamp (ISO), transparent? }]
 export function buildIcs({ name, host, items }) {
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//free-days//EN', 'CALSCALE:GREGORIAN',
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//meshtime//EN', 'CALSCALE:GREGORIAN',
     'X-WR-CALNAME:' + icsText(name), 'REFRESH-INTERVAL;VALUE=DURATION:PT12H', 'X-PUBLISHED-TTL:PT12H'];
   for (const it of items) {
     lines.push('BEGIN:VEVENT', `UID:${it.uid}@${host}`, 'DTSTAMP:' + icsStamp(it.stamp),

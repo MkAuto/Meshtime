@@ -1,7 +1,7 @@
 import { all, get, run, now, tx } from './db.js';
 import * as auth from './auth.js';
 import * as v from './views.js';
-import { isValidDate, isValidMonth, bestDate, buildIcs, today, BASE_URL } from './lib.js';
+import { isValidDate, isValidMonth, bestDate, buildIcs, today, randomColor, COLORS, BASE_URL } from './lib.js';
 
 export const routes = [];
 const on = (method, path, handler, pub = false) => routes.push({ method, path: new RegExp(`^${path}$`), handler, public: pub });
@@ -42,8 +42,8 @@ on('POST', '/invite/(?<token>[\\w-]+)', async ctx => {
       auth.deleteUserSessions(inv.user_id);
       return inv.user_id;
     }
-    return run('INSERT INTO users(name, password_hash, feed_token, is_admin, created_at) VALUES (?,?,?,?,?)',
-      name, hash, auth.token(), inv.is_admin, now()).lastInsertRowid;
+    return run('INSERT INTO users(name, password_hash, feed_token, is_admin, created_at, color) VALUES (?,?,?,?,?,?)',
+      name, hash, auth.token(), inv.is_admin, now(), randomColor()).lastInsertRowid;
   });
   login(ctx, userId);
 }, true);
@@ -53,13 +53,13 @@ on('GET', '/', ctx => {
   const m = ctx.url.searchParams.get('m');
   const ym = isValidMonth(m) ? m : today().slice(0, 7);
   const free = new Map();
-  for (const r of all('SELECT f.date, u.name FROM free_days f JOIN users u ON u.id = f.user_id WHERE f.date LIKE ? ORDER BY u.name', ym + '-%')) {
+  for (const r of all('SELECT f.date, u.name, u.color FROM free_days f JOIN users u ON u.id = f.user_id WHERE f.date LIKE ? ORDER BY u.name', ym + '-%')) {
     if (!free.has(r.date)) free.set(r.date, []);
-    free.get(r.date).push(r.name);
+    free.get(r.date).push({ name: r.name, color: r.color });
   }
   const mine = new Set(all('SELECT date FROM free_days WHERE user_id = ? AND date LIKE ?', ctx.user.id, ym + '-%').map(r => r.date));
   const events = all('SELECT e.*, u.name AS creator FROM events e JOIN users u ON u.id = e.created_by WHERE e.date LIKE ? ORDER BY e.date, e.id', ym + '-%');
-  ctx.html(v.calendarPage(ctx.user, ym, { free, mine, events, today: today() }));
+  ctx.html(v.calendarPage(ctx.user, ym, { free, mine, events, today: today(), members: get('SELECT COUNT(*) AS n FROM users').n }));
 });
 on('POST', '/free', ctx => {
   const date = ctx.body.get('date');
@@ -155,6 +155,12 @@ on('POST', '/settings/rotate-feed', ctx => {
   run('UPDATE users SET feed_token = ? WHERE id = ?', auth.token(), ctx.user.id);
   ctx.redirect('/settings?msg=rotated');
 });
+on('POST', '/settings/color', ctx => {
+  const c = Number(ctx.body.get('color'));
+  if (!Number.isInteger(c) || c < 0 || c >= COLORS) return ctx.fail(400, 'Invalid color.');
+  run('UPDATE users SET color = ? WHERE id = ?', c, ctx.user.id);
+  ctx.redirect('/settings?msg=color');
+});
 on('POST', '/settings/password', async ctx => {
   const pw = ctx.body.get('password') || '';
   const bad = error => ctx.html(v.settingsPage(ctx.user, settingsData(ctx, { error })), 400);
@@ -182,6 +188,6 @@ on('GET', '/feed/(?<token>[\\w-]+)/(?<kind>events|free)\\.ics', ctx => {
     ? all('SELECT * FROM events').map(e => ({ uid: 'event-' + e.id, date: e.date, summary: e.title, stamp: e.created_at }))
     : all('SELECT f.user_id, f.date, u.name FROM free_days f JOIN users u ON u.id = f.user_id')
       .map(f => ({ uid: `free-${f.user_id}-${f.date}`, date: f.date, summary: `${f.name} is free`, stamp: f.date + 'T00:00:00Z', transparent: true }));
-  ctx.text(buildIcs({ name: events ? 'Free Days · Events' : 'Free Days · Who is free', host, items }), 200,
+  ctx.text(buildIcs({ name: events ? 'Meshtime · Events' : 'Meshtime · Who is free', host, items }), 200,
     { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'private, no-cache' });
 }, true);

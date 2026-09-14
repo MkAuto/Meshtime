@@ -1,4 +1,4 @@
-# Free Days
+# Meshtime
 
 A small self-hosted web app for a group of friends:
 

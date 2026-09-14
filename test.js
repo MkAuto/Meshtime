@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isValidDate, bestDate, fold, buildIcs } from './src/lib.js';
+import { isValidDate, bestDate, fold, buildIcs, dayClass } from './src/lib.js';
 
 const y = new Date().getUTCFullYear();
 
@@ -50,4 +50,10 @@ test('buildIcs escapes text, uses CRLF and exclusive DTEND', () => {
   assert.ok(ics.includes('TRANSP:TRANSPARENT\r\n'));
   assert.equal(ics.split('\n').length - 1, ics.split('\r\n').length - 1, 'only CRLF line endings');
   assert.ok(ics.endsWith('END:VCALENDAR\r\n'));
+});
+
+test('dayClass: all = every member free, mine = I am free', () => {
+  assert.equal(dayClass({ who: ['a', 'b'], members: 2, mine: true }), 'all mine');
+  assert.equal(dayClass({ who: ['a'], members: 2, mine: false }), '');
+  assert.equal(dayClass({ who: [], members: 0, mine: false }), '');
 });

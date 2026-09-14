@@ -99,7 +99,7 @@ function bootstrap() {
 }
 
 const server = createServer((req, res) => handle(req, res));
-server.listen(PORT, () => { console.log(`Free Days listening on :${PORT} as ${BASE_URL}`); bootstrap(); });
+server.listen(PORT, () => { console.log(`Meshtime listening on :${PORT} as ${BASE_URL}`); bootstrap(); });
 const shutdown = () => server.close(() => { db.close(); process.exit(0); });
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);

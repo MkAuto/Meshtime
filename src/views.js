@@ -1,4 +1,4 @@
-import { monthInfo } from './lib.js';
+import { monthInfo, dayClass, COLORS } from './lib.js';
 
 // html`` auto-escapes every interpolation; wrap trusted markup in raw(). Nested html`` results are trusted.
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -11,12 +11,12 @@ const render = v => v instanceof Raw ? v.s
 export const html = (strings, ...vals) => new Raw(strings.reduce((out, s, i) => out + render(vals[i - 1]) + s));
 
 const initials = n => n.trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
-const MSGS = { rotated: 'Feed links rotated. Re-subscribe in your calendar apps.', password: 'Password changed.', invite: 'Link created (see below).' };
+const MSGS = { rotated: 'Feed links rotated. Re-subscribe in your calendar apps.', password: 'Password changed.', invite: 'Link created (see below).', color: 'Color saved.' };
 
 export function layout(title, user, body) {
   return '<!doctype html>' + html`<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${title} · Free Days</title><link rel="stylesheet" href="/style.css"></head><body>
-<header><a href="/" class="brand">Free Days</a>${user ? html`<nav><a href="/">Calendar</a><a href="/polls">Polls</a><a href="/settings">Settings</a>
+<title>${title} · Meshtime</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head><body>
+<header><a href="/" class="brand">Meshtime</a>${user ? html`<nav><a href="/">Calendar</a><a href="/polls">Polls</a><a href="/settings">Settings</a>
 <form method="post" action="/logout"><button class="link">Log out (${user.name})</button></form></nav>` : ''}</header>
 <main>${body}</main></body></html>`.s;
 }
@@ -37,22 +37,22 @@ ${resetName ? '' : html`<label>Your name <input name="name" required maxlength="
 <label>Password (min 8 characters) <input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
 <button>${resetName ? 'Set password' : 'Create account'}</button></form>`);
 
-export function calendarPage(user, ym, { free, mine, events, today }) {
+export function calendarPage(user, ym, { free, mine, events, today, members }) {
   const mi = monthInfo(ym);
   const cells = Array.from({ length: mi.pad }, () => html`<div class="day pad"></div>`);
   for (let d = 1; d <= mi.days; d++) {
     const date = `${ym}-${String(d).padStart(2, '0')}`;
     const who = free.get(date) || [];
     const evs = events.filter(e => e.date === date);
-    cells.push(html`<div class="day${mine.has(date) ? ' mine' : ''}${date === today ? ' today' : ''}">
+    cells.push(html`<div class="day ${dayClass({ who, members, mine: mine.has(date) })}${date === today ? ' today' : ''}">
 <form method="post" action="/free"><input type="hidden" name="date" value="${date}"><input type="hidden" name="m" value="${ym}">
 <button title="${mine.has(date) ? 'Click: I am no longer free' : 'Click: I am free that day'}">${d}</button></form>
-${who.length ? html`<div class="who">${who.map(n => html`<span title="${n}">${initials(n)}</span>`)}</div>` : ''}
+${who.length ? html`<div class="who">${who.map(u => html`<span class="c${u.color}" title="${u.name}">${initials(u.name)}</span>`)}</div>` : ''}
 ${evs.map(e => html`<div class="ev" title="${e.title} (by ${e.creator})">${e.title}</div>`)}</div>`);
   }
   return layout(mi.label, user, html`
 <h1><a href="/?m=${mi.prev}" title="Previous month">&lsaquo;</a> ${mi.label} <a href="/?m=${mi.next}" title="Next month">&rsaquo;</a></h1>
-<p class="hint">Click a day to mark yourself free (green). Initials show who else is free.</p>
+<p class="hint">Click a day to mark yourself free (outlined). Initials show who is free; green means everyone is.</p>
 <div class="grid">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => html`<div class="dow">${d}</div>`)}${cells}</div>
 <section><h2>Events this month</h2>
 <ul class="events">${events.length ? events.map(e => html`<li>${e.date} — <b>${e.title}</b> <small class="hint">by ${e.creator}</small>
@@ -108,6 +108,10 @@ export function settingsPage(user, { base, invites, members, msg, error }) {
 <li><b>Apple Calendar</b>: click the webcal link, or File → New Calendar Subscription. Choose a short auto-refresh interval.</li>
 <li><b>Outlook</b> (web): Add calendar → Subscribe from web → paste the https link. Refreshes every few hours.</li></ul></details>
 <form method="post" action="/settings/rotate-feed"><button class="danger">Rotate feed links</button></form></section>
+<section><h2>My color</h2><form method="post" action="/settings/color" class="row">
+<b class="c${user.color} swatch" id="swatch" title="Preview">${initials(user.name)}</b>
+<input type="range" name="color" class="hue" min="0" max="${COLORS - 1}" value="${user.color}" aria-label="Color">
+<button>Save color</button></form></section>
 <section><h2>Change password</h2><form method="post" action="/settings/password" class="stack">
 <label>Current password <input name="current" type="password" required autocomplete="current-password"></label>
 <label>New password (min 8) <input name="password" type="password" required minlength="8" autocomplete="new-password"></label>

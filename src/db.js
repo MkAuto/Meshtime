@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { COLORS } from './lib.js';
 
 const path = process.env.DB_PATH || './data/app.db';
 mkdirSync(dirname(path), { recursive: true });
@@ -12,7 +13,8 @@ PRAGMA synchronous=NORMAL;
 PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS users(
   id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE, password_hash TEXT NOT NULL,
-  feed_token TEXT NOT NULL UNIQUE, is_admin INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);
+  feed_token TEXT NOT NULL UNIQUE, is_admin INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL,
+  color INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS invites(
   token TEXT PRIMARY KEY, created_by INTEGER, is_admin INTEGER NOT NULL DEFAULT 0,
   user_id INTEGER REFERENCES users(id) ON DELETE CASCADE, expires_at TEXT NOT NULL, used_at TEXT);
@@ -33,6 +35,11 @@ CREATE TABLE IF NOT EXISTS events(
   id INTEGER PRIMARY KEY, title TEXT NOT NULL, date TEXT NOT NULL, created_by INTEGER NOT NULL REFERENCES users(id),
   poll_id INTEGER UNIQUE REFERENCES polls(id) ON DELETE SET NULL, created_at TEXT NOT NULL);
 `);
+// migration: DBs created before user colors existed
+if (!db.prepare('PRAGMA table_info(users)').all().some(c => c.name === 'color'))
+  db.exec(`ALTER TABLE users ADD COLUMN color INTEGER NOT NULL DEFAULT 0; UPDATE users SET color = abs(random()) % ${COLORS}`);
+
+db.exec(`UPDATE users SET color = color % ${COLORS} WHERE color >= ${COLORS}`); // palette shrank
 
 export const all = (sql, ...p) => db.prepare(sql).all(...p);
 export const get = (sql, ...p) => db.prepare(sql).get(...p);
