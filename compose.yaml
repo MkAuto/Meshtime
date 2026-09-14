@@ -1,0 +1,25 @@
+# Put DOMAIN=cal.example.com in a .env file next to this compose.yaml.
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      BASE_URL: https://${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - data:/data
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+volumes:
+  data:
+  caddy_data:
+  caddy_config:
