@@ -1,7 +1,7 @@
 import { all, get, run, now, tx } from './db.js';
 import * as auth from './auth.js';
 import * as v from './views.js';
-import { isValidDate, isValidMonth, bestDate, buildIcs, today, randomColor, COLORS, BASE_URL } from './lib.js';
+import { isValidDate, isValidMonth, bestDates, buildIcs, today, randomColor, COLORS, MAX_DATES, BASE_URL } from './lib.js';
 
 export const routes = [];
 const on = (method, path, handler, pub = false) => routes.push({ method, path: new RegExp(`^${path}$`), handler, public: pub });
@@ -90,7 +90,7 @@ function loadPoll(id) {
   for (const x of votes) (answered[x.user_id] ??= new Set()).add(x.date);
   const missing = members.filter(m => (answered[m.id]?.size ?? 0) < dates.length).map(m => m.name);
   return { poll, dates, members, votes, missing, complete: missing.length === 0,
-    best: poll.chosen_date || bestDate(dates, votes), event: get('SELECT * FROM events WHERE poll_id = ?', id) };
+    best: poll.chosen_date ? [poll.chosen_date] : bestDates(dates, votes), event: get('SELECT * FROM events WHERE poll_id = ?', id) };
 }
 on('GET', '/polls', ctx => ctx.html(v.pollsPage(ctx.user, all(`SELECT p.*,
   (SELECT COUNT(*) FROM users u WHERE NOT EXISTS (SELECT 1 FROM poll_dates d WHERE d.poll_id = p.id
@@ -101,7 +101,8 @@ on('GET', '/polls/new', ctx => ctx.html(v.newPollPage(ctx.user)));
 on('POST', '/polls/new', ctx => {
   const title = clean(ctx.body.get('title'), 100);
   const dates = [...new Set(ctx.body.getAll('dates').filter(Boolean))].sort();
-  if (!title || !dates.length || !dates.every(isValidDate)) return ctx.html(v.newPollPage(ctx.user, 'A title and at least one valid date are required.'), 400);
+  if (!title || !dates.length || dates.length > MAX_DATES || !dates.every(isValidDate))
+    return ctx.html(v.newPollPage(ctx.user, `A title and 1 to ${MAX_DATES} valid dates are required.`), 400);
   const id = tx(() => {
     const id = run('INSERT INTO polls(title, created_by, created_at) VALUES (?,?,?)', title, ctx.user.id, now()).lastInsertRowid;
     for (const d of dates) run('INSERT INTO poll_dates(poll_id, date) VALUES (?,?)', id, d);

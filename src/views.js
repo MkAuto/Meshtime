@@ -1,4 +1,4 @@
-import { monthInfo, dayClass, COLORS } from './lib.js';
+import { monthInfo, dayClass, COLORS, MAX_DATES } from './lib.js';
 
 // html`` auto-escapes every interpolation; wrap trusted markup in raw(). Nested html`` results are trusted.
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -71,7 +71,7 @@ export const pollsPage = (user, polls) => layout('Polls', user, html`<h1>Polls</
 export const newPollPage = (user, error) => layout('New poll', user, html`<h1>New poll</h1>${error && html`<p class="err">${error}</p>`}
 <form method="post" action="/polls/new" class="stack">
 <label>What for? <input name="title" required maxlength="100" placeholder="Board game night" autofocus></label>
-<fieldset class="stack"><legend>Proposed dates (leave extras empty)</legend>${[1, 2, 3, 4, 5, 6].map(() => html`<input type="date" name="dates">`)}</fieldset>
+<fieldset class="stack dates" data-max="${MAX_DATES}"><legend>Proposed dates (max ${MAX_DATES})</legend><noscript class="hint">Leave extras empty.</noscript>${[1, 2, 3, 4, 5, 6].map(() => html`<input type="date" name="dates">`)}</fieldset>
 <button>Create poll</button></form>`);
 
 export function pollPage(user, { poll, dates, members, votes, missing, complete, best, event }) {
@@ -81,18 +81,19 @@ export function pollPage(user, { poll, dates, members, votes, missing, complete,
   const open = !poll.closed_at;
   const canManage = poll.created_by === user.id || user.is_admin;
   const count = (date, a) => votes.filter(x => x.date === date && x.answer === a).length;
-  const showResult = (complete || !open) && best;
+  const showResult = (complete || !open) && best.length > 0;
   return layout(poll.title, user, html`<h1>${poll.title}</h1>
 <p class="hint">${open ? (complete ? 'Everyone has answered.' : `Waiting for: ${missing.join(', ')}`) : 'Poll closed.'}</p>
-<form method="post" action="/polls/${poll.id}"><table class="poll"><thead><tr><th></th>${dates.map(d => html`<th class="${showResult && d === best ? 'best' : ''}">${d}</th>`)}</tr></thead><tbody>
+<form method="post" action="/polls/${poll.id}"><table class="poll"><thead><tr><th></th>${dates.map(d => html`<th class="${showResult && best.includes(d) ? 'best' : ''}">${d}</th>`)}</tr></thead><tbody>
 ${members.map(m => html`<tr><td>${m.name}${m.id === user.id ? ' (you)' : ''}</td>${dates.map(d => html`<td>${m.id === user.id && open
     ? html`<select name="v_${d}">${mine[d] ? '' : html`<option value="" selected>—</option>`}${['yes', 'maybe', 'no'].map(a => html`<option value="${a}"${mine[d] === a ? raw(' selected') : ''}>${a}</option>`)}</select>`
     : html`<span class="a ${(v[m.id] || {})[d] || 'none'}">${(v[m.id] || {})[d] || '–'}</span>`}</td>`)}</tr>`)}
 <tr class="tot"><td>yes / maybe / no</td>${dates.map(d => html`<td>${count(d, 'yes')} / ${count(d, 'maybe')} / ${count(d, 'no')}</td>`)}</tr></tbody></table>
 ${open ? html`<button>Save my answers</button>` : ''}</form>
-${showResult ? html`<section class="result"><h2>Best date: ${best}</h2>
+${showResult ? html`<section class="result"><h2>Best date${best.length > 1 ? 's' : ''}: ${best.join(', ')}</h2>
+${best.length > 1 ? html`<p class="hint">Tied on yes and no — pick the one you want.</p>` : ''}
 ${event ? html`<p>Added to the calendar as <b>${event.title}</b> on ${event.date}. <a href="/?m=${event.date.slice(0, 7)}">View</a></p>`
-    : html`<form method="post" action="/polls/${poll.id}/confirm"><input type="hidden" name="date" value="${best}"><button>Add to calendar</button></form>`}</section>` : ''}
+    : html`<div class="row">${best.map(d => html`<form method="post" action="/polls/${poll.id}/confirm"><input type="hidden" name="date" value="${d}"><button>Add ${d} to calendar</button></form>`)}</div>`}</section>` : ''}
 ${open && canManage ? html`<p><form method="post" action="/polls/${poll.id}/close" class="inline"><button class="link danger">Close poll now</button></form></p>` : ''}`);
 }
 

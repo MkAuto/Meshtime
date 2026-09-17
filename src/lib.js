@@ -42,11 +42,17 @@ export const dayClass = ctx => Object.keys(DAY_STATES).filter(k => DAY_STATES[k]
 export const COLORS = 13;
 export const randomColor = () => Math.floor(Math.random() * COLORS);
 
-// Most "yes", then fewest "no", then earliest. votes: [{ date, answer }]
-export function bestDate(dates, votes) {
+// Poll size cap: enforced in routes.js, rendered as fieldset data-max for public/app.js.
+export const MAX_DATES = 30;
+
+// Most "yes", then fewest "no". Every date tied at the top, earliest first. votes: [{ date, answer }]
+export function bestDates(dates, votes) {
+  if (!dates.length) return [];
   const score = Object.fromEntries(dates.map(d => [d, { yes: 0, no: 0 }]));
   for (const v of votes) if (score[v.date] && v.answer in score[v.date]) score[v.date][v.answer]++;
-  return [...dates].sort((a, b) => score[b].yes - score[a].yes || score[a].no - score[b].no || a.localeCompare(b))[0];
+  const ranked = [...dates].sort((a, b) => score[b].yes - score[a].yes || score[a].no - score[b].no || a.localeCompare(b));
+  const top = score[ranked[0]];
+  return ranked.filter(d => score[d].yes === top.yes && score[d].no === top.no);
 }
 
 // ---- ICS (RFC 5545) ----

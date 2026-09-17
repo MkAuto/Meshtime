@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isValidDate, bestDate, fold, buildIcs, dayClass } from './src/lib.js';
+import { isValidDate, bestDates, fold, buildIcs, dayClass, MAX_DATES } from './src/lib.js';
+import { newPollPage } from './src/views.js';
 
 const y = new Date().getUTCFullYear();
 
@@ -14,20 +15,33 @@ test('isValidDate', () => {
   assert.equal(isValidDate("2026-01-01' OR 1=1"), false);
 });
 
-test('bestDate: most yes, then fewest no, then earliest', () => {
+test('bestDates: most yes, then fewest no', () => {
   const dates = ['2026-10-03', '2026-10-01', '2026-10-02'];
-  assert.equal(bestDate(dates, [
+  assert.deepEqual(bestDates(dates, [
     { date: '2026-10-01', answer: 'yes' }, { date: '2026-10-01', answer: 'no' },
     { date: '2026-10-02', answer: 'yes' }, { date: '2026-10-02', answer: 'yes' },
     { date: '2026-10-03', answer: 'yes' }, { date: '2026-10-03', answer: 'maybe' },
-  ]), '2026-10-02');
-  // tie on yes: fewer "no" wins
-  assert.equal(bestDate(dates, [
+  ]), ['2026-10-02']);
+  // tie on yes: fewer "no" wins outright
+  assert.deepEqual(bestDates(dates, [
     { date: '2026-10-01', answer: 'yes' }, { date: '2026-10-01', answer: 'no' },
     { date: '2026-10-03', answer: 'yes' }, { date: '2026-10-03', answer: 'maybe' },
-  ]), '2026-10-03');
-  // full tie: earliest
-  assert.equal(bestDate(dates, []), '2026-10-01');
+  ]), ['2026-10-03']);
+});
+
+test('bestDates: every date tied on yes and no is proposed, earliest first', () => {
+  const dates = ['2026-10-03', '2026-10-01', '2026-10-02'];
+  // 10-01 and 10-03 both 2 yes / 1 no; 10-02 has fewer yes
+  assert.deepEqual(bestDates(dates, [
+    { date: '2026-10-01', answer: 'yes' }, { date: '2026-10-01', answer: 'yes' }, { date: '2026-10-01', answer: 'no' },
+    { date: '2026-10-02', answer: 'yes' }, { date: '2026-10-02', answer: 'maybe' },
+    { date: '2026-10-03', answer: 'yes' }, { date: '2026-10-03', answer: 'yes' }, { date: '2026-10-03', answer: 'no' },
+  ]), ['2026-10-01', '2026-10-03']);
+  // nobody voted: all tied at 0/0
+  assert.deepEqual(bestDates(dates, []), ['2026-10-01', '2026-10-02', '2026-10-03']);
+  // a "maybe" does not break a tie, it is neither yes nor no
+  assert.deepEqual(bestDates(['2026-10-01', '2026-10-02'], [{ date: '2026-10-01', answer: 'maybe' }]), ['2026-10-01', '2026-10-02']);
+  assert.deepEqual(bestDates([], []), []);
 });
 
 test('fold keeps every line within 75 octets, UTF-8 aware', () => {
@@ -56,4 +70,11 @@ test('dayClass: all = every member free, mine = I am free', () => {
   assert.equal(dayClass({ who: ['a', 'b'], members: 2, mine: true }), 'all mine');
   assert.equal(dayClass({ who: ['a'], members: 2, mine: false }), '');
   assert.equal(dayClass({ who: [], members: 0, mine: false }), '');
+});
+
+// The no-JS fallback and the hook public/app.js keys off of.
+test('newPollPage renders 6 date rows inside .dates', () => {
+  const page = newPollPage({ name: 'a', id: 1 });
+  assert.equal(page.match(/<input type="date" name="dates">/g).length, 6);
+  assert.match(page, new RegExp(`<fieldset class="stack dates" data-max="${MAX_DATES}">`));
 });
