@@ -37,6 +37,7 @@ const MSGS = {
   color: 'Color saved.',
   passkey: 'Passkey added.',
   passkey_removed: 'Passkey removed.',
+  removed: 'Member removed. Their sessions, passkeys and feed links no longer work.',
 };
 
 /** The ?msg= confirmation and the inline error line, shared by Settings and Administration. */
@@ -203,7 +204,7 @@ export const adminPage = (user, { base, invites, members, msg, error }) =>
   layout('Administration', user, html`<h1>Administration</h1>${notices(msg, error)}
 <section class="panel panel-admin"><h2>Members</h2>
 <p class="hint">A member who forgot their password needs a reset link — send them the one you create here.</p>
-<ul>${members.map(member => html`<li>${member.name}${member.is_admin ? ' (admin)' : ''} — <form method="post" action="/admin/invite" class="inline"><input type="hidden" name="user_id" value="${member.id}"><button class="link">create reset-password link</button></form></li>`)}</ul>
+<ul>${members.map(member => html`<li>${member.name}${member.is_admin ? ' (admin)' : ''} — <form method="post" action="/admin/invite" class="inline"><input type="hidden" name="user_id" value="${member.id}"><button class="link">create reset-password link</button></form>${member.id === user.id ? '' : html` · <form method="post" action="/admin/members/${member.id}/delete" class="inline" data-confirm="Remove ${member.name}? Their events and polls are kept."><button class="link danger">remove</button></form>`}</li>`)}</ul>
 <h3>Invite someone new</h3>
 <form method="post" action="/admin/invite"><button>Create invite link</button></form>
 ${invites.length ? html`<h3>Open links (valid 7 days, single use)</h3><ul>${invites.map(invite => html`<li>${invite.user_name ? `Reset for ${invite.user_name}` : 'Invite'}: <code>${base}/invite/${invite.token}</code></li>`)}</ul>` : ''}</section>`);

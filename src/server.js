@@ -80,6 +80,9 @@ function makeCtx(req, res, url) {
     user: null,  // the users row, or null when not logged in
     body: null,  // URLSearchParams on POST
     sid: null,   // raw session cookie value
+    // Client address for rate limiting. Caddy sets X-Forwarded-For in production; only trust it there,
+    // since anyone can send that header when they reach Node directly.
+    ip: (PROD && (req.headers['x-forwarded-for'] || '').split(',')[0].trim()) || req.socket.remoteAddress,
 
     html(body, status = 200) {
       res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });

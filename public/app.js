@@ -1,3 +1,7 @@
+// Forms with data-confirm ask before submitting (CSP forbids inline onsubmit). Without JS they just submit.
+for (const form of document.querySelectorAll('form[data-confirm]'))
+  form.addEventListener('submit', event => { if (!confirm(form.dataset.confirm)) event.preventDefault(); });
+
 // Live preview of the color slider in Settings.
 const hue = document.querySelector('.hue'), swatch = document.getElementById('swatch');
 if (hue && swatch) hue.addEventListener('input', () => { swatch.className = `c${hue.value} swatch`; });

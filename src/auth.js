@@ -103,6 +103,8 @@ export const userCredentials = userId =>
 export const deleteCredential = (id, userId) =>
   run('DELETE FROM credentials WHERE id = ? AND user_id = ?', id, userId); // user_id IS the permission check
 
+export const deleteUserCredentials = userId => run('DELETE FROM credentials WHERE user_id = ?', userId);
+
 /** Stores a new passkey after checking the registration is genuine. False if it is not. */
 export function addCredential({ userId, id, publicKey, alg, label, clientDataJSON, authenticatorData, challenge }) {
   // An authenticator whose key the browser could not export is useless: it could never log in.
@@ -136,14 +138,22 @@ export function credentialUser({ id, clientDataJSON, authenticatorData, signatur
 }
 
 // ---- login rate limit ----
-// ponytail: global in-memory limiter (20 failures / 15 min); per-IP if abuse appears
+// Keyed per client address and per account, so one stranger's failures cannot lock everyone out.
+// A much higher global cap stays as a backstop against a distributed flood.
+// ponytail: in-memory, resets on restart; persist in the DB if that ever matters.
 const WINDOW_MS = 15 * 60000;
-const MAX_FAILURES = 20;
-let failedAt = [];
+const LIMITS = { ip: 20, account: 10, all: 500 };
+const failures = new Map(); // 'ip:1.2.3.4' | 'account:alice' | 'all' -> [timestamps]
 
-export function loginAllowed() {
-  failedAt = failedAt.filter(at => at > Date.now() - WINDOW_MS); // drop failures older than the window
-  return failedAt.length < MAX_FAILURES;
+const recent = key => (failures.get(key) || []).filter(at => at > Date.now() - WINDOW_MS);
+const keysFor = (ip, account) => [['ip', 'ip:' + ip], ['account', 'account:' + account.toLowerCase()], ['all', 'all']];
+
+/** `account` is the submitted name, or the credential id for a passkey login. */
+export const loginAllowed = (ip, account = '') =>
+  keysFor(ip, account).every(([kind, key]) => recent(key).length < LIMITS[kind]);
+
+export function loginFailed(ip, account = '') {
+  for (const [, key] of keysFor(ip, account)) failures.set(key, [...recent(key), Date.now()]);
+  // Drop keys whose failures have all aged out, so the map does not grow forever.
+  for (const [key, at] of failures) if (!at.some(t => t > Date.now() - WINDOW_MS)) failures.delete(key);
 }
-
-export const loginFailed = () => failedAt.push(Date.now());

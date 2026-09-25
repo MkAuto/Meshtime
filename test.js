@@ -137,3 +137,14 @@ test('verifyWebAuthn accepts a genuine assertion and rejects every tampered one'
   assert.equal(verifyWebAuthn(registration), true);
   assert.equal(verifyWebAuthn({ ...registration, challenge: 'wrong' }), false);
 });
+
+test('login limiter is keyed per client and per account, not global', async () => {
+  const { loginAllowed, loginFailed } = await import('./src/auth.js');
+  for (let i = 0; i < 20; i++) loginFailed('10.0.0.1', 'nobody');
+  assert.equal(loginAllowed('10.0.0.1', 'alice'), false, 'the flooding client is blocked');
+  assert.equal(loginAllowed('10.0.0.2', 'alice'), true, 'everyone else still logs in');
+  for (let i = 0; i < 10; i++) loginFailed('10.0.0.' + (10 + i), 'bob');
+  assert.equal(loginAllowed('10.0.0.99', 'bob'), false, 'a targeted account locks across clients');
+  assert.equal(loginAllowed('10.0.0.99', 'Bob'), false, 'case-insensitive, like the name column');
+  assert.equal(loginAllowed('10.0.0.99', 'carol'), true);
+});

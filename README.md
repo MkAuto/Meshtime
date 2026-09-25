@@ -55,7 +55,11 @@ Anyone with a link can read the feed. **Rotate feed links** in Settings invalida
 
 ## Forgot password
 
-An admin opens **Administration** → Members → *create reset-password link* and sends it to the member.
+An admin opens **Administration** → Members → *create reset-password link* and sends it to the member. Using it logs out every device and removes the member's passkeys, so anything an intruder left on the account stops working; passkeys are re-added in Settings.
+
+## Removing a member
+
+**Administration** → Members → *remove*. Their sessions, passkeys, votes, free days and feed links stop working at once. Events and polls they created are kept and re-owned by the admin who removed them.
 
 ## Security notes
 
@@ -64,5 +68,5 @@ An admin opens **Administration** → Members → *create reset-password link* a
 - Passkeys are bound to `BASE_URL`. Reaching the app on a LAN IP or a different hostname offers password login only — that origin check is the spec's anti-phishing guarantee and is deliberately strict.
 - Every POST must come from the app's own origin (CSRF), bodies are capped at 16 KB, all SQL is parameterized, all output is HTML-escaped.
 - Strict `Content-Security-Policy`, `X-Content-Type-Options`, `Referrer-Policy`; HSTS is set by Caddy.
-- Login is rate-limited globally (20 failures per 15 minutes). The feed links are the only unauthenticated routes.
+- Login is rate-limited per client address (20 failures per 15 minutes) and per account (10), with a global backstop of 500, so one stranger cannot lock everyone out. Behind Caddy the address comes from , trusted only when . The feed links are the only unauthenticated routes.
 - The container runs as the unprivileged `node` user.

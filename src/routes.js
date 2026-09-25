@@ -19,6 +19,8 @@ const backToMonth = ctx => {
   return '/?m=' + (isValidMonth(month) ? month : today().slice(0, 7));
 };
 
+const TOO_MANY = 'Too many attempts. Try again in 15 minutes.';
+
 const startSession = (ctx, userId) => {
   ctx.setCookie('sid', auth.createSession(userId), auth.SESSION_SECONDS);
   ctx.redirect('/');
@@ -28,12 +30,13 @@ const startSession = (ctx, userId) => {
 on('GET', '/login', ctx => ctx.user ? ctx.redirect('/') : ctx.html(views.loginPage()), true);
 
 on('POST', '/login', async ctx => {
-  if (!auth.loginAllowed()) return ctx.html(views.loginPage('Too many attempts. Try again in 15 minutes.'), 429);
-  const user = get('SELECT * FROM users WHERE name = ?', cleanText(ctx.body.get('name'), 40));
+  const name = cleanText(ctx.body.get('name'), 40);
+  if (!auth.loginAllowed(ctx.ip, name)) return ctx.html(views.loginPage(TOO_MANY), 429);
+  const user = get('SELECT * FROM users WHERE name = ?', name);
   // Hash even for an unknown name, so the response time does not reveal which names exist.
   const passwordOk = await auth.verifyPassword(ctx.body.get('password') || '', user?.password_hash ?? auth.DUMMY_HASH);
   if (!user || !passwordOk) {
-    auth.loginFailed();
+    auth.loginFailed(ctx.ip, name);
     return ctx.html(views.loginPage('Wrong name or password.'), 401);
   }
   startSession(ctx, user.id);
@@ -49,19 +52,19 @@ on('POST', '/logout', ctx => {
 // Two requests each way: fetch a challenge, then post what the authenticator signed over it.
 // public/app.js posts these form-encoded like every other form, so server.js needs no special case.
 
-const TOO_MANY = 'Too many attempts. Try again in 15 minutes.';
-
-on('POST', '/login/passkey/options', ctx => auth.loginAllowed()
+// Issuing a challenge is only gated per client, so a stranger's failures never hide the passkey button.
+on('POST', '/login/passkey/options', ctx => auth.loginAllowed(ctx.ip)
   ? ctx.json({ challenge: auth.createChallenge(), rpId: RP_ID })
   : ctx.json({ error: TOO_MANY }, 429), true);
 
 on('POST', '/login/passkey', ctx => {
-  if (!auth.loginAllowed()) return ctx.json({ error: TOO_MANY }, 429);
+  const credentialId = ctx.body.get('id') || '';
+  if (!auth.loginAllowed(ctx.ip, credentialId)) return ctx.json({ error: TOO_MANY }, 429);
   const challenge = ctx.body.get('challenge') || '';
 
   // Spend the challenge first: a replayed body dies here even if its signature is still perfectly good.
   const user = auth.consumeChallenge(challenge) && auth.credentialUser({
-    id: ctx.body.get('id') || '',
+    id: credentialId,
     clientDataJSON: ctx.body.get('clientDataJSON') || '',
     authenticatorData: ctx.body.get('authenticatorData') || '',
     signature: ctx.body.get('signature') || '',
@@ -69,7 +72,7 @@ on('POST', '/login/passkey', ctx => {
   });
 
   if (!user) {
-    auth.loginFailed(); // passkey attempts share the password login's rate limit
+    auth.loginFailed(ctx.ip, credentialId); // passkey attempts share the password login's rate limit
     return ctx.json({ error: 'That passkey is not recognised.' }, 401);
   }
   ctx.setCookie('sid', auth.createSession(user.id), auth.SESSION_SECONDS);
@@ -104,7 +107,10 @@ on('POST', '/invite/(?<token>[\\w-]+)', async ctx => {
     if (!auth.consumeInvite(invite.token)) throw Object.assign(new Error('invite gone'), { status: 410 });
     if (isReset) {
       run('UPDATE users SET password_hash = ? WHERE id = ?', passwordHash, invite.user_id);
-      auth.deleteUserSessions(invite.user_id); // whoever knew the old password is logged out
+      // A reset is a recovery: log out every device and drop every passkey, so nothing an intruder
+      // planted on the account keeps working. The member re-adds their passkeys in Settings.
+      auth.deleteUserSessions(invite.user_id);
+      auth.deleteUserCredentials(invite.user_id);
       return invite.user_id;
     }
     return run(`INSERT INTO users(name, password_hash, feed_token, is_admin, created_at, color)
@@ -261,8 +267,9 @@ on('POST', '/polls/(?<id>\\d+)/confirm', ctx => {
   const data = loadPoll(pollId);
   const date = ctx.body.get('date');
   if (!data) return ctx.fail(404, 'Poll not found.');
-  if (!data.dates.includes(date)) return ctx.fail(400, 'Not one of the proposed dates.');
   if (!data.complete && !data.poll.closed_at) return ctx.fail(409, 'Not everyone has answered yet.');
+  // Only a winning date may be confirmed; the form offers exactly these, so this is the server-side twin.
+  if (!data.best.includes(date)) return ctx.fail(400, 'Not one of the best dates.');
 
   if (!data.event) tx(() => { // idempotent: events.poll_id is UNIQUE, so a double click adds nothing
     run('INSERT INTO events(title, date, created_by, poll_id, created_at) VALUES (?,?,?,?,?)',
@@ -359,6 +366,21 @@ on('POST', '/admin/invite', ctx => {
   if (userId && !get('SELECT 1 FROM users WHERE id = ?', userId)) return ctx.fail(400, 'Unknown user.');
   auth.createInvite({ createdBy: ctx.user.id, userId }); // userId set => password-reset link
   ctx.redirect('/admin?msg=invite');
+});
+
+// Offboarding. ON DELETE CASCADE takes sessions, passkeys, votes, free days and reset links with the
+// row, and the feed token dies with it. Events and polls they created stay, so they are re-owned first.
+on('POST', '/admin/members/(?<id>\\d+)/delete', ctx => {
+  if (!requireAdmin(ctx)) return;
+  const memberId = Number(ctx.params.id);
+  if (memberId === ctx.user.id) return ctx.fail(400, 'You cannot remove yourself.');
+  if (!get('SELECT 1 FROM users WHERE id = ?', memberId)) return ctx.fail(404, 'Unknown member.');
+  tx(() => {
+    run('UPDATE events SET created_by = ? WHERE created_by = ?', ctx.user.id, memberId);
+    run('UPDATE polls SET created_by = ? WHERE created_by = ?', ctx.user.id, memberId);
+    run('DELETE FROM users WHERE id = ?', memberId);
+  });
+  ctx.redirect('/admin?msg=removed');
 });
 
 // ---- ICS feeds: the only unauthenticated data routes; the token in the URL is the credential ----
