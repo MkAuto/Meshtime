@@ -29,11 +29,15 @@ code { word-break: break-all; font-size: .85rem; background: var(--code-bg); pad
 .day { min-height: 76px; background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: .2rem; font-size: .75rem; }
 .day.pad { background: none; border: none; }
 .day.today { border-color: var(--accent); }
-.day button { width: 100%; text-align: left; background: none; border: none; color: var(--fg); font-weight: 600; padding: .1rem .2rem; }
+/* the button is the whole cell: grid on both wrappers stretches it edge to edge, no fixed heights */
+.day, .day form { display: grid; }
+.day button { display: flex; flex-direction: column; align-items: stretch; text-align: left;
+  background: none; border: none; color: var(--fg); padding: .1rem .2rem; }
+.day .num { font-weight: 600; }
 /* day states: one class per DAY_STATES key in src/lib.js */
 .day.mine { outline: 2px solid var(--accent); outline-offset: -2px; }
 .day.all { background: var(--ok-bg); }
-.day.all button::after { content: " ✓"; color: var(--ok); }
+.day.all .num::after { content: " ✓"; color: var(--ok); }
 .who { display: flex; flex-wrap: wrap; gap: 2px; }
 /* user colors: 13 distinct colors, index stored in users.color. Add .cN{--c:light;--cd:dark} + a gradient stop, bump COLORS in src/lib.js */
 .c0{--c:#dc2626;--cd:#f87171}.c1{--c:#ea580c;--cd:#fb923c}.c2{--c:#ca8a04;--cd:#facc15}.c3{--c:#65a30d;--cd:#a3e635}.c4{--c:#16a34a;--cd:#4ade80}.c5{--c:#0d9488;--cd:#2dd4bf}.c6{--c:#0284c7;--cd:#38bdf8}.c7{--c:#2563eb;--cd:#60a5fa}.c8{--c:#4f46e5;--cd:#818cf8}.c9{--c:#9333ea;--cd:#c084fc}.c10{--c:#db2777;--cd:#f472b6}.c11{--c:#7c4a1d;--cd:#c9915a}.c12{--c:#475569;--cd:#94a3b8}

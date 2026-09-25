@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { isValidDate, bestDates, fold, buildIcs, dayClass, MAX_DATES } from './src/lib.js';
 import { newPollPage } from './src/views.js';
 
-const y = new Date().getUTCFullYear();
+const thisYear = new Date().getUTCFullYear();
 
 test('isValidDate', () => {
-  assert.equal(isValidDate(`${y}-02-28`), true);
-  assert.equal(isValidDate(`${y}-02-30`), false);
-  assert.equal(isValidDate(`${y}-13-01`), false);
-  assert.equal(isValidDate(`${y}-2-1`), false);
-  assert.equal(isValidDate(`${y + 3}-01-01`), false);
+  assert.equal(isValidDate(`${thisYear}-02-28`), true);
+  assert.equal(isValidDate(`${thisYear}-02-30`), false);
+  assert.equal(isValidDate(`${thisYear}-13-01`), false);
+  assert.equal(isValidDate(`${thisYear}-2-1`), false);
+  assert.equal(isValidDate(`${thisYear + 3}-01-01`), false);
   assert.equal(isValidDate(undefined), false);
   assert.equal(isValidDate("2026-01-01' OR 1=1"), false);
 });
