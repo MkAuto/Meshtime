@@ -23,6 +23,30 @@ button.danger, .danger { color: var(--err); } button.danger:not(.link) { backgro
 form { margin: 0; }
 code { word-break: break-all; font-size: .85rem; background: var(--code-bg); padding: .1rem .3rem; border-radius: 4px; }
 
+/* settings / admin panels: one tinted card per topic, so the page reads as groups, not one long list.
+   Each .panel-* only sets --panel (fill) and --panel-edge (stripe + heading); dark mode reuses the names. */
+.panel { background: var(--panel); border: 1px solid var(--line); border-left: 5px solid var(--panel-edge);
+  border-radius: 10px; padding: .4rem 1.2rem 1.2rem; margin: 1.2rem 0;
+  /* the tint costs .hint about .2 of contrast ratio; one step darker keeps it over 4.5:1 */
+  --muted: #4b5563; }
+/* The default ::marker collides with the block-level h2, so the summary lays itself out as a
+   flex row and draws its own triangle. list-style + the -webkit rule kill the native one. */
+.panel > summary { cursor: pointer; display: flex; align-items: center; gap: .5rem; list-style: none; }
+.panel > summary::-webkit-details-marker { display: none; }
+.panel > summary::before { content: "▶"; font-size: .7rem; color: var(--panel-edge);
+  transition: transform .15s ease; }
+.panel[open] > summary::before { transform: rotate(90deg); }
+/* Only the section title is enlarged. Subtitles stay at body size and lean on weight, not size. */
+.panel h2 { font-size: 1.3rem; color: var(--panel-edge); margin: .6rem 0; }
+.panel > h3 { font-size: 1rem; margin: 1.3rem 0 .3rem; }
+/* collapsed: drop the bottom padding so the closed panel is a tidy title bar.
+   Scoped to details so the admin page's plain <section class=panel> keeps its padding. */
+details.panel:not([open]) { padding-bottom: .4rem; }
+.panel-feeds    { --panel: #eff6ff; --panel-edge: #2563eb; }
+.panel-custom   { --panel: #f5f3ff; --panel-edge: #7c3aed; }
+.panel-security { --panel: #fff7ed; --panel-edge: #c2410c; }
+.panel-admin    { --panel: #fef2f2; --panel-edge: #b91c1c; }
+
 /* calendar */
 .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
 .dow { text-align: center; font-size: .75rem; color: var(--muted); padding: .2rem 0; }
@@ -69,4 +93,10 @@ details { margin: .8rem 0; }
   :root { color-scheme: dark; --bg: #000; --card: #0b0b0b; --fg: #e6e6e6; --muted: #8a8a8a; --line: #222; --accent: #60a5fa; --on-accent: #0b0b0b;
     --ok: #4ade80; --ok-bg: #0c2a17; --err: #f87171; --maybe: #fbbf24; --code-bg: #161616; --ev-bg: #2a1f05; --ev-fg: #fcd34d; }
   .who span, .swatch { color: var(--cd, var(--accent)); }
+  /* same hues, pulled down to near-black so the panels tint rather than glow.
+     Dark needs no --muted bump: #8a8a8a clears 5.2:1 on all four. */
+  .panel-feeds    { --panel: #0a1526; --panel-edge: #60a5fa; }
+  .panel-custom   { --panel: #140f26; --panel-edge: #a78bfa; }
+  .panel-security { --panel: #211206; --panel-edge: #fb923c; }
+  .panel-admin    { --panel: #240d0d; --panel-edge: #f87171; }
 }

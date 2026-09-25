@@ -1,7 +1,7 @@
 import { all, get, run, now, tx } from './db.js';
 import * as auth from './auth.js';
 import * as views from './views.js';
-import { isValidDate, isValidMonth, bestDates, buildIcs, today, randomColor, ANSWERS, COLORS, MAX_DATES, BASE_URL, RP_ID } from './lib.js';
+import { isValidDate, isValidMonth, bestDates, buildIcs, today, randomColor, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD, BASE_URL, RP_ID } from './lib.js';
 
 export const routes = [];
 
@@ -94,7 +94,7 @@ on('POST', '/invite/(?<token>[\\w-]+)', async ctx => {
   const isReset = Boolean(invite.user_id);
   const reject = msg => ctx.html(views.invitePage(invite.token, invite.user_name, msg), 400);
 
-  if (password.length < 8) return reject('Password must be at least 8 characters.');
+  if (password.length < MIN_PASSWORD) return reject(`Password must be at least ${MIN_PASSWORD} characters.`);
   if (!isReset && !name) return reject('Name is required.');
   if (!isReset && get('SELECT 1 FROM users WHERE name = ?', name)) return reject('That name is already taken.');
 
@@ -274,12 +274,9 @@ on('POST', '/polls/(?<id>\\d+)/confirm', ctx => {
 
 // ---- settings ----
 
-// Members and invites are admin-only: non-admins get empty lists and the view hides those sections.
 const settingsData = (ctx, extra = {}) => ({
   base: BASE_URL,
   msg: ctx.url.searchParams.get('msg'),
-  invites: ctx.user.is_admin ? auth.openInvites() : [],
-  members: ctx.user.is_admin ? all('SELECT id, name, is_admin FROM users ORDER BY name') : [],
   passkeys: auth.userCredentials(ctx.user.id),
   ...extra,
 });
@@ -303,7 +300,7 @@ on('POST', '/settings/password', async ctx => {
   const reject = error => ctx.html(views.settingsPage(ctx.user, settingsData(ctx, { error })), 400);
   if (!(await auth.verifyPassword(ctx.body.get('current') || '', ctx.user.password_hash)))
     return reject('Current password is wrong.');
-  if (newPassword.length < 8) return reject('New password must be at least 8 characters.');
+  if (newPassword.length < MIN_PASSWORD) return reject(`New password must be at least ${MIN_PASSWORD} characters.`);
 
   run('UPDATE users SET password_hash = ? WHERE id = ?', await auth.hashPassword(newPassword), ctx.user.id);
   // Log every device out, then hand this browser a fresh session so the user stays put.
@@ -343,12 +340,25 @@ on('POST', '/settings/passkeys/delete', ctx => {
   ctx.redirect('/settings?msg=passkey_removed');
 });
 
-on('POST', '/settings/invite', ctx => {
-  if (!ctx.user.is_admin) return ctx.fail(403, 'Admins only.');
+// ---- administration ----
+// Everything admin-only lives under /admin. The guard is here, not in the view, so a future
+// admin tool only has to be added to this section to inherit it.
+
+const requireAdmin = ctx => ctx.user.is_admin || ctx.fail(403, 'Admins only.');
+
+on('GET', '/admin', ctx => requireAdmin(ctx) && ctx.html(views.adminPage(ctx.user, {
+  base: BASE_URL,
+  msg: ctx.url.searchParams.get('msg'),
+  invites: auth.openInvites(),
+  members: all('SELECT id, name, is_admin FROM users ORDER BY name'),
+})));
+
+on('POST', '/admin/invite', ctx => {
+  if (!requireAdmin(ctx)) return;
   const userId = ctx.body.get('user_id') ? Number(ctx.body.get('user_id')) : null;
   if (userId && !get('SELECT 1 FROM users WHERE id = ?', userId)) return ctx.fail(400, 'Unknown user.');
   auth.createInvite({ createdBy: ctx.user.id, userId }); // userId set => password-reset link
-  ctx.redirect('/settings?msg=invite');
+  ctx.redirect('/admin?msg=invite');
 });
 
 // ---- ICS feeds: the only unauthenticated data routes; the token in the URL is the credential ----

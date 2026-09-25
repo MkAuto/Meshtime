@@ -16,7 +16,7 @@ node --version   # >= 24
 npm start        # http://localhost:3000, database in ./data/app.db
 ```
 
-On first start the console prints a one-time **admin invite link**. Open it, pick a name and password. Then go to **Settings → Create invite link** to invite friends (links last 7 days, single use).
+On first start the console prints a one-time **admin invite link**. Open it, pick a name and password. Then go to **Administration → Create invite link** to invite friends (links last 7 days, single use). The Administration page is only shown to admins; Settings is for everyone and holds calendar feeds, your color and your passkeys.
 
 ```sh
 npm test         # unit tests for date validation, poll ranking, ICS output, passkey verification
@@ -55,7 +55,7 @@ Anyone with a link can read the feed. **Rotate feed links** in Settings invalida
 
 ## Forgot password
 
-An admin opens Settings → Members → *create reset-password link* and sends it to the member.
+An admin opens **Administration** → Members → *create reset-password link* and sends it to the member.
 
 ## Security notes
 

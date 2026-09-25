@@ -53,6 +53,10 @@ export const dayClass = day => Object.keys(DAY_STATES).filter(state => DAY_STATE
 export const COLORS = 13;
 export const randomColor = () => Math.floor(Math.random() * COLORS);
 
+// Shortest password we accept. Enforced in routes.js and rendered as minlength in views.js,
+// so the number lives here only.
+export const MIN_PASSWORD = 12;
+
 // Poll size cap: enforced in routes.js, rendered as fieldset data-max for public/app.js.
 export const MAX_DATES = 30;
 
