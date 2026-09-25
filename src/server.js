@@ -89,6 +89,9 @@ function makeCtx(req, res, url) {
       res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8', ...headers });
       res.end(isHead ? undefined : body);
     },
+    json(obj, status = 200) {
+      this.text(JSON.stringify(obj), status, { 'Content-Type': 'application/json' });
+    },
     redirect(path) {
       res.writeHead(303, { Location: path });
       res.end();

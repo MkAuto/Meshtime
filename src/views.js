@@ -35,6 +35,8 @@ const MSGS = {
   password: 'Password changed.',
   invite: 'Link created (see below).',
   color: 'Color saved.',
+  passkey: 'Passkey added.',
+  passkey_removed: 'Passkey removed.',
 };
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -57,6 +59,7 @@ export const loginPage = error => layout('Log in', null, html`<h1>Log in</h1>${e
 <label>Name <input name="name" required maxlength="40" autocomplete="username" autofocus></label>
 <label>Password <input name="password" type="password" required autocomplete="current-password"></label>
 <button>Log in</button></form>
+<p id="passkey-login" hidden>or <button class="link">log in with a passkey</button> <span class="err"></span></p>
 <p class="hint">No account? Ask a member for an invite link.</p>`);
 
 // One page for both invite kinds: resetName is set only for a password-reset link,
@@ -149,7 +152,7 @@ ${isOpen && canManage ? html`<p><form method="post" action="/polls/${poll.id}/cl
 
 // ---- settings ----
 
-export function settingsPage(user, { base, invites, members, msg, error }) {
+export function settingsPage(user, { base, invites, members, passkeys, msg, error }) {
   const feedUrl = kind => `${base}/feed/${user.feed_token}/${kind}.ics`;
   // webcal:// makes desktop calendar apps subscribe instead of downloading the file once.
   const asWebcal = url => url.replace(/^https?:\/\//, 'webcal://');
@@ -172,6 +175,13 @@ export function settingsPage(user, { base, invites, members, msg, error }) {
 <label>Current password <input name="current" type="password" required autocomplete="current-password"></label>
 <label>New password (min 8) <input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
 <button>Change password</button></form></section>
+<section><h2>Passkeys</h2>
+<p class="hint">Log in with your fingerprint, face or device PIN instead of typing a password. Your password keeps working.</p>
+<ul>${passkeys.length ? passkeys.map(passkey => html`<li>${passkey.label} <small class="hint">added ${passkey.created_at.slice(0, 10)}</small>
+ <form method="post" action="/settings/passkeys/delete" class="inline"><input type="hidden" name="id" value="${passkey.id}"><button class="link danger">remove</button></form></li>`)
+    : html`<li class="hint">No passkeys yet.</li>`}</ul>
+<p id="passkey-add" hidden><button class="btn">Add a passkey</button> <span class="err"></span></p>
+<noscript class="hint">Adding a passkey needs JavaScript.</noscript></section>
 ${user.is_admin ? html`<section><h2>Members (admin)</h2>
 <ul>${members.map(member => html`<li>${member.name}${member.is_admin ? ' (admin)' : ''} — <form method="post" action="/settings/invite" class="inline"><input type="hidden" name="user_id" value="${member.id}"><button class="link">create reset-password link</button></form></li>`)}</ul>
 <form method="post" action="/settings/invite"><button>Create invite link</button></form>

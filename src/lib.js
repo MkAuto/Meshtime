@@ -1,3 +1,5 @@
+import { createHash, createPublicKey, verify } from 'node:crypto';
+
 // Pure helpers: no DB, no HTTP. Covered by test.js.
 
 export const BASE_URL = (process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, '');
@@ -134,4 +136,59 @@ export function buildIcs({ name, host, items }) {
 
   lines.push('END:VCALENDAR');
   return lines.map(fold).join('\r\n') + '\r\n';
+}
+
+// ---- WebAuthn / passkeys ----
+// The one security boundary of passkey login, kept pure so test.js can exercise it without a DB.
+//
+// There is no CBOR decoder here on purpose: the browser hands us the credential public key already
+// in SPKI DER (AuthenticatorAttestationResponse.getPublicKey) and the raw authenticator data
+// (getAuthenticatorData), so node:crypto can consume both directly. WebAuthn Level 2, so
+// Chrome 85+, Firefox 119+, Safari 16.4+.
+
+/** The relying party id passkeys are scoped to. Derived from BASE_URL, so passkeys only work there. */
+export const RP_ID = new URL(BASE_URL).hostname;
+export const ORIGIN = new URL(BASE_URL).origin;
+
+// COSE algorithms we accept: ES256, RS256, Ed25519. Anything else is refused at registration,
+// so verifyWebAuthn never meets an algorithm crypto.verify would need extra options for.
+export const COSE_ALGS = [-7, -257, -8];
+
+const sha256Bytes = value => createHash('sha256').update(value).digest();
+
+/**
+ * True when an attestation (registration) or assertion (login) is genuine and meant for us.
+ * All Buffer arguments. `signature` is absent for registration: attestation is requested as
+ * "none", so there is nothing to verify against and checks 1-5 are the whole story.
+ *
+ * ponytail: no sign-counter / clone detection (synced passkeys all report 0), and
+ * userVerification is "preferred". To make the biometric mandatory, also require flag bit 2 below.
+ */
+export function verifyWebAuthn({ clientDataJSON, authenticatorData, signature, publicKey, alg, type, challenge }) {
+  let clientData;
+  try { clientData = JSON.parse(clientDataJSON.toString('utf8')); } catch { return false; }
+
+  // 1-3: the browser's side of the story. challenge is base64url, exactly as we issued it.
+  if (clientData.type !== type) return false;
+  if (clientData.challenge !== challenge) return false;
+  if (clientData.origin !== ORIGIN) return false;
+  if (clientData.crossOrigin) return false;
+
+  // 4-5: the authenticator's side. 37 bytes is the minimum: rpIdHash(32) + flags(1) + counter(4).
+  if (authenticatorData.length < 37) return false;
+  if (!authenticatorData.subarray(0, 32).equals(sha256Bytes(RP_ID))) return false;
+  if (!(authenticatorData[32] & 1)) return false; // UP: a human actually touched the authenticator
+
+  if (!signature) return true;
+
+  // 6: the signature covers the authenticator data and a hash of everything the browser said.
+  const signed = Buffer.concat([authenticatorData, sha256Bytes(clientDataJSON)]);
+  try {
+    const key = createPublicKey({ key: publicKey, format: 'der', type: 'spki' });
+    // Ed25519 signs the message itself; the others take a digest. ES256 signatures are DER,
+    // which is crypto.verify's default dsaEncoding, so there is nothing to configure.
+    return verify(alg === -8 ? null : 'sha256', signed, key, signature);
+  } catch {
+    return false; // unparseable key or malformed signature: not a valid credential
+  }
 }

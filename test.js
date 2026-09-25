@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isValidDate, bestDates, fold, buildIcs, dayClass, MAX_DATES } from './src/lib.js';
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
+import { isValidDate, bestDates, fold, buildIcs, dayClass, MAX_DATES, verifyWebAuthn, RP_ID, ORIGIN } from './src/lib.js';
 import { newPollPage } from './src/views.js';
 
 const thisYear = new Date().getUTCFullYear();
@@ -77,4 +78,62 @@ test('newPollPage renders 6 date rows inside .dates', () => {
   const page = newPollPage({ name: 'a', id: 1 });
   assert.equal(page.match(/<input type="date" name="dates">/g).length, 6);
   assert.match(page, new RegExp(`<fieldset class="stack dates" data-max="${MAX_DATES}">`));
+});
+
+// ---- passkeys ----
+// The whole trust boundary of passkey login: every one of these checks is what stops a forged
+// or replayed assertion from logging someone in.
+
+test('verifyWebAuthn accepts a genuine assertion and rejects every tampered one', () => {
+  const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  const spki = publicKey.export({ format: 'der', type: 'spki' });
+  const challenge = 'Zm9vYmFyLWNoYWxsZW5nZQ';
+
+  // authenticator data: rpIdHash(32) + flags(1, UP set) + sign counter(4)
+  const authData = (rpId = RP_ID, flags = 0x01) => Buffer.concat([
+    createHash('sha256').update(rpId).digest(),
+    Buffer.from([flags]),
+    Buffer.alloc(4),
+  ]);
+  const clientData = (overrides = {}) => Buffer.from(JSON.stringify(
+    { type: 'webauthn.get', challenge, origin: ORIGIN, ...overrides }));
+
+  const assertion = (over = {}) => {
+    const authenticatorData = over.authenticatorData ?? authData();
+    const clientDataJSON = over.clientDataJSON ?? clientData();
+    return {
+      clientDataJSON,
+      authenticatorData,
+      signature: over.signature ?? sign('sha256', Buffer.concat(
+        [authenticatorData, createHash('sha256').update(clientDataJSON).digest()]), privateKey),
+      publicKey: spki,
+      alg: -7,
+      type: 'webauthn.get',
+      challenge,
+    };
+  };
+
+  assert.equal(verifyWebAuthn(assertion()), true);
+
+  // Each of these is a real attack, and each must fail on its own.
+  assert.equal(verifyWebAuthn({ ...assertion(), challenge: 'some-other-challenge' }), false, 'replayed challenge');
+  assert.equal(verifyWebAuthn(assertion({ clientDataJSON: clientData({ origin: 'https://evil.example' }) })), false, 'phishing origin');
+  assert.equal(verifyWebAuthn(assertion({ clientDataJSON: clientData({ crossOrigin: true }) })), false, 'cross-origin iframe');
+  assert.equal(verifyWebAuthn({ ...assertion(), type: 'webauthn.create' }), false, 'registration passed off as a login');
+  assert.equal(verifyWebAuthn(assertion({ authenticatorData: authData('evil.example') })), false, 'wrong relying party');
+  assert.equal(verifyWebAuthn(assertion({ authenticatorData: authData(RP_ID, 0x00) })), false, 'user presence flag clear');
+  assert.equal(verifyWebAuthn(assertion({ signature: Buffer.alloc(70) })), false, 'forged signature');
+  assert.equal(verifyWebAuthn({ ...assertion(), publicKey: Buffer.alloc(0) }), false, 'unparseable key');
+  assert.equal(verifyWebAuthn({ ...assertion(), clientDataJSON: Buffer.from('not json') }), false, 'junk client data');
+
+  // A signature over a different authenticator data must not carry over to this one.
+  const other = assertion();
+  assert.equal(verifyWebAuthn({ ...assertion(), signature: sign('sha256', Buffer.from('x'), privateKey) }), false, 'signature over other data');
+  assert.equal(verifyWebAuthn(other), true, 'still valid untouched');
+
+  // Registration has no signature to check (attestation "none"), but the other checks still apply.
+  const registration = { ...assertion(), signature: undefined, type: 'webauthn.create',
+    clientDataJSON: clientData({ type: 'webauthn.create' }) };
+  assert.equal(verifyWebAuthn(registration), true);
+  assert.equal(verifyWebAuthn({ ...registration, challenge: 'wrong' }), false);
 });

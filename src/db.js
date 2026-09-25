@@ -75,6 +75,20 @@ CREATE TABLE IF NOT EXISTS events(
   created_by INTEGER NOT NULL REFERENCES users(id),
   poll_id INTEGER UNIQUE REFERENCES polls(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL);
+
+-- passkeys. public_key is SPKI DER (base64url), exactly as the browser's getPublicKey() gave it.
+CREATE TABLE IF NOT EXISTS credentials(
+  id TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  public_key TEXT NOT NULL,
+  alg INTEGER NOT NULL,
+  label TEXT NOT NULL,
+  created_at TEXT NOT NULL);
+
+-- outstanding WebAuthn challenges. Single-use and short-lived, so a captured login cannot be replayed.
+CREATE TABLE IF NOT EXISTS challenges(
+  challenge TEXT PRIMARY KEY,
+  expires_at TEXT NOT NULL);
 `);
 
 // ---- migrations: also run on every start, so each one has to be safe to repeat ----

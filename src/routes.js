@@ -1,7 +1,7 @@
 import { all, get, run, now, tx } from './db.js';
 import * as auth from './auth.js';
 import * as views from './views.js';
-import { isValidDate, isValidMonth, bestDates, buildIcs, today, randomColor, ANSWERS, COLORS, MAX_DATES, BASE_URL } from './lib.js';
+import { isValidDate, isValidMonth, bestDates, buildIcs, today, randomColor, ANSWERS, COLORS, MAX_DATES, BASE_URL, RP_ID } from './lib.js';
 
 export const routes = [];
 
@@ -43,6 +43,37 @@ on('POST', '/logout', ctx => {
   if (ctx.sid) auth.deleteSession(ctx.sid);
   ctx.setCookie('sid', '', 0);
   ctx.redirect('/login');
+}, true);
+
+// ---- passkeys ----
+// Two requests each way: fetch a challenge, then post what the authenticator signed over it.
+// public/app.js posts these form-encoded like every other form, so server.js needs no special case.
+
+const TOO_MANY = 'Too many attempts. Try again in 15 minutes.';
+
+on('POST', '/login/passkey/options', ctx => auth.loginAllowed()
+  ? ctx.json({ challenge: auth.createChallenge(), rpId: RP_ID })
+  : ctx.json({ error: TOO_MANY }, 429), true);
+
+on('POST', '/login/passkey', ctx => {
+  if (!auth.loginAllowed()) return ctx.json({ error: TOO_MANY }, 429);
+  const challenge = ctx.body.get('challenge') || '';
+
+  // Spend the challenge first: a replayed body dies here even if its signature is still perfectly good.
+  const user = auth.consumeChallenge(challenge) && auth.credentialUser({
+    id: ctx.body.get('id') || '',
+    clientDataJSON: ctx.body.get('clientDataJSON') || '',
+    authenticatorData: ctx.body.get('authenticatorData') || '',
+    signature: ctx.body.get('signature') || '',
+    challenge,
+  });
+
+  if (!user) {
+    auth.loginFailed(); // passkey attempts share the password login's rate limit
+    return ctx.json({ error: 'That passkey is not recognised.' }, 401);
+  }
+  ctx.setCookie('sid', auth.createSession(user.id), auth.SESSION_SECONDS);
+  ctx.json({ ok: true }); // the client navigates; a 303 here would make fetch load the page for nothing
 }, true);
 
 const INVITE_GONE = 'This link is invalid, used, or expired.';
@@ -249,6 +280,7 @@ const settingsData = (ctx, extra = {}) => ({
   msg: ctx.url.searchParams.get('msg'),
   invites: ctx.user.is_admin ? auth.openInvites() : [],
   members: ctx.user.is_admin ? all('SELECT id, name, is_admin FROM users ORDER BY name') : [],
+  passkeys: auth.userCredentials(ctx.user.id),
   ...extra,
 });
 
@@ -278,6 +310,37 @@ on('POST', '/settings/password', async ctx => {
   auth.deleteUserSessions(ctx.user.id);
   ctx.setCookie('sid', auth.createSession(ctx.user.id), auth.SESSION_SECONDS);
   ctx.redirect('/settings?msg=password');
+});
+
+// The user handle for the discoverable credential is the numeric user id: opaque, stable, no PII.
+// excludeCredentials stops one authenticator from registering itself against the same account twice.
+on('POST', '/settings/passkeys/options', ctx => ctx.json({
+  challenge: auth.createChallenge(),
+  rpId: RP_ID,
+  userId: String(ctx.user.id),
+  name: ctx.user.name,
+  exclude: auth.userCredentials(ctx.user.id).map(credential => credential.id),
+}));
+
+on('POST', '/settings/passkeys', ctx => {
+  const challenge = ctx.body.get('challenge') || '';
+  const added = auth.consumeChallenge(challenge) && auth.addCredential({
+    userId: ctx.user.id,
+    id: ctx.body.get('id') || '',
+    publicKey: ctx.body.get('publicKey') || '',
+    alg: Number(ctx.body.get('alg')),
+    label: cleanText(ctx.body.get('label'), 40) || 'Passkey',
+    clientDataJSON: ctx.body.get('clientDataJSON') || '',
+    authenticatorData: ctx.body.get('authenticatorData') || '',
+    challenge,
+  });
+  added ? ctx.json({ ok: true }) : ctx.json({ error: 'That passkey could not be verified.' }, 400);
+});
+
+// A plain form, so removing a passkey works with JS off.
+on('POST', '/settings/passkeys/delete', ctx => {
+  auth.deleteCredential(ctx.body.get('id') || '', ctx.user.id);
+  ctx.redirect('/settings?msg=passkey_removed');
 });
 
 on('POST', '/settings/invite', ctx => {

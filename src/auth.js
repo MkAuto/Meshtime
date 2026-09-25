@@ -1,6 +1,7 @@
 import { scrypt, randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { get, run, all, now } from './db.js';
+import { verifyWebAuthn, COSE_ALGS } from './lib.js';
 
 const scryptAsync = promisify(scrypt);
 const DAY_MS = 86400000;
@@ -77,6 +78,62 @@ export const openInvites = () => all(`
   LEFT JOIN users u ON u.id = i.user_id
   WHERE i.used_at IS NULL AND i.expires_at > ?
   ORDER BY i.expires_at`, now());
+
+// ---- passkeys ----
+// The crypto lives in lib.js (verifyWebAuthn); this is only the database around it.
+
+const CHALLENGE_MS = 5 * 60000;
+const fromBase64url = value => Buffer.from(value, 'base64url');
+
+/** A fresh single-use challenge. ponytail: bounded by request-rate x 5 min; per-IP gate if flooded. */
+export function createChallenge() {
+  const challenge = token();
+  run('DELETE FROM challenges WHERE expires_at < ?', now()); // cheap cleanup, no cron needed
+  run('INSERT INTO challenges(challenge, expires_at) VALUES (?,?)', challenge, isoIn(CHALLENGE_MS));
+  return challenge;
+}
+
+/** Spends a challenge. False if it is unknown, expired or already used, so no assertion replays. */
+export const consumeChallenge = challenge =>
+  run('DELETE FROM challenges WHERE challenge = ? AND expires_at > ?', challenge, now()).changes === 1;
+
+export const userCredentials = userId =>
+  all('SELECT id, label, created_at FROM credentials WHERE user_id = ? ORDER BY created_at', userId);
+
+export const deleteCredential = (id, userId) =>
+  run('DELETE FROM credentials WHERE id = ? AND user_id = ?', id, userId); // user_id IS the permission check
+
+/** Stores a new passkey after checking the registration is genuine. False if it is not. */
+export function addCredential({ userId, id, publicKey, alg, label, clientDataJSON, authenticatorData, challenge }) {
+  // An authenticator whose key the browser could not export is useless: it could never log in.
+  if (!id || !publicKey || !COSE_ALGS.includes(alg)) return false;
+  const ok = verifyWebAuthn({
+    clientDataJSON: fromBase64url(clientDataJSON),
+    authenticatorData: fromBase64url(authenticatorData),
+    type: 'webauthn.create',
+    challenge,
+  });
+  if (!ok) return false;
+  run('INSERT INTO credentials(id, user_id, public_key, alg, label, created_at) VALUES (?,?,?,?,?,?)',
+    id, userId, publicKey, alg, label, now());
+  return true;
+}
+
+/** The user a login assertion proves, or undefined if the passkey is unknown or the signature is bad. */
+export function credentialUser({ id, clientDataJSON, authenticatorData, signature, challenge }) {
+  const credential = get('SELECT * FROM credentials WHERE id = ?', id);
+  if (!credential) return undefined;
+  const ok = verifyWebAuthn({
+    clientDataJSON: fromBase64url(clientDataJSON),
+    authenticatorData: fromBase64url(authenticatorData),
+    signature: fromBase64url(signature),
+    publicKey: fromBase64url(credential.public_key),
+    alg: credential.alg,
+    type: 'webauthn.get',
+    challenge,
+  });
+  return ok ? get('SELECT * FROM users WHERE id = ?', credential.user_id) : undefined;
+}
 
 // ---- login rate limit ----
 // ponytail: global in-memory limiter (20 failures / 15 min); per-IP if abuse appears
