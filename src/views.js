@@ -1,4 +1,4 @@
-import { monthInfo, dayClass, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD } from './lib.js';
+import { monthInfo, dayClass, weekdayNames, WEEKDAYS, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD } from './lib.js';
 
 // ---- the html`` template tag ----
 // Every interpolation is escaped, so untrusted text is safe by default. Wrap trusted
@@ -35,6 +35,7 @@ const MSGS = {
   password: 'Password changed.',
   invite: 'Link created (see below).',
   color: 'Color saved.',
+  week_start: 'First day of the week saved.',
   passkey: 'Passkey added.',
   passkey_removed: 'Passkey removed.',
   removed: 'Member removed. Their sessions, passkeys and feed links no longer work.',
@@ -42,8 +43,6 @@ const MSGS = {
 
 /** The ?msg= confirmation and the inline error line, shared by Settings and Administration. */
 const notices = (msg, error) => html`${MSGS[msg] && html`<p class="ok">${MSGS[msg]}</p>`}${error && html`<p class="err">${error}</p>`}`;
-
-const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 /** Page shell: head, header with nav (only when logged in), and the body inside <main>. */
 export function layout(title, user, body) {
@@ -78,7 +77,7 @@ ${resetName ? '' : html`<label>Your name <input name="name" required maxlength="
 // ---- calendar ----
 
 export function calendarPage(user, yearMonth, { free, mine, events, today, members }) {
-  const month = monthInfo(yearMonth);
+  const month = monthInfo(yearMonth, user.week_start);
 
   // Blank cells so day 1 lands on its weekday, then one cell per day of the month.
   const cells = Array.from({ length: month.pad }, () => html`<div class="day pad"></div>`);
@@ -100,7 +99,7 @@ ${dayEvents.map(event => html`<span class="ev" title="${event.title} (by ${event
   return layout(month.label, user, html`
 <h1><a href="/?m=${month.prev}" title="Previous month">&lsaquo;</a> ${month.label} <a href="/?m=${month.next}" title="Next month">&rsaquo;</a></h1>
 <p class="hint">Click a day to mark yourself free (outlined). Initials show who is free; green means everyone is.</p>
-<div class="grid">${WEEKDAYS.map(name => html`<div class="dow">${name}</div>`)}${cells}</div>
+<div class="grid">${weekdayNames(user.week_start).map(name => html`<div class="dow">${name}</div>`)}${cells}</div>
 <section><h2>Events this month</h2>
 <ul class="events">${events.length ? events.map(event => html`<li>${event.date} — <b>${event.title}</b> <small class="hint">by ${event.creator}</small>
 ${event.created_by === user.id || user.is_admin ? html` <form method="post" action="/events/${event.id}/delete" class="inline"><input type="hidden" name="m" value="${yearMonth}"><button class="link danger">delete</button></form>` : ''}</li>`)
@@ -180,7 +179,13 @@ export function settingsPage(user, { base, passkeys, msg, error }) {
 <form method="post" action="/settings/color" class="row">
 <b class="c${user.color} swatch" id="swatch" title="Preview">${initials(user.name)}</b>
 <input type="range" name="color" class="hue" min="0" max="${COLORS - 1}" value="${user.color}" aria-label="Color">
-<button>Save color</button></form></details>
+<button>Save color</button></form>
+<h3>First day of the week</h3>
+<p class="hint">The leftmost column of your calendar grid.</p>
+<form method="post" action="/settings/week-start" class="row">
+<select name="week_start" aria-label="First day of the week">${WEEKDAYS.map((name, day) =>
+    html`<option value="${day}"${day === user.week_start ? raw(' selected') : ''}>${name}</option>`)}</select>
+<button>Save first day</button></form></details>
 
 <details class="panel panel-security"><summary><h2>Security</h2></summary>
 <h3>Change password</h3>

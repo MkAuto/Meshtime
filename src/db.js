@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS users(
   feed_token TEXT NOT NULL UNIQUE,
   is_admin INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
-  color INTEGER NOT NULL DEFAULT 0);
+  color INTEGER NOT NULL DEFAULT 0,
+  week_start INTEGER NOT NULL DEFAULT 0); -- first day of the week in the calendar grid, 0 = Sunday
 
 -- single-use links. user_id set => password reset for that user, otherwise a new-account invite.
 CREATE TABLE IF NOT EXISTS invites(
@@ -98,6 +99,10 @@ const userColumns = db.prepare('PRAGMA table_info(users)').all().map(column => c
 if (!userColumns.includes('color'))
   db.exec(`ALTER TABLE users ADD COLUMN color INTEGER NOT NULL DEFAULT 0;
            UPDATE users SET color = abs(random()) % ${COLORS}`);
+
+// DBs created before the week-start setting existed: everyone gets the Sunday default.
+if (!userColumns.includes('week_start'))
+  db.exec('ALTER TABLE users ADD COLUMN week_start INTEGER NOT NULL DEFAULT 0');
 
 // Pull colors back into range in case the palette shrank.
 db.exec(`UPDATE users SET color = color % ${COLORS} WHERE color >= ${COLORS}`);

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
-import { isValidDate, bestDates, fold, buildIcs, dayClass, MAX_DATES, verifyWebAuthn, RP_ID, ORIGIN } from './src/lib.js';
+import { isValidDate, bestDates, fold, buildIcs, dayClass, monthInfo, weekdayNames, MAX_DATES, verifyWebAuthn, RP_ID, ORIGIN } from './src/lib.js';
 import { newPollPage } from './src/views.js';
 
 const thisYear = new Date().getUTCFullYear();
@@ -65,6 +65,16 @@ test('buildIcs escapes text, uses CRLF and exclusive DTEND', () => {
   assert.ok(ics.includes('TRANSP:TRANSPARENT\r\n'));
   assert.equal(ics.split('\n').length - 1, ics.split('\r\n').length - 1, 'only CRLF line endings');
   assert.ok(ics.endsWith('END:VCALENDAR\r\n'));
+});
+
+test('monthInfo: pad and weekday header follow the chosen first day', () => {
+  // 2026-10-01 is a Thursday (getUTCDay() === 4).
+  assert.equal(monthInfo('2026-10').pad, 4);        // Sunday-first, the default
+  assert.equal(monthInfo('2026-10', 1).pad, 3);     // Monday-first
+  assert.equal(monthInfo('2026-10', 4).pad, 0);     // Thursday-first: day 1 leads the grid
+  assert.equal(monthInfo('2026-10', 5).pad, 6);     // Friday-first: wraps a full week
+  assert.deepEqual(weekdayNames(1), ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+  assert.equal(weekdayNames(0)[0], 'Sun');
 });
 
 test('dayClass: all = every member free, mine = I am free', () => {

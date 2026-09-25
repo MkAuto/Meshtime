@@ -27,14 +27,21 @@ export function addDays(isoDate, days) {
   return date.toISOString().slice(0, 10);
 }
 
+// Weekday names in getUTCDay() order, so index == day number. weekStart rotates them.
+export const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+export const DEFAULT_WEEK_START = 0; // Sunday
+export const isValidWeekStart = value => Number.isInteger(value) && value >= 0 && value < 7;
+export const weekdayNames = weekStart => [...WEEKDAYS.slice(weekStart), ...WEEKDAYS.slice(0, weekStart)];
+
 // Everything calendarPage needs to draw one month, given 'YYYY-MM'.
-export function monthInfo(yearMonth) {
+// weekStart is the user's first day of the week (0 = Sunday .. 6 = Saturday).
+export function monthInfo(yearMonth, weekStart = DEFAULT_WEEK_START) {
   const [year, month] = yearMonth.split('-').map(Number);
   const firstDay = new Date(Date.UTC(year, month - 1, 1));
   const lastDay = new Date(Date.UTC(year, month, 0)); // day 0 of the next month
   return {
     days: lastDay.getUTCDate(),
-    pad: (firstDay.getUTCDay() + 6) % 7, // empty cells before day 1, in a Monday-first grid
+    pad: (firstDay.getUTCDay() - weekStart + 7) % 7, // empty cells before day 1
     prev: new Date(Date.UTC(year, month - 2, 1)).toISOString().slice(0, 7),
     next: new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 7),
     label: firstDay.toLocaleString('en', { month: 'long', year: 'numeric', timeZone: 'UTC' }),

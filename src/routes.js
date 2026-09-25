@@ -1,7 +1,7 @@
 import { all, get, run, now, tx } from './db.js';
 import * as auth from './auth.js';
 import * as views from './views.js';
-import { isValidDate, isValidMonth, bestDates, buildIcs, today, randomColor, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD, BASE_URL, RP_ID } from './lib.js';
+import { isValidDate, isValidMonth, isValidWeekStart, bestDates, buildIcs, today, randomColor, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD, BASE_URL, RP_ID } from './lib.js';
 
 export const routes = [];
 
@@ -300,6 +300,13 @@ on('POST', '/settings/color', ctx => {
   if (!Number.isInteger(color) || color < 0 || color >= COLORS) return ctx.fail(400, 'Invalid color.');
   run('UPDATE users SET color = ? WHERE id = ?', color, ctx.user.id);
   ctx.redirect('/settings?msg=color');
+});
+
+on('POST', '/settings/week-start', ctx => {
+  const weekStart = Number(ctx.body.get('week_start'));
+  if (!isValidWeekStart(weekStart)) return ctx.fail(400, 'Invalid first day of the week.');
+  run('UPDATE users SET week_start = ? WHERE id = ?', weekStart, ctx.user.id);
+  ctx.redirect('/settings?msg=week_start');
 });
 
 on('POST', '/settings/password', async ctx => {
