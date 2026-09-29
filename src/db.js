@@ -45,9 +45,11 @@ CREATE TABLE IF NOT EXISTS sessions(
   expires_at TEXT NOT NULL);
 
 -- "I am free that day". One row per user per day; its absence means nothing was said.
+-- part: free all day, or only the morning (am) / afternoon (pm). DAY_PARTS in src/lib.js.
 CREATE TABLE IF NOT EXISTS free_days(
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   date TEXT NOT NULL,
+  part TEXT NOT NULL DEFAULT 'all' CHECK(part IN ('all','am','pm')),
   PRIMARY KEY(user_id, date));
 
 -- date polls. chosen_date is set when the winning date becomes an event.
@@ -106,6 +108,11 @@ if (!userColumns.includes('color'))
 // DBs created before the week-start setting existed: everyone gets the Sunday default.
 if (!userColumns.includes('week_start'))
   db.exec('ALTER TABLE users ADD COLUMN week_start INTEGER NOT NULL DEFAULT 0');
+
+// DBs created before morning/afternoon existed: every free day already marked was a whole day.
+const freeDayColumns = db.prepare('PRAGMA table_info(free_days)').all().map(column => column.name);
+if (!freeDayColumns.includes('part'))
+  db.exec(`ALTER TABLE free_days ADD COLUMN part TEXT NOT NULL DEFAULT 'all' CHECK(part IN ('all','am','pm'))`);
 
 // DBs created before the date-format setting existed: everyone gets the default.
 if (!userColumns.includes('date_format'))

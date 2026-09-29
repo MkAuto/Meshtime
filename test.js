@@ -102,10 +102,14 @@ test('isValidWeekStart: only Saturday, Sunday and Monday', () => {
   for (const day of [2, 3, 4, 5, 7, -1, NaN, '0']) assert.equal(isValidWeekStart(day), false, String(day));
 });
 
-test('dayClass: all = every member free, mine = I am free', () => {
-  assert.equal(dayClass({ who: ['a', 'b'], members: 2, mine: true }), 'all mine');
-  assert.equal(dayClass({ who: ['a'], members: 2, mine: false }), '');
+test('dayClass: all = every member free at the same time, mine = I am free', () => {
+  const free = (...parts) => parts.map(part => ({ part }));
+  assert.equal(dayClass({ who: free('all', 'all'), members: 2, mine: true }), 'all mine');
+  assert.equal(dayClass({ who: free('all'), members: 2, mine: false }), '');
   assert.equal(dayClass({ who: [], members: 0, mine: false }), '');
+  assert.equal(dayClass({ who: free('am', 'am'), members: 2, mine: false }), 'all', 'everyone in the morning');
+  assert.equal(dayClass({ who: free('all', 'pm'), members: 2, mine: false }), 'all', 'all-day counts for the afternoon');
+  assert.equal(dayClass({ who: free('am', 'pm'), members: 2, mine: false }), '', 'morning + afternoon never overlap');
 });
 
 // The no-JS fallback and the hook public/app.js keys off of.

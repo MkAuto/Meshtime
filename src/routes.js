@@ -3,7 +3,7 @@ import * as auth from './auth.js';
 import * as views from './views.js';
 import { logEvent, tailLog, LOG_PATH } from './log.js';
 import { createReadStream, existsSync } from 'node:fs';
-import { isValidDate, isValidMonth, isValidWeekStart, isValidDateFormat, bestDates, buildIcs, today, randomColor, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD, BASE_URL, RP_ID } from './lib.js';
+import { isValidDate, isValidMonth, isValidWeekStart, isValidDateFormat, isValidDayPart, bestDates, buildIcs, today, randomColor, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD, BASE_URL, RP_ID } from './lib.js';
 
 export const routes = [];
 
@@ -154,15 +154,16 @@ on('GET', '/', ctx => {
 
   // date -> everyone who marked themselves free that day, for the initials in each cell
   const free = new Map();
-  for (const row of all(`SELECT f.date, u.name, u.color FROM free_days f
+  for (const row of all(`SELECT f.date, f.part, u.name, u.color FROM free_days f
                          JOIN users u ON u.id = f.user_id
                          WHERE f.date LIKE ? ORDER BY u.name`, inMonth)) {
     if (!free.has(row.date)) free.set(row.date, []);
-    free.get(row.date).push({ name: row.name, color: row.color });
+    free.get(row.date).push({ name: row.name, color: row.color, part: row.part });
   }
 
-  const mine = new Set(all('SELECT date FROM free_days WHERE user_id = ? AND date LIKE ?', ctx.user.id, inMonth)
-    .map(row => row.date));
+  // date -> which part of it I am free ('all' | 'am' | 'pm')
+  const mine = new Map(all('SELECT date, part FROM free_days WHERE user_id = ? AND date LIKE ?', ctx.user.id, inMonth)
+    .map(row => [row.date, row.part]));
   const events = all(`SELECT e.*, u.name AS creator FROM events e
                       JOIN users u ON u.id = e.created_by
                       WHERE e.date LIKE ? ORDER BY e.date, e.id`, inMonth);
@@ -171,12 +172,25 @@ on('GET', '/', ctx => {
   ctx.html(views.calendarPage(ctx.user, yearMonth, { free, mine, events, today: today(), members }));
 });
 
-// Clicking a day toggles it: try the delete first, insert only if there was nothing to delete.
+// Two ways in. A plain click on a day sends no `part` and toggles it: try the delete first, insert
+// "all day" only if there was nothing to delete. The long-press / double-click menu sends `part`:
+// 'all', 'am' or 'pm' sets exactly that, 'none' clears the day.
 on('POST', '/free', ctx => {
   const date = ctx.body.get('date');
+  const part = ctx.body.get('part');
   if (!isValidDate(date)) return ctx.fail(400, 'Invalid date.');
-  const removed = run('DELETE FROM free_days WHERE user_id = ? AND date = ?', ctx.user.id, date).changes;
-  if (removed === 0) run('INSERT INTO free_days(user_id, date) VALUES (?,?)', ctx.user.id, date);
+
+  if (part === null) {
+    const removed = run('DELETE FROM free_days WHERE user_id = ? AND date = ?', ctx.user.id, date).changes;
+    if (removed === 0) run('INSERT INTO free_days(user_id, date) VALUES (?,?)', ctx.user.id, date);
+  } else if (part === 'none') {
+    run('DELETE FROM free_days WHERE user_id = ? AND date = ?', ctx.user.id, date);
+  } else if (isValidDayPart(part)) {
+    run(`INSERT INTO free_days(user_id, date, part) VALUES (?,?,?)
+         ON CONFLICT DO UPDATE SET part = excluded.part`, ctx.user.id, date, part);
+  } else {
+    return ctx.fail(400, 'Invalid part of the day.');
+  }
   ctx.redirect(backToMonth(ctx));
 });
 

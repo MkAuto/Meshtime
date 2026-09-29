@@ -88,6 +88,11 @@ ${resetName ? '' : html`<label>Your name <input name="name" required maxlength="
 
 // ---- calendar ----
 
+// free_days.part, as tooltips say it
+const PART_LABELS = { all: 'all day', am: 'morning', pm: 'afternoon' };
+// The long-press / double-click menu: each button posts its value as `part` to /free.
+const PART_CHOICES = { all: 'All day', am: 'Morning (AM)', pm: 'Afternoon (PM)', none: 'Not free' };
+
 export function calendarPage(user, yearMonth, { free, mine, events, today, members }) {
   const month = monthInfo(yearMonth, user.week_start);
 
@@ -96,22 +101,31 @@ export function calendarPage(user, yearMonth, { free, mine, events, today, membe
   for (let day = 1; day <= month.days; day++) {
     const date = `${yearMonth}-${String(day).padStart(2, '0')}`;
     const who = free.get(date) || [];
-    const isFree = mine.has(date);
+    const myPart = mine.get(date); // undefined when I have not marked this day
     const dayEvents = events.filter(event => event.date === date);
-    // The whole cell is the toggle button: posting /free flips my own free/not-free.
+    // The whole cell is the toggle button: posting /free flips my own free-all-day/not-free.
     // Initials and events live inside it, as spans, so every pixel of the square is clickable
     // while each one keeps its own title tooltip on hover.
-    cells.push(html`<div class="day ${dayClass({ who, members, mine: isFree })}${date === today ? ' today' : ''}">
+    // data-date-label and data-part feed the morning/afternoon menu in public/app.js.
+    cells.push(html`<div class="day ${dayClass({ who, members, mine: Boolean(myPart) })}${date === today ? ' today' : ''}">
 <form method="post" action="/free"><input type="hidden" name="date" value="${date}"><input type="hidden" name="m" value="${yearMonth}">
-<button title="${isFree ? 'Click: I am no longer free' : 'Click: I am free that day'}"><span class="num">${day}</span>
-${who.length ? html`<span class="who">${who.map(member => html`<span class="c${member.color}" title="${member.name}">${initials(member.name)}</span>`)}</span>` : ''}
+<button title="${myPart ? `You: ${PART_LABELS[myPart]}. Click to clear` : 'Click: I am free all day'}" data-date-label="${formatDate(date, user.date_format)}" data-part="${myPart || 'none'}"><span class="num">${day}</span>
+${who.length ? html`<span class="who">${who.map(member => html`<span class="c${member.color}" title="${member.name}, ${PART_LABELS[member.part]}">${initials(member.name)}${member.part === 'all' ? '' : html`<sup>${member.part}</sup>`}</span>`)}</span>` : ''}
 ${dayEvents.map(event => html`<span class="ev" title="${event.title} (by ${event.creator})">${event.title}</span>`)}</button></form></div>`);
   }
 
   return layout(month.label, user, html`
 <h1><a href="/?m=${month.prev}" title="Previous month">&lsaquo;</a> ${month.label} <a href="/?m=${month.next}" title="Next month">&rsaquo;</a></h1>
-<p class="hint">Click a day to mark yourself free (outlined). Initials show who is free; green means everyone is.</p>
+<p class="hint">Click a day to mark yourself free all day (outlined). For only the morning or the afternoon,
+hold the day on a phone or double-click it on a computer. Initials show who is free (<sup>am</sup> / <sup>pm</sup> for half days);
+green means everyone is free at the same time.</p>
 <div class="grid">${weekdayNames(user.week_start).map(name => html`<div class="dow">${name}</div>`)}${cells}</div>
+<dialog id="day-part" aria-labelledby="day-part-title"><form method="post" action="/free">
+<h2 id="day-part-title"></h2>
+<input type="hidden" name="date"><input type="hidden" name="m" value="${yearMonth}">
+<div class="stack">${Object.entries(PART_CHOICES).map(([value, label]) =>
+    html`<button name="part" value="${value}"${value === 'none' ? raw(' class="danger"') : ''}>${label}</button>`)}</div></form>
+<form method="dialog"><button class="link">Cancel</button></form></dialog>
 <section><h2>Events this month</h2>
 <ul class="events">${events.length ? events.map(event => html`<li>${formatDate(event.date, user.date_format)} — <b>${event.title}</b> <small class="hint">by ${event.creator}</small>
 ${event.created_by === user.id || user.is_admin ? html` <form method="post" action="/events/${event.id}/delete" class="inline"><input type="hidden" name="m" value="${yearMonth}"><button class="link danger">delete</button></form>` : ''}</li>`)

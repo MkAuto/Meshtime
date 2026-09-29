@@ -6,6 +6,58 @@ for (const form of document.querySelectorAll('form[data-confirm]'))
 const hue = document.querySelector('.hue'), swatch = document.getElementById('swatch');
 if (hue && swatch) hue.addEventListener('input', () => { swatch.className = `c${hue.value} swatch`; });
 
+// Calendar. A tap or a single click submits the day's form as-is: free all day, or clear it.
+// Holding the day (touch) or double-clicking it (mouse) opens the #day-part menu instead, to pick
+// morning / afternoon / all day / not free. Right-click and the keyboard's menu key open it too.
+// Without JS only the plain toggle exists.
+const partMenu = document.getElementById('day-part');
+if (partMenu) {
+  const LONG_PRESS_MS = 500;
+  const DOUBLE_CLICK_MS = 300;
+  const choiceForm = partMenu.querySelector('form');
+
+  const openMenu = day => {
+    choiceForm.elements.date.value = day.form.elements.date.value;
+    partMenu.querySelector('h2').textContent = day.dataset.dateLabel;
+    for (const choice of choiceForm.querySelectorAll('button[name=part]'))
+      choice.classList.toggle('current', choice.value === day.dataset.part);
+    if (!partMenu.open) partMenu.showModal();
+  };
+
+  let pointerType = 'mouse';
+  let pressTimer, clickTimer;
+  let menuOpenedByPress = false; // the finger lifting after a long press must not also toggle the day
+
+  for (const day of document.querySelectorAll('.day button')) {
+    day.addEventListener('pointerdown', event => {
+      pointerType = event.pointerType;
+      menuOpenedByPress = false;
+      if (pointerType !== 'touch') return;
+      pressTimer = setTimeout(() => { menuOpenedByPress = true; openMenu(day); }, LONG_PRESS_MS);
+    });
+    // Lifting the finger early, or starting to scroll (pointercancel), is not a long press.
+    for (const type of ['pointerup', 'pointercancel']) day.addEventListener(type, () => clearTimeout(pressTimer));
+
+    // Android sends contextmenu on a long press, desktops on right-click / the menu key.
+    day.addEventListener('contextmenu', event => {
+      event.preventDefault();
+      clearTimeout(pressTimer);
+      if (pointerType === 'touch') menuOpenedByPress = true;
+      openMenu(day);
+    });
+
+    day.addEventListener('click', event => {
+      if (menuOpenedByPress) return event.preventDefault();
+      if (pointerType === 'touch' || event.detail === 0) return; // a tap, or Enter / Space: submit now
+      // Mouse: hold the submit briefly, since this click may be the first half of a double-click.
+      event.preventDefault();
+      clearTimeout(clickTimer);
+      if (event.detail >= 2) return openMenu(day);
+      clickTimer = setTimeout(() => day.form.submit(), DOUBLE_CLICK_MS);
+    });
+  }
+}
+
 
 const dates = document.querySelector('.dates');
 if (dates) {
