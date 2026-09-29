@@ -42,13 +42,28 @@ code { word-break: break-all; font-size: .85rem; background: var(--code-bg); pad
 /* collapsed: drop the bottom padding so the closed panel is a tidy title bar.
    Scoped to details so the admin page's plain <section class=panel> keeps its padding. */
 details.panel:not([open]) { padding-bottom: .4rem; }
+/* Admin connection log: the panel's full width. It scrolls both ways inside itself (long actions on
+   a phone); the header row stays pinned while scrolling down. */
+/* Tall enough for the header + 20 rows, then it scrolls. --log-row is one row: text (.8rem at line-height 1.4),
+   padding (2 × .25rem) and the 1px bottom border, the same numbers table.log uses below. */
+.log-wrap { --log-row: calc(.8rem * 1.4 + .5rem + 1px); max-height: calc(21 * var(--log-row)); overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--card); }
+table.log { border-collapse: collapse; width: 100%; font-size: .8rem; line-height: 1.4; }
+table.log th, table.log td { padding: .25rem .6rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+table.log th { position: sticky; top: 0; background: var(--card); }
+/* one entry per row: no wrapping, except the action, which takes whatever width is left */
+table.log td:not(:last-child), table.log th { white-space: nowrap; }
+/* width: 1% shrinks #, time, IP and user to their content, so Action gets all the space left over */
+table.log th:not(:last-child) { width: 1%; }
+table.log td.n { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 .panel-feeds    { --panel: #eff6ff; --panel-edge: #2563eb; }
 .panel-custom   { --panel: #f5f3ff; --panel-edge: #7c3aed; }
 .panel-security { --panel: #fff7ed; --panel-edge: #c2410c; }
 .panel-admin    { --panel: #fef2f2; --panel-edge: #b91c1c; }
 
 /* calendar */
-.grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+/* minmax(0, …): a plain 1fr won't shrink below its content, so one long title would widen its column */
+.grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
 .dow { text-align: center; font-size: .75rem; color: var(--muted); padding: .2rem 0; }
 .day { min-height: 76px; background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: .2rem; font-size: .75rem; }
 .day.pad { background: none; border: none; }
@@ -71,7 +86,9 @@ details.panel:not([open]) { padding-bottom: .4rem; }
 .hue::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--card); border: 2px solid var(--fg); }
 .hue { appearance: none; width: 240px; height: 10px; border: none; border-radius: 5px; padding: 0;
   background: linear-gradient(to right, #dc2626 0.00% 7.69%, #ea580c 7.69% 15.38%, #ca8a04 15.38% 23.08%, #65a30d 23.08% 30.77%, #16a34a 30.77% 38.46%, #0d9488 38.46% 46.15%, #0284c7 46.15% 53.85%, #2563eb 53.85% 61.54%, #4f46e5 61.54% 69.23%, #9333ea 69.23% 76.92%, #db2777 76.92% 84.62%, #7c4a1d 84.62% 92.31%, #475569 92.31% 100.00%); }
-.ev { background: var(--ev-bg); color: var(--ev-fg); border-radius: 4px; padding: 0 .25rem; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ev { background: var(--ev-bg); color: var(--ev-fg); border-radius: 4px; padding: 0 .25rem; margin-top: 2px; }
+/* too much text makes the cell taller, not wider: wrap, and break words that are longer than the cell */
+.day button { overflow-wrap: anywhere; }
 .events li { margin: .3rem 0; }
 
 /* polls */

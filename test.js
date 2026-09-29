@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
-import { isValidDate, bestDates, fold, buildIcs, dayClass, monthInfo, weekdayNames, MAX_DATES, verifyWebAuthn, RP_ID, ORIGIN } from './src/lib.js';
-import { newPollPage } from './src/views.js';
+import { isValidDate, isValidWeekStart, formatDate, isValidDateFormat, bestDates, fold, buildIcs, dayClass, monthInfo, weekdayNames, MAX_DATES, verifyWebAuthn, RP_ID, ORIGIN } from './src/lib.js';
+import { newPollPage, pollPage } from './src/views.js';
 
 const thisYear = new Date().getUTCFullYear();
 
@@ -56,13 +56,11 @@ test('fold keeps every line within 75 octets, UTF-8 aware', () => {
 test('buildIcs escapes text, uses CRLF and exclusive DTEND', () => {
   const ics = buildIcs({ name: 'Test', host: 'cal.example.com', items: [
     { uid: 'event-1', date: '2026-12-31', summary: 'Party; bring snacks, drinks\nand games', stamp: '2026-09-14T11:40:00.123Z' },
-    { uid: 'free-2-2026-01-05', date: '2026-01-05', summary: 'Bob is free', stamp: '2026-01-05T00:00:00Z', transparent: true },
   ] });
   assert.ok(ics.includes('SUMMARY:Party\\; bring snacks\\, drinks\\nand games\r\n'));
   assert.ok(ics.includes('DTSTART;VALUE=DATE:20261231\r\nDTEND;VALUE=DATE:20270101\r\n'));
   assert.ok(ics.includes('DTSTAMP:20260914T114000Z\r\n'));
   assert.ok(ics.includes('UID:event-1@cal.example.com\r\n'));
-  assert.ok(ics.includes('TRANSP:TRANSPARENT\r\n'));
   assert.equal(ics.split('\n').length - 1, ics.split('\r\n').length - 1, 'only CRLF line endings');
   assert.ok(ics.endsWith('END:VCALENDAR\r\n'));
 });
@@ -75,6 +73,33 @@ test('monthInfo: pad and weekday header follow the chosen first day', () => {
   assert.equal(monthInfo('2026-10', 5).pad, 6);     // Friday-first: wraps a full week
   assert.deepEqual(weekdayNames(1), ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
   assert.equal(weekdayNames(0)[0], 'Sun');
+});
+
+test('formatDate: every format, the fallback, and non-dates left alone', () => {
+  assert.equal(formatDate('2026-09-29', 'd-mon-y'), '29 Sept. 2026');
+  assert.equal(formatDate('2026-01-05', 'd-mon-y'), '5 Jan. 2026');
+  assert.equal(formatDate('2026-05-01', 'd-mon-y'), '1 May 2026', 'short month names keep no period');
+  assert.equal(formatDate('2026-09-29', 'mon-d-y'), 'Sept. 29, 2026');
+  assert.equal(formatDate('2026-01-05', 'dd/mm/yyyy'), '05/01/2026');
+  assert.equal(formatDate('2026-01-05', 'mm/dd/yyyy'), '01/05/2026');
+  assert.equal(formatDate('2026-01-05', 'yyyy-mm-dd'), '2026-01-05');
+  assert.equal(formatDate('2026-09-29', 'nope'), '29 Sept. 2026', 'unknown format: default');
+  assert.equal(formatDate('2026-09-29', undefined), '29 Sept. 2026');
+  assert.equal(formatDate('', 'd-mon-y'), '');
+  assert.equal(isValidDateFormat('toString'), false, 'inherited keys are not formats');
+});
+
+test('pollPage: you first, then everyone A to Z', () => {
+  const members = [{ id: 1, name: 'Zoé' }, { id: 2, name: 'bob' }, { id: 3, name: 'Keven' }, { id: 4, name: 'Élodie' }];
+  const page = pollPage({ id: 3, name: 'Keven' }, { poll: { id: 1, title: 't' }, dates: ['2026-09-29'], members,
+    votes: [], missing: [], complete: false, best: [], event: null });
+  assert.deepEqual(page.match(/<tr><td>[^<]+/g).map(cell => cell.slice(8)), ['Keven (you)', 'bob', 'Élodie', 'Zoé']);
+  assert.match(page, /<th class="">29 Sept\. 2026<\/th>/);
+});
+
+test('isValidWeekStart: only Saturday, Sunday and Monday', () => {
+  for (const day of [6, 0, 1]) assert.equal(isValidWeekStart(day), true);
+  for (const day of [2, 3, 4, 5, 7, -1, NaN, '0']) assert.equal(isValidWeekStart(day), false, String(day));
 });
 
 test('dayClass: all = every member free, mine = I am free', () => {
@@ -146,6 +171,38 @@ test('verifyWebAuthn accepts a genuine assertion and rejects every tampered one'
     clientDataJSON: clientData({ type: 'webauthn.create' }) };
   assert.equal(verifyWebAuthn(registration), true);
   assert.equal(verifyWebAuthn({ ...registration, challenge: 'wrong' }), false);
+});
+
+test('log line: time, ip, user (real or not), action; user input cannot forge a line', async () => {
+  const { formatLogLine } = await import('./src/log.js');
+  assert.match(formatLogLine({ ip: '1.2.3.4', user: 'alice', known: true, action: 'login ok (password)' }),
+    /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d-0[45]:00 ip=1\.2\.3\.4 user="alice" action=login ok \(password\)\n$/);
+  assert.match(formatLogLine({ ip: '1.2.3.4', user: 'mallory', known: false, action: 'x' }), / user="mallory" \(unknown\) /);
+  assert.match(formatLogLine({ ip: '1.2.3.4', action: 'x' }), / user=- /);
+  const forged = formatLogLine({ ip: '1.2.3.4\n9.9.9.9', user: 'a\n2026 ip=6.6.6.6', known: false, action: 'x' });
+  assert.equal(forged.split('\n').length, 2, 'exactly one line plus the trailing newline');
+});
+
+test('log times are Eastern, following daylight saving', async () => {
+  const { localTimestamp, parseLogLine } = await import('./src/log.js');
+  assert.equal(localTimestamp(new Date('2026-07-01T12:00:00Z')), '2026-07-01T08:00:00-04:00', 'summer: UTC-4');
+  assert.equal(localTimestamp(new Date('2026-01-15T12:00:00Z')), '2026-01-15T07:00:00-05:00', 'winter: UTC-5');
+  assert.equal(localTimestamp(new Date('2026-01-01T03:30:00Z')), '2025-12-31T22:30:00-05:00', 'crosses midnight and the year');
+  // 2026-11-01 06:30Z is 01:30 EST, after clocks fell back at 06:00Z
+  assert.equal(localTimestamp(new Date('2026-11-01T06:30:00Z')), '2026-11-01T01:30:00-05:00');
+  // an old UTC line is shown in Eastern like the rest
+  assert.equal(parseLogLine('2026-09-29T20:44:24.123Z ip=::1 user="a" action=logout').time, '2026-09-29T16:44:24-04:00');
+});
+
+test('parseLogLine reads back what formatLogLine wrote, even with a hostile name', async () => {
+  const { formatLogLine, parseLogLine } = await import('./src/log.js');
+  const roundTrip = entry => parseLogLine(formatLogLine(entry).trimEnd());
+  const hostile = roundTrip({ ip: '1.2.3.4', user: 'x" action=fake \\', known: false, action: 'login failed (password)' });
+  assert.deepEqual({ ...hostile, time: '' },
+    { time: '', ip: '1.2.3.4', user: 'x" action=fake \\', known: false, action: 'login failed (password)' });
+  assert.deepEqual({ ...roundTrip({ ip: '::1', action: 'banned (too many attempts)' }), time: '' },
+    { time: '', ip: '::1', user: '', known: true, action: 'banned (too many attempts)' });
+  assert.equal(parseLogLine('garbage').action, 'garbage');
 });
 
 test('login limiter is keyed per client and per account, not global', async () => {

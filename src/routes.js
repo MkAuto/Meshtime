@@ -1,7 +1,9 @@
 import { all, get, run, now, tx } from './db.js';
 import * as auth from './auth.js';
 import * as views from './views.js';
-import { isValidDate, isValidMonth, isValidWeekStart, bestDates, buildIcs, today, randomColor, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD, BASE_URL, RP_ID } from './lib.js';
+import { logEvent, tailLog, LOG_PATH } from './log.js';
+import { createReadStream, existsSync } from 'node:fs';
+import { isValidDate, isValidMonth, isValidWeekStart, isValidDateFormat, bestDates, buildIcs, today, randomColor, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD, BASE_URL, RP_ID } from './lib.js';
 
 export const routes = [];
 
@@ -20,6 +22,10 @@ const backToMonth = ctx => {
 };
 
 const TOO_MANY = 'Too many attempts. Try again in 15 minutes.';
+const BANNED = 'banned (too many attempts)'; // the log's name for a login the rate limit refused
+
+/** Logs an action done by the logged-in member. */
+const logUser = (ctx, action) => logEvent({ ip: ctx.ip, user: ctx.user.name, known: true, action });
 
 const startSession = (ctx, userId) => {
   ctx.setCookie('sid', auth.createSession(userId), auth.SESSION_SECONDS);
@@ -31,18 +37,26 @@ on('GET', '/login', ctx => ctx.user ? ctx.redirect('/') : ctx.html(views.loginPa
 
 on('POST', '/login', async ctx => {
   const name = cleanText(ctx.body.get('name'), 40);
-  if (!auth.loginAllowed(ctx.ip, name)) return ctx.html(views.loginPage(TOO_MANY), 429);
   const user = get('SELECT * FROM users WHERE name = ?', name);
+  const log = action => logEvent({ ip: ctx.ip, user: user?.name ?? name, known: Boolean(user), action });
+  if (!auth.loginAllowed(ctx.ip, name)) {
+    log(BANNED);
+    return ctx.html(views.loginPage(TOO_MANY), 429);
+  }
   // Hash even for an unknown name, so the response time does not reveal which names exist.
   const passwordOk = await auth.verifyPassword(ctx.body.get('password') || '', user?.password_hash ?? auth.DUMMY_HASH);
   if (!user || !passwordOk) {
+    log('login failed (password)');
     auth.loginFailed(ctx.ip, name);
     return ctx.html(views.loginPage('Wrong name or password.'), 401);
   }
+  log('login ok (password)');
   startSession(ctx, user.id);
 }, true);
 
 on('POST', '/logout', ctx => {
+  // No ctx.user means the session was already gone, and server.js logged that as a timeout.
+  if (ctx.user) logUser(ctx, 'logout');
   if (ctx.sid) auth.deleteSession(ctx.sid);
   ctx.setCookie('sid', '', 0);
   ctx.redirect('/login');
@@ -53,13 +67,21 @@ on('POST', '/logout', ctx => {
 // public/app.js posts these form-encoded like every other form, so server.js needs no special case.
 
 // Issuing a challenge is only gated per client, so a stranger's failures never hide the passkey button.
-on('POST', '/login/passkey/options', ctx => auth.loginAllowed(ctx.ip)
-  ? ctx.json({ challenge: auth.createChallenge(), rpId: RP_ID })
-  : ctx.json({ error: TOO_MANY }, 429), true);
+on('POST', '/login/passkey/options', ctx => {
+  if (auth.loginAllowed(ctx.ip)) return ctx.json({ challenge: auth.createChallenge(), rpId: RP_ID });
+  logEvent({ ip: ctx.ip, action: BANNED }); // no passkey chosen yet, so no user to name
+  ctx.json({ error: TOO_MANY }, 429);
+}, true);
 
 on('POST', '/login/passkey', ctx => {
   const credentialId = ctx.body.get('id') || '';
-  if (!auth.loginAllowed(ctx.ip, credentialId)) return ctx.json({ error: TOO_MANY }, 429);
+  const owner = auth.credentialOwner(credentialId);
+  // An unknown passkey has no member behind it: log a short prefix of its id instead.
+  const log = action => logEvent({ ip: ctx.ip, user: owner ?? 'passkey ' + credentialId.slice(0, 16), known: Boolean(owner), action });
+  if (!auth.loginAllowed(ctx.ip, credentialId)) {
+    log(BANNED);
+    return ctx.json({ error: TOO_MANY }, 429);
+  }
   const challenge = ctx.body.get('challenge') || '';
 
   // Spend the challenge first: a replayed body dies here even if its signature is still perfectly good.
@@ -72,9 +94,11 @@ on('POST', '/login/passkey', ctx => {
   });
 
   if (!user) {
+    log('login failed (passkey)');
     auth.loginFailed(ctx.ip, credentialId); // passkey attempts share the password login's rate limit
     return ctx.json({ error: 'That passkey is not recognised.' }, 401);
   }
+  log('login ok (passkey)');
   ctx.setCookie('sid', auth.createSession(user.id), auth.SESSION_SECONDS);
   ctx.json({ ok: true }); // the client navigates; a 303 here would make fetch load the page for nothing
 }, true);
@@ -117,6 +141,8 @@ on('POST', '/invite/(?<token>[\\w-]+)', async ctx => {
                 VALUES (?,?,?,?,?,?)`,
       name, passwordHash, auth.token(), invite.is_admin, now(), randomColor()).lastInsertRowid;
   });
+  logEvent({ ip: ctx.ip, user: isReset ? invite.user_name : name, known: true,
+    action: isReset ? 'password reset by link' : `account created by invite${invite.is_admin ? ' (admin)' : ''}` });
   startSession(ctx, userId);
 }, true);
 
@@ -292,6 +318,7 @@ on('GET', '/settings', ctx => ctx.html(views.settingsPage(ctx.user, settingsData
 
 on('POST', '/settings/rotate-feed', ctx => {
   run('UPDATE users SET feed_token = ? WHERE id = ?', auth.token(), ctx.user.id);
+  logUser(ctx, 'feed links rotated');
   ctx.redirect('/settings?msg=rotated');
 });
 
@@ -309,6 +336,13 @@ on('POST', '/settings/week-start', ctx => {
   ctx.redirect('/settings?msg=week_start');
 });
 
+on('POST', '/settings/date-format', ctx => {
+  const dateFormat = ctx.body.get('date_format');
+  if (!isValidDateFormat(dateFormat)) return ctx.fail(400, 'Invalid date format.');
+  run('UPDATE users SET date_format = ? WHERE id = ?', dateFormat, ctx.user.id);
+  ctx.redirect('/settings?msg=date_format');
+});
+
 on('POST', '/settings/password', async ctx => {
   const newPassword = ctx.body.get('password') || '';
   const reject = error => ctx.html(views.settingsPage(ctx.user, settingsData(ctx, { error })), 400);
@@ -320,6 +354,7 @@ on('POST', '/settings/password', async ctx => {
   // Log every device out, then hand this browser a fresh session so the user stays put.
   auth.deleteUserSessions(ctx.user.id);
   ctx.setCookie('sid', auth.createSession(ctx.user.id), auth.SESSION_SECONDS);
+  logUser(ctx, 'password changed');
   ctx.redirect('/settings?msg=password');
 });
 
@@ -335,22 +370,25 @@ on('POST', '/settings/passkeys/options', ctx => ctx.json({
 
 on('POST', '/settings/passkeys', ctx => {
   const challenge = ctx.body.get('challenge') || '';
+  const label = cleanText(ctx.body.get('label'), 40) || 'Passkey';
   const added = auth.consumeChallenge(challenge) && auth.addCredential({
     userId: ctx.user.id,
     id: ctx.body.get('id') || '',
     publicKey: ctx.body.get('publicKey') || '',
     alg: Number(ctx.body.get('alg')),
-    label: cleanText(ctx.body.get('label'), 40) || 'Passkey',
+    label,
     clientDataJSON: ctx.body.get('clientDataJSON') || '',
     authenticatorData: ctx.body.get('authenticatorData') || '',
     challenge,
   });
+  logUser(ctx, added ? `passkey added ${JSON.stringify(label)}` : 'passkey add failed');
   added ? ctx.json({ ok: true }) : ctx.json({ error: 'That passkey could not be verified.' }, 400);
 });
 
 // A plain form, so removing a passkey works with JS off.
 on('POST', '/settings/passkeys/delete', ctx => {
-  auth.deleteCredential(ctx.body.get('id') || '', ctx.user.id);
+  // Only logged when a row actually went: a stale form for an already removed passkey is not an event.
+  if (auth.deleteCredential(ctx.body.get('id') || '', ctx.user.id).changes) logUser(ctx, 'passkey removed');
   ctx.redirect('/settings?msg=passkey_removed');
 });
 
@@ -365,13 +403,28 @@ on('GET', '/admin', ctx => requireAdmin(ctx) && ctx.html(views.adminPage(ctx.use
   msg: ctx.url.searchParams.get('msg'),
   invites: auth.openInvites(),
   members: all('SELECT id, name, is_admin FROM users ORDER BY name'),
+  log: tailLog(200),
 })));
+
+// The whole connection log as a file. Streamed, since it only ever grows.
+on('GET', '/admin/log', ctx => {
+  if (!requireAdmin(ctx)) return;
+  ctx.res.writeHead(200, {
+    'Content-Type': 'text/plain; charset=utf-8',
+    'Content-Disposition': 'attachment; filename="meshtime.log"',
+    'Cache-Control': 'private, no-store',
+  });
+  if (ctx.req.method === 'HEAD' || !existsSync(LOG_PATH)) return ctx.res.end(); // nothing logged yet: empty file
+  createReadStream(LOG_PATH).pipe(ctx.res);
+});
 
 on('POST', '/admin/invite', ctx => {
   if (!requireAdmin(ctx)) return;
   const userId = ctx.body.get('user_id') ? Number(ctx.body.get('user_id')) : null;
-  if (userId && !get('SELECT 1 FROM users WHERE id = ?', userId)) return ctx.fail(400, 'Unknown user.');
+  const target = userId && get('SELECT name FROM users WHERE id = ?', userId);
+  if (userId && !target) return ctx.fail(400, 'Unknown user.');
   auth.createInvite({ createdBy: ctx.user.id, userId }); // userId set => password-reset link
+  logUser(ctx, target ? `admin: reset link created for ${JSON.stringify(target.name)}` : 'admin: invite link created');
   ctx.redirect('/admin?msg=invite');
 });
 
@@ -381,36 +434,29 @@ on('POST', '/admin/members/(?<id>\\d+)/delete', ctx => {
   if (!requireAdmin(ctx)) return;
   const memberId = Number(ctx.params.id);
   if (memberId === ctx.user.id) return ctx.fail(400, 'You cannot remove yourself.');
-  if (!get('SELECT 1 FROM users WHERE id = ?', memberId)) return ctx.fail(404, 'Unknown member.');
+  const member = get('SELECT name FROM users WHERE id = ?', memberId);
+  if (!member) return ctx.fail(404, 'Unknown member.');
   tx(() => {
     run('UPDATE events SET created_by = ? WHERE created_by = ?', ctx.user.id, memberId);
     run('UPDATE polls SET created_by = ? WHERE created_by = ?', ctx.user.id, memberId);
     run('DELETE FROM users WHERE id = ?', memberId);
   });
+  logUser(ctx, `admin: member removed ${JSON.stringify(member.name)}`);
   ctx.redirect('/admin?msg=removed');
 });
 
 // ---- ICS feeds: the only unauthenticated data routes; the token in the URL is the credential ----
-on('GET', '/feed/(?<token>[\\w-]+)/(?<kind>events|free)\\.ics', ctx => {
+on('GET', '/feed/(?<token>[\\w-]+)/events\\.ics', ctx => {
   if (!get('SELECT 1 FROM users WHERE feed_token = ?', ctx.params.token)) return ctx.fail(404, 'Not found.');
   const host = new URL(BASE_URL).host;
-  const wantsEvents = ctx.params.kind === 'events';
 
-  const items = wantsEvents
-    ? all('SELECT * FROM events').map(event => ({
-      uid: 'event-' + event.id,
-      date: event.date,
-      summary: event.title,
-      stamp: event.created_at,
-    }))
-    : all('SELECT f.user_id, f.date, u.name FROM free_days f JOIN users u ON u.id = f.user_id').map(freeDay => ({
-      uid: `free-${freeDay.user_id}-${freeDay.date}`,
-      date: freeDay.date,
-      summary: `${freeDay.name} is free`,
-      stamp: freeDay.date + 'T00:00:00Z',
-      transparent: true, // "who is free" should not block time in the subscriber's calendar
-    }));
+  const items = all('SELECT * FROM events').map(event => ({
+    uid: 'event-' + event.id,
+    date: event.date,
+    summary: event.title,
+    stamp: event.created_at,
+  }));
 
-  ctx.text(buildIcs({ name: wantsEvents ? 'Meshtime · Events' : 'Meshtime · Who is free', host, items }), 200,
+  ctx.text(buildIcs({ name: 'Meshtime · Events', host, items }), 200,
     { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'private, no-cache' });
 }, true);

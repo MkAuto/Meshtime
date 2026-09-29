@@ -6,23 +6,19 @@ for (const form of document.querySelectorAll('form[data-confirm]'))
 const hue = document.querySelector('.hue'), swatch = document.getElementById('swatch');
 if (hue && swatch) hue.addEventListener('input', () => { swatch.className = `c${hue.value} swatch`; });
 
-// New poll: collapse the server-rendered rows to one, grow a fresh one each time the last is filled,
-// up to data-max (MAX_DATES in src/lib.js, also enforced on POST). Without JS the 6 static rows stay.
+
 const dates = document.querySelector('.dates');
 if (dates) {
   const rows = () => dates.querySelectorAll('input');
   for (const extra of [...rows()].slice(1)) extra.remove();
-  dates.addEventListener('input', () => {
+  dates.addEventListener('focusin', event => {
     const last = dates.lastElementChild;
     // cloneNode copies the value (spec: input cloning propagates value + dirty flag), so blank it.
-    if (last.value && rows().length < Number(dates.dataset.max))
+    if (event.target === last && rows().length < Number(dates.dataset.max))
       dates.append(Object.assign(last.cloneNode(), { value: '' }));
   });
 }
 
-// Passkeys. Both flows are the same shape: ask the server for a challenge, hand it to the
-// authenticator, post back what it signed. The buttons start hidden and are only revealed on a
-// browser that can do WebAuthn, so nothing dead is ever shown and the password form still works.
 
 const toBase64url = buffer => btoa(String.fromCharCode(...new Uint8Array(buffer)))
   .replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');

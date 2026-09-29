@@ -1,4 +1,15 @@
-import { monthInfo, dayClass, weekdayNames, WEEKDAYS, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD } from './lib.js';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { monthInfo, formatDate, DATE_FORMATS, today, dayClass, weekdayNames, WEEKDAYS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD } from './lib.js';
+
+// Static files are cached for an hour (server.js). A hash of the content in the URL makes every
+// change a new URL, so a restart after editing public/ reaches browsers at once, no Ctrl+F5.
+// server.js serves by pathname, so the ?v= is ignored there.
+const versioned = file => `/${file}?v=` + createHash('sha256')
+  .update(readFileSync(join(import.meta.dirname, '..', 'public', file))).digest('hex').slice(0, 8);
+const STYLE_URL = versioned('style.css');
+const SCRIPT_URL = versioned('app.js');
 
 // ---- the html`` template tag ----
 // Every interpolation is escaped, so untrusted text is safe by default. Wrap trusted
@@ -36,6 +47,7 @@ const MSGS = {
   invite: 'Link created (see below).',
   color: 'Color saved.',
   week_start: 'First day of the week saved.',
+  date_format: 'Date format saved.',
   passkey: 'Passkey added.',
   passkey_removed: 'Passkey removed.',
   removed: 'Member removed. Their sessions, passkeys and feed links no longer work.',
@@ -47,7 +59,7 @@ const notices = (msg, error) => html`${MSGS[msg] && html`<p class="ok">${MSGS[ms
 /** Page shell: head, header with nav (only when logged in), and the body inside <main>. */
 export function layout(title, user, body) {
   return '<!doctype html>' + html`<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${title} · Meshtime</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head><body>
+<title>${title} · Meshtime</title><link rel="stylesheet" href="${STYLE_URL}"><script src="${SCRIPT_URL}" defer></script></head><body>
 <header><a href="/" class="brand">Meshtime</a>${user ? html`<nav><a href="/">Calendar</a><a href="/polls">Polls</a><a href="/settings">Settings</a>${user.is_admin ? html`<a href="/admin">Administration</a>` : ''}
 <form method="post" action="/logout"><button class="link">Log out (${user.name})</button></form></nav>` : ''}</header>
 <main>${body}</main></body></html>`.s;
@@ -101,7 +113,7 @@ ${dayEvents.map(event => html`<span class="ev" title="${event.title} (by ${event
 <p class="hint">Click a day to mark yourself free (outlined). Initials show who is free; green means everyone is.</p>
 <div class="grid">${weekdayNames(user.week_start).map(name => html`<div class="dow">${name}</div>`)}${cells}</div>
 <section><h2>Events this month</h2>
-<ul class="events">${events.length ? events.map(event => html`<li>${event.date} — <b>${event.title}</b> <small class="hint">by ${event.creator}</small>
+<ul class="events">${events.length ? events.map(event => html`<li>${formatDate(event.date, user.date_format)} — <b>${event.title}</b> <small class="hint">by ${event.creator}</small>
 ${event.created_by === user.id || user.is_admin ? html` <form method="post" action="/events/${event.id}/delete" class="inline"><input type="hidden" name="m" value="${yearMonth}"><button class="link danger">delete</button></form>` : ''}</li>`)
     : html`<li class="hint">No events this month.</li>`}</ul>
 <form method="post" action="/events" class="row"><input type="hidden" name="m" value="${yearMonth}">
@@ -113,7 +125,7 @@ ${event.created_by === user.id || user.is_admin ? html` <form method="post" acti
 export const pollsPage = (user, polls) => layout('Polls', user, html`<h1>Polls</h1>
 <p><a class="btn" href="/polls/new">New poll</a></p>
 <ul class="polls">${polls.length ? polls.map(poll => html`<li><a href="/polls/${poll.id}">${poll.title}</a>
-<small>${poll.closed_at ? (poll.chosen_date ? `✓ ${poll.chosen_date}` : 'closed') : `open · ${poll.voters}/${poll.members} answered`}</small></li>`)
+<small>${poll.closed_at ? (poll.chosen_date ? `✓ ${formatDate(poll.chosen_date, user.date_format)}` : 'closed') : `open · ${poll.voters}/${poll.members} answered`}</small></li>`)
   : html`<li class="hint">No polls yet.</li>`}</ul>`);
 
 // Six date rows are rendered server-side as the no-JS fallback; public/app.js collapses
@@ -137,36 +149,38 @@ export function pollPage(user, { poll, dates, members, votes, missing, complete,
   const canManage = poll.created_by === user.id || user.is_admin;
   // The result only makes sense once everyone answered, or the poll was closed early.
   const showResult = (complete || !isOpen) && best.length > 0;
+  // You first, then everyone else A to Z. localeCompare puts "Élodie" next to "Eric", not after "Zoé".
+  const rows = members.toSorted((a, b) =>
+    (b.id === user.id) - (a.id === user.id) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 
   return layout(poll.title, user, html`<h1>${poll.title}</h1>
 <p class="hint">${isOpen ? (complete ? 'Everyone has answered.' : `Waiting for: ${missing.join(', ')}`) : 'Poll closed.'}</p>
-<form method="post" action="/polls/${poll.id}"><table class="poll"><thead><tr><th></th>${dates.map(date => html`<th class="${showResult && best.includes(date) ? 'best' : ''}">${date}</th>`)}</tr></thead><tbody>
-${members.map(member => html`<tr><td>${member.name}${member.id === user.id ? ' (you)' : ''}</td>${dates.map(date => html`<td>${member.id === user.id && isOpen
+<form method="post" action="/polls/${poll.id}"><table class="poll"><thead><tr><th></th>${dates.map(date => html`<th class="${showResult && best.includes(date) ? 'best' : ''}">${formatDate(date, user.date_format)}</th>`)}</tr></thead><tbody>
+${rows.map(member => html`<tr><td>${member.name}${member.id === user.id ? ' (you)' : ''}</td>${dates.map(date => html`<td>${member.id === user.id && isOpen
     ? html`<select name="v_${date}">${myAnswers[date] ? '' : html`<option value="" selected>—</option>`}${ANSWERS.map(answer => html`<option value="${answer}"${myAnswers[date] === answer ? raw(' selected') : ''}>${answer}</option>`)}</select>`
     : html`<span class="a ${answerOf(member.id, date) || 'none'}">${answerOf(member.id, date) || '–'}</span>`}</td>`)}</tr>`)}
 <tr class="tot"><td>yes / maybe / no</td>${dates.map(date => html`<td>${countAnswer(date, 'yes')} / ${countAnswer(date, 'maybe')} / ${countAnswer(date, 'no')}</td>`)}</tr></tbody></table>
 ${isOpen ? html`<button>Save my answers</button>` : ''}</form>
-${showResult ? html`<section class="result"><h2>Best date${best.length > 1 ? 's' : ''}: ${best.join(', ')}</h2>
+${showResult ? html`<section class="result"><h2>Best date${best.length > 1 ? 's' : ''}: ${best.map(date => formatDate(date, user.date_format)).join(', ')}</h2>
 ${best.length > 1 ? html`<p class="hint">Tied on yes and no — pick the one you want.</p>` : ''}
-${event ? html`<p>Added to the calendar as <b>${event.title}</b> on ${event.date}. <a href="/?m=${event.date.slice(0, 7)}">View</a></p>`
-    : html`<div class="row">${best.map(date => html`<form method="post" action="/polls/${poll.id}/confirm"><input type="hidden" name="date" value="${date}"><button>Add ${date} to calendar</button></form>`)}</div>`}</section>` : ''}
+${event ? html`<p>Added to the calendar as <b>${event.title}</b> on ${formatDate(event.date, user.date_format)}. <a href="/?m=${event.date.slice(0, 7)}">View</a></p>`
+    : html`<div class="row">${best.map(date => html`<form method="post" action="/polls/${poll.id}/confirm"><input type="hidden" name="date" value="${date}"><button>Add ${formatDate(date, user.date_format)} to calendar</button></form>`)}</div>`}</section>` : ''}
 ${isOpen && canManage ? html`<p><form method="post" action="/polls/${poll.id}/close" class="inline"><button class="link danger">Close poll now</button></form></p>` : ''}`);
 }
 
 // ---- settings ----
 
 export function settingsPage(user, { base, passkeys, msg, error }) {
-  const feedUrl = kind => `${base}/feed/${user.feed_token}/${kind}.ics`;
+  const feedUrl = `${base}/feed/${user.feed_token}/events.ics`;
   // webcal:// makes desktop calendar apps subscribe instead of downloading the file once.
-  const asWebcal = url => url.replace(/^https?:\/\//, 'webcal://');
-  const FEEDS = [['events', 'Group events'], ['free', 'Who is free']];
+  const webcalUrl = feedUrl.replace(/^https?:\/\//, 'webcal://');
 
   // Each panel is a <details>: collapsing is native, needs no JS and survives with JS off.
   // ponytail: all closed on load; remembering which you opened would need localStorage.
   return layout('Settings', user, html`<h1>Settings</h1>${notices(msg, error)}
 <details class="panel panel-feeds"><summary><h2>Calendar feeds</h2></summary>
-<p class="hint">Private links: anyone who has one can read it. Rotating them requires re-subscribing.</p>
-<ul class="feeds">${FEEDS.map(([kind, label]) => html`<li><b>${label}</b><br><code>${feedUrl(kind)}</code><br><a href="${asWebcal(feedUrl(kind))}">webcal link (Apple / Outlook desktop)</a></li>`)}</ul>
+<p class="hint">Private link: anyone who has it can read it. Rotating it requires re-subscribing.</p>
+<ul class="feeds"><li><b>Group events</b><br><code>${feedUrl}</code><br><a href="${webcalUrl}">webcal link (Apple / Outlook desktop)</a></li></ul>
 <details><summary>How to subscribe</summary><ul>
 <li><b>Google Calendar</b> (web): Other calendars → + → From URL → paste the https link. Google refreshes every 12–24 h and cannot be forced.</li>
 <li><b>Apple Calendar</b>: click the webcal link, or File → New Calendar Subscription. Choose a short auto-refresh interval.</li>
@@ -183,9 +197,15 @@ export function settingsPage(user, { base, passkeys, msg, error }) {
 <h3>First day of the week</h3>
 <p class="hint">The leftmost column of your calendar grid.</p>
 <form method="post" action="/settings/week-start" class="row">
-<select name="week_start" aria-label="First day of the week">${WEEKDAYS.map((name, day) =>
-    html`<option value="${day}"${day === user.week_start ? raw(' selected') : ''}>${name}</option>`)}</select>
-<button>Save first day</button></form></details>
+<select name="week_start" aria-label="First day of the week">${WEEK_START_CHOICES.map(day =>
+    html`<option value="${day}"${day === user.week_start ? raw(' selected') : ''}>${WEEKDAYS[day]}</option>`)}</select>
+<button>Save first day</button></form>
+<h3>Date format</h3>
+<p class="hint">How dates are written across the app. Each choice shows today's date.</p>
+<form method="post" action="/settings/date-format" class="row">
+<select name="date_format" aria-label="Date format">${Object.keys(DATE_FORMATS).map(key =>
+    html`<option value="${key}"${key === user.date_format ? raw(' selected') : ''}>${formatDate(today(), key)}</option>`)}</select>
+<button>Save date format</button></form></details>
 
 <details class="panel panel-security"><summary><h2>Security</h2></summary>
 <h3>Change password</h3>
@@ -195,7 +215,7 @@ export function settingsPage(user, { base, passkeys, msg, error }) {
 <button>Change password</button></form>
 <h3>Passkeys</h3>
 <p class="hint">Log in with your fingerprint, face or device PIN instead of typing a password. Your password keeps working.</p>
-<ul>${passkeys.length ? passkeys.map(passkey => html`<li>${passkey.label} <small class="hint">added ${passkey.created_at.slice(0, 10)}</small>
+<ul>${passkeys.length ? passkeys.map(passkey => html`<li>${passkey.label} <small class="hint">added ${formatDate(passkey.created_at.slice(0, 10), user.date_format)}</small>
  <form method="post" action="/settings/passkeys/delete" class="inline"><input type="hidden" name="id" value="${passkey.id}"><button class="link danger">remove</button></form></li>`)
     : html`<li class="hint">No passkeys yet.</li>`}</ul>
 <p id="passkey-add" hidden><button class="btn">Add a passkey</button> <span class="err"></span></p>
@@ -205,11 +225,17 @@ export function settingsPage(user, { base, passkeys, msg, error }) {
 // ---- administration (admin only; the route enforces it, this only draws it) ----
 // Future admin-only tools get their own <section class="panel panel-admin"> here.
 
-export const adminPage = (user, { base, invites, members, msg, error }) =>
+export const adminPage = (user, { base, invites, members, log, msg, error }) =>
   layout('Administration', user, html`<h1>Administration</h1>${notices(msg, error)}
 <section class="panel panel-admin"><h2>Members</h2>
 <p class="hint">A member who forgot their password needs a reset link — send them the one you create here.</p>
 <ul>${members.map(member => html`<li>${member.name}${member.is_admin ? ' (admin)' : ''} — <form method="post" action="/admin/invite" class="inline"><input type="hidden" name="user_id" value="${member.id}"><button class="link">create reset-password link</button></form>${member.id === user.id ? '' : html` · <form method="post" action="/admin/members/${member.id}/delete" class="inline" data-confirm="Remove ${member.name}? Their events and polls are kept."><button class="link danger">remove</button></form>`}</li>`)}</ul>
 <h3>Invite someone new</h3>
 <form method="post" action="/admin/invite"><button>Create invite link</button></form>
-${invites.length ? html`<h3>Open links (valid 7 days, single use)</h3><ul>${invites.map(invite => html`<li>${invite.user_name ? `Reset for ${invite.user_name}` : 'Invite'}: <code>${base}/invite/${invite.token}</code></li>`)}</ul>` : ''}</section>`);
+${invites.length ? html`<h3>Open links (valid 7 days, single use)</h3><ul>${invites.map(invite => html`<li>${invite.user_name ? `Reset for ${invite.user_name}` : 'Invite'}: <code>${base}/invite/${invite.token}</code></li>`)}</ul>` : ''}</section>
+<section class="panel panel-admin"><h2>Connection log</h2>
+<p class="hint"><a href="/admin/log" download>Download meshtime.log</a></p>
+${log.length ? html`<div class="log-wrap"><table class="log">
+<thead><tr><th>#</th><th>Time (Eastern)</th><th>IP</th><th>User</th><th>Action</th></tr></thead>
+<tbody>${log.toReversed().map(entry => html`<tr><td class="n">${entry.number}</td><td>${formatDate(entry.time.slice(0, 10), user.date_format)} ${entry.time.slice(11, 19)}</td><td>${entry.ip}</td><td>${entry.user}${entry.known ? '' : html` <span class="hint">(unknown)</span>`}</td><td>${entry.action}</td></tr>`)}</tbody>
+</table></div>` : html`<p class="hint">Nothing logged yet.</p>`}</section>`);

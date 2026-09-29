@@ -50,6 +50,10 @@ export const userFromSession = sessionId => sessionId
          WHERE s.id_hash = ? AND s.expires_at > ?`, sha256(sessionId), now())
   : undefined;
 
+/** Who a session belonged to, expired or not, so a timeout can be logged against a name. */
+export const sessionOwner = sessionId => get(`SELECT u.name FROM sessions s
+  JOIN users u ON u.id = s.user_id WHERE s.id_hash = ?`, sha256(sessionId))?.name;
+
 export const deleteSession = sessionId => run('DELETE FROM sessions WHERE id_hash = ?', sha256(sessionId));
 export const deleteUserSessions = userId => run('DELETE FROM sessions WHERE user_id = ?', userId);
 
@@ -136,6 +140,10 @@ export function credentialUser({ id, clientDataJSON, authenticatorData, signatur
   });
   return ok ? get('SELECT * FROM users WHERE id = ?', credential.user_id) : undefined;
 }
+
+/** The member a passkey id belongs to, for the log line of a failed passkey login. */
+export const credentialOwner = id => get(`SELECT u.name FROM credentials c
+  JOIN users u ON u.id = c.user_id WHERE c.id = ?`, id)?.name;
 
 // ---- login rate limit ----
 // Keyed per client address and per account, so one stranger's failures cannot lock everyone out.

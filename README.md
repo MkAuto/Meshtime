@@ -43,7 +43,7 @@ Environment variables: `BASE_URL` (public https URL, required behind a proxy), `
 
 ## Subscribing to the feeds
 
-Settings shows two links per member: **Group events** and **Who is free**.
+Settings shows one link per member: **Group events**.
 
 | App | How | Refresh |
 |---|---|---|
@@ -51,7 +51,7 @@ Settings shows two links per member: **Group events** and **Who is free**.
 | Apple Calendar | click the *webcal* link, or File → *New Calendar Subscription* | pick the interval when subscribing |
 | Outlook (web) | Add calendar → *Subscribe from web* → paste the https link | every few hours |
 
-Anyone with a link can read the feed. **Rotate feed links** in Settings invalidates the old ones (you then re-subscribe).
+Anyone with the link can read the feed. **Rotate feed links** in Settings invalidates the old one (you then re-subscribe).
 
 ## Forgot password
 

@@ -2,7 +2,8 @@ import { createServer } from 'node:http';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, extname } from 'node:path';
 import { db, get, now } from './db.js';
-import { userFromSession, createInvite } from './auth.js';
+import { userFromSession, sessionOwner, createInvite } from './auth.js';
+import { logEvent } from './log.js';
 import { routes } from './routes.js';
 import { errorPage } from './views.js';
 import { BASE_URL } from './lib.js';
@@ -134,6 +135,13 @@ async function handle(req, res) {
 
     ctx.sid = parseCookies(req).sid || null;
     ctx.user = userFromSession(ctx.sid) || null;
+    if (ctx.sid && !ctx.user) {
+      // A cookie with no live session: it expired, or a password change logged this device out.
+      // Log it once, then clear the cookie so the next request does not log it again.
+      const owner = sessionOwner(ctx.sid);
+      logEvent({ ip: ctx.ip, user: owner ?? '(session gone)', known: Boolean(owner), action: 'session timeout' });
+      ctx.setCookie('sid', '', 0);
+    }
 
     const route = routes.find(r => r.method === method && r.path.test(url.pathname));
     if (!route) return ctx.fail(404, 'Page not found.');

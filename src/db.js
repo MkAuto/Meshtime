@@ -1,10 +1,12 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { COLORS } from './lib.js';
+import { COLORS, DEFAULT_WEEK_START, WEEK_START_CHOICES, DATE_FORMATS, DEFAULT_DATE_FORMAT } from './lib.js';
 
 const dbPath = process.env.DB_PATH || './data/app.db';
-mkdirSync(dirname(dbPath), { recursive: true });
+/** Where everything persistent lives: the DB and meshtime.log. A volume in Docker. */
+export const DATA_DIR = dirname(dbPath);
+mkdirSync(DATA_DIR, { recursive: true });
 
 export const db = new DatabaseSync(dbPath, { timeout: 5000 });
 
@@ -24,7 +26,8 @@ CREATE TABLE IF NOT EXISTS users(
   is_admin INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   color INTEGER NOT NULL DEFAULT 0,
-  week_start INTEGER NOT NULL DEFAULT 0); -- first day of the week in the calendar grid, 0 = Sunday
+  week_start INTEGER NOT NULL DEFAULT 0, -- first day of the week in the calendar grid, 0 = Sunday
+  date_format TEXT NOT NULL DEFAULT '${DEFAULT_DATE_FORMAT}'); -- a DATE_FORMATS key in src/lib.js
 
 -- single-use links. user_id set => password reset for that user, otherwise a new-account invite.
 CREATE TABLE IF NOT EXISTS invites(
@@ -103,6 +106,17 @@ if (!userColumns.includes('color'))
 // DBs created before the week-start setting existed: everyone gets the Sunday default.
 if (!userColumns.includes('week_start'))
   db.exec('ALTER TABLE users ADD COLUMN week_start INTEGER NOT NULL DEFAULT 0');
+
+// DBs created before the date-format setting existed: everyone gets the default.
+if (!userColumns.includes('date_format'))
+  db.exec(`ALTER TABLE users ADD COLUMN date_format TEXT NOT NULL DEFAULT '${DEFAULT_DATE_FORMAT}'`);
+
+// A format that is no longer offered goes back to the default.
+db.prepare(`UPDATE users SET date_format = ? WHERE date_format NOT IN (${Object.keys(DATE_FORMATS).map(() => '?')})`)
+  .run(DEFAULT_DATE_FORMAT, ...Object.keys(DATE_FORMATS));
+
+// Members who picked a first day that is no longer offered go back to the Sunday default.
+db.exec(`UPDATE users SET week_start = ${DEFAULT_WEEK_START} WHERE week_start NOT IN (${WEEK_START_CHOICES})`);
 
 // Pull colors back into range in case the palette shrank.
 db.exec(`UPDATE users SET color = color % ${COLORS} WHERE color >= ${COLORS}`);

@@ -27,10 +27,37 @@ export function addDays(isoDate, days) {
   return date.toISOString().slice(0, 10);
 }
 
+// Written out by hand: Intl's short months drop the period ("Sept" in en-GB, "Sep" in en-US).
+const SHORT_MONTHS = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'June', 'July', 'Aug.', 'Sept.', 'Oct.', 'Nov.', 'Dec.'];
+
+const pad2 = number => String(number).padStart(2, '0');
+
+// How a member wants dates shown (users.date_format). Display only: storage, forms and URLs stay 'YYYY-MM-DD'.
+// Keys are stored in the DB, so rename a key only together with a migration.
+export const DATE_FORMATS = {
+  'd-mon-y': (year, month, day) => `${day} ${SHORT_MONTHS[month - 1]} ${year}`,   // 29 Sept. 2026
+  'mon-d-y': (year, month, day) => `${SHORT_MONTHS[month - 1]} ${day}, ${year}`,  // Sept. 29, 2026
+  'dd/mm/yyyy': (year, month, day) => `${pad2(day)}/${pad2(month)}/${year}`,      // 29/09/2026
+  'mm/dd/yyyy': (year, month, day) => `${pad2(month)}/${pad2(day)}/${year}`,      // 09/29/2026
+  'yyyy-mm-dd': (year, month, day) => `${year}-${pad2(month)}-${pad2(day)}`,      // 2026-09-29
+};
+export const DEFAULT_DATE_FORMAT = 'd-mon-y';
+export const isValidDateFormat = value => Object.hasOwn(DATE_FORMATS, value);
+
+/** '2026-09-29' in the member's format. An unknown format falls back to the default; a non-date is shown as is. */
+export function formatDate(isoDate, format) {
+  const match = /^(\d{4})-(\d\d)-(\d\d)$/.exec(isoDate ?? '');
+  if (!match) return isoDate;
+  const render = DATE_FORMATS[isValidDateFormat(format) ? format : DEFAULT_DATE_FORMAT];
+  return render(...match.slice(1).map(Number));
+}
+
 // Weekday names in getUTCDay() order, so index == day number. weekStart rotates them.
 export const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const DEFAULT_WEEK_START = 0; // Sunday
-export const isValidWeekStart = value => Number.isInteger(value) && value >= 0 && value < 7;
+// The first days a member may pick, in the order Settings lists them: Saturday, Sunday, Monday.
+export const WEEK_START_CHOICES = [6, 0, 1];
+export const isValidWeekStart = value => WEEK_START_CHOICES.includes(value);
 export const weekdayNames = weekStart => [...WEEKDAYS.slice(weekStart), ...WEEKDAYS.slice(0, weekStart)];
 
 // Everything calendarPage needs to draw one month, given 'YYYY-MM'.
@@ -119,8 +146,7 @@ export function fold(line) {
   return chunks.join('\r\n ');
 }
 
-// items: [{ uid, date 'YYYY-MM-DD', summary, stamp (ISO), transparent? }]
-// transparent marks an event as "does not block my time", used by the "who is free" feed.
+// items: [{ uid, date 'YYYY-MM-DD', summary, stamp (ISO) }]
 export function buildIcs({ name, host, items }) {
   const lines = [
     'BEGIN:VCALENDAR',
@@ -140,9 +166,8 @@ export function buildIcs({ name, host, items }) {
       // All-day event: DTEND is exclusive, so it points at the next day.
       'DTSTART;VALUE=DATE:' + item.date.replaceAll('-', ''),
       'DTEND;VALUE=DATE:' + addDays(item.date, 1).replaceAll('-', ''),
-      'SUMMARY:' + escapeIcsText(item.summary));
-    if (item.transparent) lines.push('TRANSP:TRANSPARENT');
-    lines.push('END:VEVENT');
+      'SUMMARY:' + escapeIcsText(item.summary),
+      'END:VEVENT');
   }
 
   lines.push('END:VCALENDAR');
