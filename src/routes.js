@@ -174,7 +174,7 @@ on('GET', '/', ctx => {
 
 // Two ways in. A plain click on a day sends no `part` and toggles it: try the delete first, insert
 // "all day" only if there was nothing to delete. The long-press / double-click menu sends `part`:
-// 'all', 'am' or 'pm' sets exactly that, 'none' clears the day.
+// 'all', 'am', 'pm' or 'eve' sets exactly that, 'none' clears the day.
 on('POST', '/free', ctx => {
   const date = ctx.body.get('date');
   const part = ctx.body.get('part');

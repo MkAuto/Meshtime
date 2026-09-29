@@ -89,9 +89,9 @@ ${resetName ? '' : html`<label>Your name <input name="name" required maxlength="
 // ---- calendar ----
 
 // free_days.part, as tooltips say it
-const PART_LABELS = { all: 'all day', am: 'morning', pm: 'afternoon' };
+const PART_LABELS = { all: 'all day', am: 'morning', pm: 'afternoon', eve: 'evening' };
 // The long-press / double-click menu: each button posts its value as `part` to /free.
-const PART_CHOICES = { all: 'All day', am: 'Morning (AM)', pm: 'Afternoon (PM)', none: 'Not free' };
+const PART_CHOICES = { all: 'All day', am: 'Morning (AM)', pm: 'Afternoon (PM)', eve: 'Evening', none: 'Not free' };
 
 export function calendarPage(user, yearMonth, { free, mine, events, today, members }) {
   const month = monthInfo(yearMonth, user.week_start);
@@ -116,8 +116,8 @@ ${dayEvents.map(event => html`<span class="ev" title="${event.title} (by ${event
 
   return layout(month.label, user, html`
 <h1><a href="/?m=${month.prev}" title="Previous month">&lsaquo;</a> ${month.label} <a href="/?m=${month.next}" title="Next month">&rsaquo;</a></h1>
-<p class="hint">Click a day to mark yourself free all day (outlined). For only the morning or the afternoon,
-hold the day on a phone or double-click it on a computer. Initials show who is free (<sup>am</sup> / <sup>pm</sup> for half days);
+<p class="hint">Click a day to mark yourself free all day (outlined). For only the morning, afternoon or evening,
+hold the day on a phone or double-click it on a computer. Initials show who is free (<sup>am</sup> / <sup>pm</sup> / <sup>eve</sup> for part of the day);
 green means everyone is free at the same time.</p>
 <div class="grid">${weekdayNames(user.week_start).map(name => html`<div class="dow">${name}</div>`)}${cells}</div>
 <dialog id="day-part" aria-labelledby="day-part-title"><form method="post" action="/free">

@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { COLORS, DEFAULT_WEEK_START, WEEK_START_CHOICES, DATE_FORMATS, DEFAULT_DATE_FORMAT } from './lib.js';
+import { COLORS, DEFAULT_WEEK_START, WEEK_START_CHOICES, DATE_FORMATS, DEFAULT_DATE_FORMAT, DAY_PARTS } from './lib.js';
 
 const dbPath = process.env.DB_PATH || './data/app.db';
 /** Where everything persistent lives: the DB and meshtime.log. A volume in Docker. */
@@ -9,6 +9,15 @@ export const DATA_DIR = dirname(dbPath);
 mkdirSync(DATA_DIR, { recursive: true });
 
 export const db = new DatabaseSync(dbPath, { timeout: 5000 });
+
+// free_days is written from here twice (the CREATE below, and the rebuild when DAY_PARTS changes),
+// so its definition lives in one place. DAY_PARTS are constants, safe to inline.
+const PART_CHECK = `CHECK(part IN (${DAY_PARTS.map(part => `'${part}'`).join(',')}))`;
+const freeDaysTable = name => `CREATE TABLE IF NOT EXISTS ${name}(
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  date TEXT NOT NULL,
+  part TEXT NOT NULL DEFAULT 'all' ${PART_CHECK},
+  PRIMARY KEY(user_id, date))`;
 
 // Schema. CREATE IF NOT EXISTS, so this runs on every start and is a no-op once created.
 // All timestamps are ISO strings (see now() below); all dates are 'YYYY-MM-DD'.
@@ -45,12 +54,8 @@ CREATE TABLE IF NOT EXISTS sessions(
   expires_at TEXT NOT NULL);
 
 -- "I am free that day". One row per user per day; its absence means nothing was said.
--- part: free all day, or only the morning (am) / afternoon (pm). DAY_PARTS in src/lib.js.
-CREATE TABLE IF NOT EXISTS free_days(
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  date TEXT NOT NULL,
-  part TEXT NOT NULL DEFAULT 'all' CHECK(part IN ('all','am','pm')),
-  PRIMARY KEY(user_id, date));
+-- part: free all day, or only the morning (am) / afternoon (pm) / evening (eve). DAY_PARTS in src/lib.js.
+${freeDaysTable('free_days')};
 
 -- date polls. chosen_date is set when the winning date becomes an event.
 CREATE TABLE IF NOT EXISTS polls(
@@ -112,7 +117,22 @@ if (!userColumns.includes('week_start'))
 // DBs created before morning/afternoon existed: every free day already marked was a whole day.
 const freeDayColumns = db.prepare('PRAGMA table_info(free_days)').all().map(column => column.name);
 if (!freeDayColumns.includes('part'))
-  db.exec(`ALTER TABLE free_days ADD COLUMN part TEXT NOT NULL DEFAULT 'all' CHECK(part IN ('all','am','pm'))`);
+  db.exec(`ALTER TABLE free_days ADD COLUMN part TEXT NOT NULL DEFAULT 'all' ${PART_CHECK}`);
+
+// DAY_PARTS changed (evening was added after am/pm): SQLite cannot alter a CHECK, so the table is
+// rebuilt with the current one. A part that is no longer offered becomes a whole day.
+const freeDaysSql = db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'free_days'`).get().sql;
+if (!freeDaysSql.includes(PART_CHECK)) {
+  db.exec(`BEGIN;
+    DROP TABLE IF EXISTS free_days_new;
+    ${freeDaysTable('free_days_new')};
+    INSERT INTO free_days_new(user_id, date, part)
+      SELECT user_id, date, CASE WHEN part IN (${DAY_PARTS.map(part => `'${part}'`).join(',')}) THEN part ELSE 'all' END
+      FROM free_days;
+    DROP TABLE free_days;
+    ALTER TABLE free_days_new RENAME TO free_days;
+    COMMIT;`);
+}
 
 // DBs created before the date-format setting existed: everyone gets the default.
 if (!userColumns.includes('date_format'))

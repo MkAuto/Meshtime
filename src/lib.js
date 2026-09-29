@@ -77,16 +77,18 @@ export function monthInfo(yearMonth, weekStart = DEFAULT_WEEK_START) {
 
 // Calendar day states -> CSS class of the same name in style.css "/* day states */".
 // Add a state: one predicate here + one CSS rule. All matching states apply.
-// Which part of a day a member is free (free_days.part). 'all' is what a plain click sets.
-export const DAY_PARTS = ['all', 'am', 'pm'];
+// Which part of a day a member is free (free_days.part). 'all' is what a plain click sets and covers
+// the three others. Changing this list rebuilds free_days on the next start (see src/db.js).
+export const DAY_PARTS = ['all', 'am', 'pm', 'eve'];
 export const isValidDayPart = value => DAY_PARTS.includes(value);
+const SLOTS = DAY_PARTS.filter(part => part !== 'all'); // morning, afternoon, evening
 
-/** How many of `who` are free during one half of the day: all-day members count for both halves. */
-const freeDuring = (who, half) => who.filter(member => member.part === 'all' || member.part === half).length;
+/** How many of `who` are free during one slot of the day: all-day members count for every slot. */
+const freeDuring = (who, slot) => who.filter(member => member.part === 'all' || member.part === slot).length;
 
 export const DAY_STATES = {
   // everyone free at the same time: green + check. Someone AM-only and someone PM-only never overlap.
-  all: ({ who, members }) => members > 0 && (freeDuring(who, 'am') >= members || freeDuring(who, 'pm') >= members),
+  all: ({ who, members }) => members > 0 && SLOTS.some(slot => freeDuring(who, slot) >= members),
   mine: ({ mine }) => mine, // I am free: accent outline
 };
 export const dayClass = day => Object.keys(DAY_STATES).filter(state => DAY_STATES[state](day)).join(' ');

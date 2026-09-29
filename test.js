@@ -110,6 +110,8 @@ test('dayClass: all = every member free at the same time, mine = I am free', () 
   assert.equal(dayClass({ who: free('am', 'am'), members: 2, mine: false }), 'all', 'everyone in the morning');
   assert.equal(dayClass({ who: free('all', 'pm'), members: 2, mine: false }), 'all', 'all-day counts for the afternoon');
   assert.equal(dayClass({ who: free('am', 'pm'), members: 2, mine: false }), '', 'morning + afternoon never overlap');
+  assert.equal(dayClass({ who: free('eve', 'all'), members: 2, mine: false }), 'all', 'all-day counts for the evening');
+  assert.equal(dayClass({ who: free('eve', 'pm'), members: 2, mine: false }), '');
 });
 
 // The no-JS fallback and the hook public/app.js keys off of.
