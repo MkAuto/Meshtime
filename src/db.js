@@ -79,10 +79,15 @@ CREATE TABLE IF NOT EXISTS poll_votes(
   PRIMARY KEY(poll_id, date, user_id));
 
 -- group events. poll_id is UNIQUE, so confirming a poll twice cannot create two events.
+-- date..end_date is inclusive (equal for a one-day event). No start_time means all day. Times are 'HH:MM'.
 CREATE TABLE IF NOT EXISTS events(
   id INTEGER PRIMARY KEY,
   title TEXT NOT NULL,
   date TEXT NOT NULL,
+  end_date TEXT,
+  start_time TEXT,
+  end_time TEXT,
+  color INTEGER, -- bar color, a .cN palette index like users.color; NULL = the default event look
   created_by INTEGER NOT NULL REFERENCES users(id),
   poll_id INTEGER UNIQUE REFERENCES polls(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL);
@@ -138,6 +143,15 @@ if (!freeDaysSql.includes(PART_CHECK)) {
 if (!userColumns.includes('date_format'))
   db.exec(`ALTER TABLE users ADD COLUMN date_format TEXT NOT NULL DEFAULT '${DEFAULT_DATE_FORMAT}'`);
 
+// DBs created before times and multi-day events existed: every event was one whole day.
+const eventColumns = db.prepare('PRAGMA table_info(events)').all().map(column => column.name);
+for (const column of ['end_date', 'start_time', 'end_time'])
+  if (!eventColumns.includes(column)) db.exec(`ALTER TABLE events ADD COLUMN ${column} TEXT`);
+db.exec('UPDATE events SET end_date = date WHERE end_date IS NULL');
+
+// DBs created before event colors existed: every event keeps the default look.
+if (!eventColumns.includes('color')) db.exec('ALTER TABLE events ADD COLUMN color INTEGER');
+
 // A format that is no longer offered goes back to the default.
 db.prepare(`UPDATE users SET date_format = ? WHERE date_format NOT IN (${Object.keys(DATE_FORMATS).map(() => '?')})`)
   .run(DEFAULT_DATE_FORMAT, ...Object.keys(DATE_FORMATS));
@@ -147,6 +161,7 @@ db.exec(`UPDATE users SET week_start = ${DEFAULT_WEEK_START} WHERE week_start NO
 
 // Pull colors back into range in case the palette shrank.
 db.exec(`UPDATE users SET color = color % ${COLORS} WHERE color >= ${COLORS}`);
+db.exec(`UPDATE events SET color = NULL WHERE color >= ${COLORS}`);
 
 // ---- query helpers. Always pass values as parameters, never interpolate them into the SQL. ----
 

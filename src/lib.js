@@ -33,7 +33,6 @@ const SHORT_MONTHS = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'June', 'July', 'Au
 const pad2 = number => String(number).padStart(2, '0');
 
 // How a member wants dates shown (users.date_format). Display only: storage, forms and URLs stay 'YYYY-MM-DD'.
-// Keys are stored in the DB, so rename a key only together with a migration.
 export const DATE_FORMATS = {
   'd-mon-y': (year, month, day) => `${day} ${SHORT_MONTHS[month - 1]} ${year}`,   // 29 Sept. 2026
   'mon-d-y': (year, month, day) => `${SHORT_MONTHS[month - 1]} ${day}, ${year}`,  // Sept. 29, 2026
@@ -41,15 +40,58 @@ export const DATE_FORMATS = {
   'mm/dd/yyyy': (year, month, day) => `${pad2(month)}/${pad2(day)}/${year}`,      // 09/29/2026
   'yyyy-mm-dd': (year, month, day) => `${year}-${pad2(month)}-${pad2(day)}`,      // 2026-09-29
 };
+
 export const DEFAULT_DATE_FORMAT = 'd-mon-y';
 export const isValidDateFormat = value => Object.hasOwn(DATE_FORMATS, value);
 
-/** '2026-09-29' in the member's format. An unknown format falls back to the default; a non-date is shown as is. */
 export function formatDate(isoDate, format) {
   const match = /^(\d{4})-(\d\d)-(\d\d)$/.exec(isoDate ?? '');
   if (!match) return isoDate;
   const render = DATE_FORMATS[isValidDateFormat(format) ? format : DEFAULT_DATE_FORMAT];
   return render(...match.slice(1).map(Number));
+}
+
+// ---- event times ----
+// Times are 'HH:MM' wall-clock strings with no timezone: whatever the group means by "19:00".
+
+export const isValidTime = text => /^([01]\d|2[0-3]):[0-5]\d$/.test(text || '');
+
+/** Why an event's when is unusable, or null when it is fine. endDate/times may be null. */
+export function eventError({ date, endDate, startTime, endTime }) {
+  if (!isValidDate(date)) return 'A valid start date is required.';
+  if (endDate && (!isValidDate(endDate) || endDate < date)) return 'The end date must be on or after the start date.';
+  if ((startTime && !isValidTime(startTime)) || (endTime && !isValidTime(endTime))) return 'Invalid time.';
+  if (endTime && !startTime) return 'An end time needs a start time.';
+  const multiDay = endDate && endDate !== date;
+  // A timed event over several days has no sensible end without one (the ICS feed needs it).
+  if (multiDay && startTime && !endTime) return 'A timed event over several days needs an end time.';
+  if (!multiDay && endTime && endTime <= startTime) return 'The end time must be after the start time.';
+  return null;
+}
+
+/** '3 Oct. 2026 19:00–22:00', '3 Oct. 2026 – 5 Oct. 2026', ... in the member's date format. */
+export function formatEventWhen({ date, end_date, start_time, end_time }, format) {
+  const start = formatDate(date, format) + (start_time ? ' ' + start_time : '');
+  if (end_date && end_date !== date) return `${start} – ${formatDate(end_date, format)}${end_time ? ' ' + end_time : ''}`;
+  return end_time ? `${start}–${end_time}` : start;
+}
+
+/**
+ * Event id -> lane (0 = top row) for every multi-day event, so its bar sits at the same height on each
+ * day it covers. Greedy: each event takes the lowest lane whose last event ended before it starts.
+ * `events` must be sorted by start date. One-day events get no lane; they are listed under the bars.
+ */
+export function eventLanes(events) {
+  const lanes = new Map();
+  const laneEnds = []; // lane -> end_date of the last event placed in it
+  for (const event of events) {
+    if (event.end_date <= event.date) continue;
+    let lane = laneEnds.findIndex(end => end < event.date);
+    if (lane === -1) lane = laneEnds.length;
+    laneEnds[lane] = event.end_date;
+    lanes.set(event.id, lane);
+  }
+  return lanes;
 }
 
 // Weekday names in getUTCDay() order, so index == day number. weekStart rotates them.
@@ -156,7 +198,12 @@ export function fold(line) {
   return chunks.join('\r\n ');
 }
 
-// items: [{ uid, date 'YYYY-MM-DD', summary, stamp (ISO) }]
+// '2026-10-03' + '19:00' -> 20261003T190000, a floating local time (no Z, no TZID).
+// ponytail: floating, so each subscriber's app reads it in its own zone. Fine while the group shares
+// one zone; otherwise add TZID=America/Toronto and a VTIMEZONE block.
+const icsLocalTime = (date, time) => date.replaceAll('-', '') + 'T' + time.replace(':', '') + '00';
+
+// items: [{ uid, date 'YYYY-MM-DD', endDate?, startTime?, endTime?, summary, stamp (ISO) }]
 export function buildIcs({ name, host, items }) {
   const lines = [
     'BEGIN:VCALENDAR',
@@ -169,15 +216,18 @@ export function buildIcs({ name, host, items }) {
   ];
 
   for (const item of items) {
-    lines.push(
-      'BEGIN:VEVENT',
-      `UID:${item.uid}@${host}`,
-      'DTSTAMP:' + icsTimestamp(item.stamp),
-      // All-day event: DTEND is exclusive, so it points at the next day.
-      'DTSTART;VALUE=DATE:' + item.date.replaceAll('-', ''),
-      'DTEND;VALUE=DATE:' + addDays(item.date, 1).replaceAll('-', ''),
-      'SUMMARY:' + escapeIcsText(item.summary),
-      'END:VEVENT');
+    const endDate = item.endDate || item.date;
+    lines.push('BEGIN:VEVENT', `UID:${item.uid}@${host}`, 'DTSTAMP:' + icsTimestamp(item.stamp));
+    if (item.startTime) {
+      lines.push('DTSTART:' + icsLocalTime(item.date, item.startTime));
+      // No end time: DTEND left out, which RFC 5545 reads as ending when it starts.
+      if (item.endTime) lines.push('DTEND:' + icsLocalTime(endDate, item.endTime));
+    } else {
+      // All-day event: DTEND is exclusive, so it points at the day after the last one.
+      lines.push('DTSTART;VALUE=DATE:' + item.date.replaceAll('-', ''),
+        'DTEND;VALUE=DATE:' + addDays(endDate, 1).replaceAll('-', ''));
+    }
+    lines.push('SUMMARY:' + escapeIcsText(item.summary), 'END:VEVENT');
   }
 
   lines.push('END:VCALENDAR');

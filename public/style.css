@@ -65,13 +65,21 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 /* minmax(0, …): a plain 1fr won't shrink below its content, so one long title would widen its column */
 .grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
 .dow { text-align: center; font-size: .75rem; color: var(--muted); padding: .2rem 0; }
-.day { min-height: 76px; background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: .2rem; font-size: .75rem; }
+.day { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: .2rem; font-size: .75rem; }
 .day.pad { background: none; border: none; }
 .day.today { border-color: var(--accent); }
-/* the button is the whole cell: grid on both wrappers stretches it edge to edge, no fixed heights */
-.day, .day form { display: grid; }
-.day button { display: flex; flex-direction: column; align-items: stretch; text-align: left;
-  background: none; border: none; color: var(--fg); padding: .1rem .2rem; }
+/* the button is the whole cell: grid on every wrapper stretches it edge to edge, no fixed heights.
+   Each day spans two rows of .grid (head, events, see calendarPage) and passes them down as a
+   subgrid, so the head row is as tall as the tallest one in the week: bars start level under
+   initials of any height. row-gap 0 inside the cell; the 3px gap stays between weeks. */
+.day, .day form, .day button { display: grid; grid-row: span 2; grid-template-rows: subgrid; row-gap: 0;
+  /* minmax(0, …): a label stretched over the next days (.ev-text) must not widen the cell's own column,
+     or the day's other events would stretch with it and spill into the next day */
+  grid-template-columns: minmax(0, 1fr); }
+.day button { text-align: left; background: none; border: none; color: var(--fg); padding: .1rem .2rem; }
+.day .head { display: block; }
+/* the cell's minimum height lives in the events row, so the head stays packed at the top */
+.day .day-events { display: flex; flex-direction: column; min-height: 3rem; }
 .day .num { font-weight: 600; }
 /* Holding a day opens the morning/afternoon menu (public/app.js), so the phone's own long-press
    reactions must not fire: no text selection, no iOS callout. manipulation also drops the
@@ -101,6 +109,38 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 .hue { appearance: none; width: 240px; height: 10px; border: none; border-radius: 5px; padding: 0;
   background: linear-gradient(to right, #dc2626 0.00% 7.69%, #ea580c 7.69% 15.38%, #ca8a04 15.38% 23.08%, #65a30d 23.08% 30.77%, #16a34a 30.77% 38.46%, #0d9488 38.46% 46.15%, #0284c7 46.15% 53.85%, #2563eb 53.85% 61.54%, #4f46e5 61.54% 69.23%, #9333ea 69.23% 76.92%, #db2777 76.92% 84.62%, #7c4a1d 84.62% 92.31%, #475569 92.31% 100.00%); }
 .ev { background: var(--ev-bg); color: var(--ev-fg); border-radius: 4px; padding: 0 .25rem; margin-top: 2px; }
+/* An event with a color (events.color): a tint of its .cN palette color, text in the color itself. */
+.ev.colored { background: color-mix(in srgb, var(--c) 18%, var(--card)); color: var(--c); }
+/* the color picker on the event page: one round chip per palette color, the radio inside it hidden */
+.colors { display: flex; flex-wrap: wrap; gap: .4rem; border: none; padding: 0; margin: 0; }
+.colors legend { padding: 0; margin-bottom: .3rem; }
+/* "Default" has no .cN, so it falls back to the default event look */
+.swatch-pick { position: relative; width: 1.8rem; height: 1.8rem; border-radius: 50%; cursor: pointer;
+  background: var(--c, var(--ev-bg)); border: 2px solid var(--c, var(--ev-fg)); }
+.swatch-pick input { position: absolute; opacity: 0; pointer-events: none; }
+.swatch-pick:has(:checked) { outline: 3px solid var(--fg); outline-offset: 2px; }
+.swatch-pick:has(:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
+/* the event page's Delete: a .stack like the form above, so it is as wide as Save, set apart from it */
+.delete-event { margin-top: 1.5rem; }
+/* Multi-day bars: one line each so every piece of a bar is the same height; the tooltip has the full title. */
+.ev.bar { white-space: nowrap; }
+/* The label runs across the bar's next cells in the week (run-N = N cells, set in calendarPage).
+   One cell step is a column plus the 3px gap: (100cqw + 3px) / 7, cqw being 1% of .grid's width.
+   Minus the gap, the cell's inset on both sides (.4rem padding + 1px border) and the bar's padding.
+   z-index lifts it over the later cells, which paint after this one; pointer-events: none lets a
+   click on the text still reach the day under it. */
+.grid { container-type: inline-size; }
+.ev-text { display: block; position: relative; z-index: 1; pointer-events: none; overflow: hidden; text-overflow: ellipsis;
+  width: calc(var(--run) * (100cqw + 3px) / 7 - 3px - .8rem - 2px - .5rem); }
+.run-1{--run:1}.run-2{--run:2}.run-3{--run:3}.run-4{--run:4}.run-5{--run:5}.run-6{--run:6}.run-7{--run:7}
+.ev.gap { visibility: hidden; }
+/* A piece that carries on stretches over the cell's padding (.2rem + .2rem on the button) and 1px border,
+   and the one continuing it also over the 3px grid gap, so the two meet edge to edge.
+   Not across a week break: the first column (7 weekday headers, then 7n+1) keeps its padding. */
+.day button { overflow: visible; }
+.ev.to { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: calc(-.4rem - 1px); }
+.ev.from { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: calc(-.4rem - 4px); }
+.day:nth-child(7n+1) .ev.from { margin-left: 0; }
 /* too much text makes the cell taller, not wider: wrap, and break words that are longer than the cell */
 .day button { overflow-wrap: anywhere; }
 .events li { margin: .3rem 0; }
@@ -117,13 +157,15 @@ table.poll tr.tot td { color: var(--muted); font-size: .8rem; }
 .result h2 { margin-top: 0; }
 .feeds li { margin: .8rem 0; }
 details { margin: .8rem 0; }
-@media (max-width: 600px) { .day { min-height: 56px; font-size: .65rem; } .who span { padding: 0 .15rem; } }
+@media (max-width: 600px) { .day { font-size: .65rem; } .day .day-events { min-height: 1.8rem; } .who span { padding: 0 .15rem; } }
 
 /* dark dark mode: follows the OS setting */
 @media (prefers-color-scheme: dark) {
   :root { color-scheme: dark; --bg: #000; --card: #0b0b0b; --fg: #e6e6e6; --muted: #8a8a8a; --line: #222; --accent: #60a5fa; --on-accent: #0b0b0b;
     --ok: #4ade80; --ok-bg: #0c2a17; --err: #f87171; --maybe: #fbbf24; --code-bg: #161616; --ev-bg: #2a1f05; --ev-fg: #fcd34d; }
   .who span, .swatch { color: var(--cd, var(--accent)); }
+  .ev.colored { background: color-mix(in srgb, var(--cd) 22%, var(--card)); color: var(--cd); }
+  .swatch-pick { background: var(--cd, var(--ev-bg)); border-color: var(--cd, var(--ev-fg)); }
   /* same hues, pulled down to near-black so the panels tint rather than glow.
      Dark needs no --muted bump: #8a8a8a clears 5.2:1 on all four. */
   .panel-feeds    { --panel: #0a1526; --panel-edge: #60a5fa; }

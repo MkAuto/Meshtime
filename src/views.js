@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { monthInfo, formatDate, DATE_FORMATS, today, dayClass, weekdayNames, WEEKDAYS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD } from './lib.js';
+import { monthInfo, formatDate, formatEventWhen, eventLanes, DATE_FORMATS, today, dayClass, weekdayNames, WEEKDAYS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD } from './lib.js';
 
 // Static files are cached for an hour (server.js). A hash of the content in the URL makes every
 // change a new URL, so a restart after editing public/ reaches browsers at once, no Ctrl+F5.
@@ -95,6 +95,7 @@ const PART_CHOICES = { all: 'All day', am: 'Morning (AM)', pm: 'Afternoon (PM)',
 
 export function calendarPage(user, yearMonth, { free, mine, events, today, members }) {
   const month = monthInfo(yearMonth, user.week_start);
+  const lanes = eventLanes(events);
 
   // Blank cells so day 1 lands on its weekday, then one cell per day of the month.
   const cells = Array.from({ length: month.pad }, () => html`<div class="day pad"></div>`);
@@ -102,16 +103,35 @@ export function calendarPage(user, yearMonth, { free, mine, events, today, membe
     const date = `${yearMonth}-${String(day).padStart(2, '0')}`;
     const who = free.get(date) || [];
     const myPart = mine.get(date); // undefined when I have not marked this day
-    const dayEvents = events.filter(event => event.date === date);
+    const dayEvents = events.filter(event => event.date <= date && date <= event.end_date);
+    // Multi-day bars go by lane, so a bar lines up across its days. A lane with nothing today still
+    // takes its row (an invisible .gap) to keep the lanes below it level.
+    const bars = [];
+    for (const event of dayEvents) if (lanes.has(event.id)) bars[lanes.get(event.id)] = event;
+    const oneDay = dayEvents.filter(event => !lanes.has(event.id));
+    // A bar is labelled where it starts, and again on day 1 and at the start of each week row.
+    const column = (month.pad + day - 1) % 7;
+    const startsRow = day === 1 || column === 0;
+    // How many cells the label may run over: to the end of the event, the week row or the month.
+    const run = event => Math.min((Date.parse(event.end_date) - Date.parse(date)) / 864e5 + 1, 7 - column, month.days - day + 1);
+    const label = event => (event.start_time && event.date === date ? event.start_time + ' ' : '') + event.title;
+    const tooltip = event => `${event.title}, ${formatEventWhen(event, user.date_format)} (by ${event.creator})`;
     // The whole cell is the toggle button: posting /free flips my own free-all-day/not-free.
     // Initials and events live inside it, as spans, so every pixel of the square is clickable
     // while each one keeps its own title tooltip on hover.
     // data-date-label and data-part feed the morning/afternoon menu in public/app.js.
+    // Two parts, each a row shared by the whole week (subgrid in style.css): number + initials, then
+    // the events. So the bars start level even when the initials differ. One-day events follow this
+    // day's own bars; the lanes (gaps included) keep a bar level, so they never land on one.
     cells.push(html`<div class="day ${dayClass({ who, members, mine: Boolean(myPart) })}${date === today ? ' today' : ''}">
 <form method="post" action="/free"><input type="hidden" name="date" value="${date}"><input type="hidden" name="m" value="${yearMonth}">
-<button title="${myPart ? `You: ${PART_LABELS[myPart]}. Click to clear` : 'Click: I am free all day'}" data-date-label="${formatDate(date, user.date_format)}" data-part="${myPart || 'none'}"><span class="num">${day}</span>
-${who.length ? html`<span class="who">${who.map(member => html`<span class="c${member.color}" title="${member.name}, ${PART_LABELS[member.part]}">${initials(member.name)}${member.part === 'all' ? '' : html`<sup>${member.part}</sup>`}</span>`)}</span>` : ''}
-${dayEvents.map(event => html`<span class="ev" title="${event.title} (by ${event.creator})">${event.title}</span>`)}</button></form></div>`);
+<button title="${myPart ? `You: ${PART_LABELS[myPart]}. Click to clear` : 'Click: I am free all day'}" data-date-label="${formatDate(date, user.date_format)}" data-part="${myPart || 'none'}"><span class="head"><span class="num">${day}</span>
+${who.length ? html`<span class="who">${who.map(member => html`<span class="c${member.color}" title="${member.name}, ${PART_LABELS[member.part]}">${initials(member.name)}${member.part === 'all' ? '' : html`<sup>${member.part}</sup>`}</span>`)}</span>` : ''}</span>
+<span class="day-events">${Array.from(bars, event => event
+    // .from / .to: the bar carries on from yesterday / into tomorrow, so that side is square and joins the next cell
+    ? html`<span class="ev bar${evColor(event)}${event.date < date ? ' from' : ''}${date < event.end_date ? ' to' : ''}" title="${tooltip(event)}">${event.date === date || startsRow ? html`<span class="ev-text run-${run(event)}">${label(event)}</span>` : raw('&nbsp;')}</span>`
+    : html`<span class="ev bar gap">&nbsp;</span>`)}
+${oneDay.map(event => html`<span class="ev${evColor(event)}" title="${tooltip(event)}">${label(event)}</span>`)}</span></button></form></div>`);
   }
 
   return layout(month.label, user, html`
@@ -127,11 +147,36 @@ green means everyone is free at the same time.</p>
     html`<button name="part" value="${value}"${value === 'none' ? raw(' class="danger"') : ''}>${label}</button>`)}</div></form>
 <form method="dialog"><button class="link">Cancel</button></form></dialog>
 <section><h2>Events this month</h2>
-<ul class="events">${events.length ? events.map(event => html`<li>${formatDate(event.date, user.date_format)} — <b>${event.title}</b> <small class="hint">by ${event.creator}</small>
-${event.created_by === user.id || user.is_admin ? html` <form method="post" action="/events/${event.id}/delete" class="inline"><input type="hidden" name="m" value="${yearMonth}"><button class="link danger">delete</button></form>` : ''}</li>`)
-    : html`<li class="hint">No events this month.</li>`}</ul>
-<form method="post" action="/events" class="row"><input type="hidden" name="m" value="${yearMonth}">
-<input name="title" placeholder="Event title" required maxlength="100"><input type="date" name="date" required><button>Add event</button></form></section>`);
+<p><a class="btn" href="/events/new">Add event</a></p>
+<ul class="events">${events.length ? events.map(event => html`<li>${formatEventWhen(event, user.date_format)} — <b>${event.title}</b> <small class="hint">by ${event.creator}</small>
+${event.created_by === user.id || user.is_admin ? html` <a href="/events/${event.id}">edit</a>` : ''}</li>`)
+    : html`<li class="hint">No events this month.</li>`}</ul></section>`);
+}
+
+/** ' colored cN' for an event with a bar color (events.color), '' for the default look. */
+const evColor = event => event.color == null ? '' : ` colored c${event.color}`;
+
+// ---- events ----
+
+// One page for both: event.id set means editing that event, otherwise adding one.
+// `event` is an events row, or what was posted when the form is shown again with an error.
+export function eventPage(user, { event, error }) {
+  const editing = Boolean(event.id);
+  // A one-day event shows no end date, so moving its start date does not leave the end behind.
+  const endDate = event.end_date && event.end_date !== event.date ? event.end_date : '';
+  const colorChoice = (value, label) => html`<label class="swatch-pick${value === '' ? '' : ` c${value}`}" title="${label}">
+<input type="radio" name="color" value="${value}" aria-label="${label}"${String(event.color ?? '') === String(value) ? raw(' checked') : ''}></label>`;
+
+  return layout(editing ? 'Edit event' : 'New event', user, html`<h1>${editing ? 'Edit event' : 'New event'}</h1>
+<p class="hint">Leave the times empty for an all-day event, and the end date empty for a one-day event.</p>${error && html`<p class="err">${error}</p>`}
+<form method="post" action="/events${editing ? `/${event.id}` : ''}" class="stack">
+<label>Title <input name="title" required maxlength="100" value="${event.title ?? ''}"${editing ? '' : raw(' autofocus')}></label>
+<label>Starts <span class="row"><input type="date" name="date" required value="${event.date ?? ''}"> <input type="time" name="start_time" aria-label="Start time" value="${event.start_time ?? ''}"></span></label>
+<label>Ends <span class="row"><input type="date" name="end_date" aria-label="End date" value="${endDate}"> <input type="time" name="end_time" aria-label="End time" value="${event.end_time ?? ''}"></span></label>
+<fieldset class="colors"><legend>Color</legend>${colorChoice('', 'Default')}${Array.from({ length: COLORS }, (_, i) => colorChoice(i, `Color ${i + 1}`))}</fieldset>
+<button>${editing ? 'Save' : 'Add event'}</button></form>
+${editing ? html`<form method="post" action="/events/${event.id}/delete" class="stack delete-event" data-confirm="Delete ${event.title}?"><input type="hidden" name="m" value="${event.date.slice(0, 7)}"><button class="danger">Delete event</button></form>` : ''}
+<p><a href="/?m=${(event.date || today()).slice(0, 7)}">Back to calendar</a></p>`);
 }
 
 // ---- polls ----

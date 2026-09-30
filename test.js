@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
-import { isValidDate, isValidWeekStart, formatDate, isValidDateFormat, bestDates, fold, buildIcs, dayClass, monthInfo, weekdayNames, MAX_DATES, verifyWebAuthn, RP_ID, ORIGIN } from './src/lib.js';
-import { newPollPage, pollPage } from './src/views.js';
+import { isValidDate, isValidTime, eventError, formatEventWhen, eventLanes, isValidWeekStart, formatDate, isValidDateFormat, bestDates, fold, buildIcs, dayClass, monthInfo, weekdayNames, MAX_DATES, verifyWebAuthn, RP_ID, ORIGIN } from './src/lib.js';
+import { newPollPage, pollPage, eventPage } from './src/views.js';
 
 const thisYear = new Date().getUTCFullYear();
 
@@ -65,6 +65,58 @@ test('buildIcs escapes text, uses CRLF and exclusive DTEND', () => {
   assert.ok(ics.endsWith('END:VCALENDAR\r\n'));
 });
 
+test('buildIcs: multi-day all-day and timed floating events', () => {
+  const ics = buildIcs({ name: 'Test', host: 'h', items: [
+    { uid: 'a', date: '2026-10-30', endDate: '2026-11-01', summary: 'Trip', stamp: '2026-09-14T11:40:00Z' },
+    { uid: 'b', date: '2026-10-03', endDate: '2026-10-03', startTime: '19:00', endTime: '22:30', summary: 'Dinner', stamp: '2026-09-14T11:40:00Z' },
+    { uid: 'c', date: '2026-10-04', startTime: '09:05', summary: 'Call', stamp: '2026-09-14T11:40:00Z' },
+  ] });
+  assert.ok(ics.includes('DTSTART;VALUE=DATE:20261030\r\nDTEND;VALUE=DATE:20261102\r\n'), 'exclusive end after the last day');
+  assert.ok(ics.includes('DTSTART:20261003T190000\r\nDTEND:20261003T223000\r\n'));
+  assert.ok(ics.includes('DTSTART:20261004T090500\r\nSUMMARY:Call'), 'no end time: no DTEND');
+});
+
+test('eventError: every rule', () => {
+  const d = `${thisYear}-10-03`, next = `${thisYear}-10-05`;
+  const ok = when => assert.equal(eventError({ date: d, ...when }), null, JSON.stringify(when));
+  const bad = when => assert.notEqual(eventError({ date: d, ...when }), null, JSON.stringify(when));
+  ok({});
+  ok({ endDate: d, startTime: '19:00' });
+  ok({ startTime: '19:00', endTime: '22:00' });
+  ok({ endDate: next });
+  ok({ endDate: next, startTime: '22:00', endTime: '08:00' }, 'overnight across days');
+  bad({ date: 'nope' });
+  bad({ endDate: `${thisYear}-10-02` });
+  bad({ startTime: '24:00' });
+  bad({ startTime: '7:00' });
+  bad({ endTime: '10:00' });
+  bad({ endDate: next, startTime: '19:00' });
+  bad({ startTime: '19:00', endTime: '19:00' });
+  assert.equal(isValidTime('23:59'), true);
+  assert.equal(isValidTime(null), false);
+});
+
+test('formatEventWhen: one day, timed, multi-day, timed multi-day', () => {
+  const f = event => formatEventWhen({ date: '2026-10-03', end_date: '2026-10-03', ...event }, 'd-mon-y');
+  assert.equal(f({}), '3 Oct. 2026');
+  assert.equal(f({ start_time: '19:00' }), '3 Oct. 2026 19:00');
+  assert.equal(f({ start_time: '19:00', end_time: '22:00' }), '3 Oct. 2026 19:00–22:00');
+  assert.equal(f({ end_date: '2026-10-05' }), '3 Oct. 2026 – 5 Oct. 2026');
+  assert.equal(f({ end_date: '2026-10-05', start_time: '18:00', end_time: '14:00' }), '3 Oct. 2026 18:00 – 5 Oct. 2026 14:00');
+});
+
+test('eventLanes: overlapping bars stack, a lane is reused once free, one-day events get none', () => {
+  const ev = (id, date, end_date) => ({ id, date, end_date });
+  const lanes = eventLanes([
+    ev(1, '2026-10-01', '2026-10-03'),
+    ev(2, '2026-10-02', '2026-10-05'),
+    ev(3, '2026-10-02', '2026-10-02'),
+    ev(4, '2026-10-03', '2026-10-04'), // lane 0 still busy on the 3rd: its end day counts
+    ev(5, '2026-10-04', '2026-10-06'), // lane 0 free again
+  ]);
+  assert.deepEqual([...lanes], [[1, 0], [2, 1], [4, 2], [5, 0]]);
+});
+
 test('monthInfo: pad and weekday header follow the chosen first day', () => {
   // 2026-10-01 is a Thursday (getUTCDay() === 4).
   assert.equal(monthInfo('2026-10').pad, 4);        // Sunday-first, the default
@@ -112,6 +164,30 @@ test('dayClass: all = every member free at the same time, mine = I am free', () 
   assert.equal(dayClass({ who: free('am', 'pm'), members: 2, mine: false }), '', 'morning + afternoon never overlap');
   assert.equal(dayClass({ who: free('eve', 'all'), members: 2, mine: false }), 'all', 'all-day counts for the evening');
   assert.equal(dayClass({ who: free('eve', 'pm'), members: 2, mine: false }), '');
+});
+
+test('eventPage: a new event starts blank on the default color, with nothing to delete', () => {
+  const page = eventPage({ id: 1, name: 'a' }, { event: { date: '2026-10-03' } });
+  assert.match(page, /<form method="post" action="\/events" class="stack">/);
+  assert.match(page, /name="date" required value="2026-10-03"/);
+  assert.match(page, /value="" aria-label="Default" checked>/);
+  assert.equal((page.match(/ checked>/g) || []).length, 1);
+  assert.doesNotMatch(page, /delete/);
+});
+
+test('eventPage: editing shows the saved values and color, and offers delete', () => {
+  const event = { id: 7, title: 'Trip', date: '2026-10-03', end_date: '2026-10-05', start_time: '18:00', end_time: '14:00', color: 4 };
+  const page = eventPage({ id: 1, name: 'a' }, { event, error: 'Oops' });
+  assert.match(page, /action="\/events\/7" class="stack"/);
+  assert.match(page, /value="Trip"/);
+  assert.match(page, /name="end_date" aria-label="End date" value="2026-10-05"/);
+  assert.match(page, /name="end_time" aria-label="End time" value="14:00"/);
+  assert.match(page, /value="4" aria-label="Color 5" checked>/);
+  assert.equal((page.match(/ checked>/g) || []).length, 1);
+  assert.match(page, /action="\/events\/7\/delete"/);
+  assert.match(page, /<p class="err">Oops<\/p>/);
+  // a one-day event shows no end date, so moving its start does not strand the end
+  assert.match(eventPage({ id: 1 }, { event: { ...event, end_date: event.date } }), /name="end_date" aria-label="End date" value=""/);
 });
 
 // The no-JS fallback and the hook public/app.js keys off of.

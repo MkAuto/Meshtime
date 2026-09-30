@@ -3,7 +3,7 @@ import * as auth from './auth.js';
 import * as views from './views.js';
 import { logEvent, tailLog, LOG_PATH } from './log.js';
 import { createReadStream, existsSync } from 'node:fs';
-import { isValidDate, isValidMonth, isValidWeekStart, isValidDateFormat, isValidDayPart, bestDates, buildIcs, today, randomColor, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD, BASE_URL, RP_ID } from './lib.js';
+import { isValidDate, isValidMonth, isValidWeekStart, isValidDateFormat, isValidDayPart, eventError, bestDates, buildIcs, today, randomColor, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD, BASE_URL, RP_ID } from './lib.js';
 
 export const routes = [];
 
@@ -164,9 +164,12 @@ on('GET', '/', ctx => {
   // date -> which part of it I am free ('all' | 'am' | 'pm')
   const mine = new Map(all('SELECT date, part FROM free_days WHERE user_id = ? AND date LIKE ?', ctx.user.id, inMonth)
     .map(row => [row.date, row.part]));
+  // Every event that touches this month, including ones that started before or end after it.
+  // ISO dates compare as strings, and '-31' is past the last day of any month. All-day ones first.
   const events = all(`SELECT e.*, u.name AS creator FROM events e
                       JOIN users u ON u.id = e.created_by
-                      WHERE e.date LIKE ? ORDER BY e.date, e.id`, inMonth);
+                      WHERE e.date <= ? AND e.end_date >= ?
+                      ORDER BY e.date, e.start_time IS NOT NULL, e.start_time, e.id`, yearMonth + '-31', yearMonth + '-01');
   const members = get('SELECT COUNT(*) AS n FROM users').n; // a day is "everyone free" at this count
 
   ctx.html(views.calendarPage(ctx.user, yearMonth, { free, mine, events, today: today(), members }));
@@ -194,12 +197,66 @@ on('POST', '/free', ctx => {
   ctx.redirect(backToMonth(ctx));
 });
 
+// ---- events: one page adds and edits (views.eventPage) ----
+
+/**
+ * The event form, in the shape of an events row so a rejected form re-renders with what was typed.
+ * The optional fields arrive as '' when left empty: those become NULL (end_date: the start date).
+ */
+function readEventForm(ctx) {
+  const colorText = ctx.body.get('color') || '';
+  const event = {
+    title: cleanText(ctx.body.get('title'), 100),
+    date: ctx.body.get('date') || '',
+    end_date: ctx.body.get('end_date') || null,
+    start_time: ctx.body.get('start_time') || null,
+    end_time: ctx.body.get('end_time') || null,
+    color: colorText === '' ? null : Number(colorText),
+  };
+  const error = !event.title ? 'A title is required.'
+    : eventError({ date: event.date, endDate: event.end_date, startTime: event.start_time, endTime: event.end_time })
+    ?? (event.color !== null && !(Number.isInteger(event.color) && event.color >= 0 && event.color < COLORS) ? 'Invalid color.' : null);
+  event.end_date ||= event.date;
+  return { event, error };
+}
+
+/** The event with this id, if the member may change it: their own, or any event if they are an admin. */
+const editableEvent = ctx => {
+  const event = get('SELECT * FROM events WHERE id = ?', Number(ctx.params.id));
+  if (!event) return ctx.fail(404, 'Event not found.');
+  if (event.created_by !== ctx.user.id && !ctx.user.is_admin) return ctx.fail(403, 'Only its creator or an admin can change this event.');
+  return event;
+};
+
+// ?date= prefills the start date, e.g. for a link from a given day.
+on('GET', '/events/new', ctx => {
+  const date = ctx.url.searchParams.get('date');
+  ctx.html(views.eventPage(ctx.user, { event: { date: isValidDate(date) ? date : '' } }));
+});
+
 on('POST', '/events', ctx => {
-  const title = cleanText(ctx.body.get('title'), 100);
-  const date = ctx.body.get('date');
-  if (!title || !isValidDate(date)) return ctx.fail(400, 'A title and a valid date are required.');
-  run('INSERT INTO events(title, date, created_by, created_at) VALUES (?,?,?,?)', title, date, ctx.user.id, now());
-  ctx.redirect('/?m=' + date.slice(0, 7));
+  const { event, error } = readEventForm(ctx);
+  if (error) return ctx.html(views.eventPage(ctx.user, { event, error }), 400);
+  run(`INSERT INTO events(title, date, end_date, start_time, end_time, color, created_by, created_at)
+       VALUES (?,?,?,?,?,?,?,?)`,
+    event.title, event.date, event.end_date, event.start_time, event.end_time, event.color, ctx.user.id, now());
+  ctx.redirect('/?m=' + event.date.slice(0, 7));
+});
+
+on('GET', '/events/(?<id>\\d+)', ctx => {
+  const event = editableEvent(ctx);
+  if (event) ctx.html(views.eventPage(ctx.user, { event }));
+});
+
+on('POST', '/events/(?<id>\\d+)', ctx => {
+  const existing = editableEvent(ctx);
+  if (!existing) return;
+  const { event, error } = readEventForm(ctx);
+  event.id = existing.id;
+  if (error) return ctx.html(views.eventPage(ctx.user, { event, error }), 400);
+  run(`UPDATE events SET title = ?, date = ?, end_date = ?, start_time = ?, end_time = ?, color = ? WHERE id = ?`,
+    event.title, event.date, event.end_date, event.start_time, event.end_time, event.color, existing.id);
+  ctx.redirect('/?m=' + event.date.slice(0, 7));
 });
 
 // The WHERE clause is the permission check: your own events, or any event if you are an admin.
@@ -312,8 +369,8 @@ on('POST', '/polls/(?<id>\\d+)/confirm', ctx => {
   if (!data.best.includes(date)) return ctx.fail(400, 'Not one of the best dates.');
 
   if (!data.event) tx(() => { // idempotent: events.poll_id is UNIQUE, so a double click adds nothing
-    run('INSERT INTO events(title, date, created_by, poll_id, created_at) VALUES (?,?,?,?,?)',
-      data.poll.title, date, ctx.user.id, pollId, now());
+    run('INSERT INTO events(title, date, end_date, created_by, poll_id, created_at) VALUES (?,?,?,?,?,?)',
+      data.poll.title, date, date, ctx.user.id, pollId, now());
     run('UPDATE polls SET chosen_date = ?, closed_at = COALESCE(closed_at, ?) WHERE id = ?', date, now(), pollId);
   });
   ctx.redirect('/polls/' + pollId);
@@ -467,6 +524,9 @@ on('GET', '/feed/(?<token>[\\w-]+)/events\\.ics', ctx => {
   const items = all('SELECT * FROM events').map(event => ({
     uid: 'event-' + event.id,
     date: event.date,
+    endDate: event.end_date,
+    startTime: event.start_time,
+    endTime: event.end_time,
     summary: event.title,
     stamp: event.created_at,
   }));
