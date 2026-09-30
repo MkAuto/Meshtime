@@ -144,6 +144,7 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 /* too much text makes the cell taller, not wider: wrap, and break words that are longer than the cell */
 .day button { overflow-wrap: anywhere; }
 .events li { margin: .3rem 0; }
+.events li.past { color: var(--muted); } /* its last day is before today */
 
 /* polls */
 .polls li { margin: .4rem 0; } .polls small { color: var(--muted); margin-left: .5rem; }

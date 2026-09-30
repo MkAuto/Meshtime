@@ -148,7 +148,7 @@ green means everyone is free at the same time.</p>
 <form method="dialog"><button class="link">Cancel</button></form></dialog>
 <section><h2>Events this month</h2>
 <p><a class="btn" href="/events/new">Add event</a></p>
-<ul class="events">${events.length ? events.map(event => html`<li>${formatEventWhen(event, user.date_format)} — <b>${event.title}</b> <small class="hint">by ${event.creator}</small>
+<ul class="events">${events.length ? events.map(event => html`<li${event.end_date < today ? raw(' class="past"') : ''}>${formatEventWhen(event, user.date_format)} — <b>${event.title}</b> <small class="hint">by ${event.creator}</small>
 ${event.created_by === user.id || user.is_admin ? html` <a href="/events/${event.id}">edit</a>` : ''}</li>`)
     : html`<li class="hint">No events this month.</li>`}</ul></section>`);
 }
