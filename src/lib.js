@@ -9,17 +9,22 @@ export const today = () => new Date().toISOString().slice(0, 10);
 
 export const isValidMonth = text => /^\d{4}-(0[1-9]|1[0-2])$/.test(text || '');
 
-// A real calendar date within two years of now. Anything else (including junk) is rejected.
+// A real 'YYYY-MM-DD' calendar date, any year. Anything else (including junk) is rejected.
 export function isValidDate(text) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(text || '')) return false;
   const date = new Date(text + 'T00:00:00Z');
-  if (Number.isNaN(date.getTime())) return false;
   // Round-trip check: Date rolls 2026-02-30 forward into March instead of failing.
-  if (date.toISOString().slice(0, 10) !== text) return false;
-  const year = date.getUTCFullYear();
-  const currentYear = new Date().getUTCFullYear();
-  return year >= currentYear - 2 && year <= currentYear + 2;
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === text;
 }
+
+export function birthdayIn(yearMonth, birthday) {
+  if (birthday?.slice(5, 7) !== yearMonth.slice(5)) return null;
+  const date = `${yearMonth}-${birthday.slice(8)}`;
+  return isValidDate(date) ? date : `${yearMonth}-28`;
+}
+
+export const birthdayRrule = birthday =>
+  birthday.endsWith('-02-29') ? 'FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-1' : 'FREQ=YEARLY';
 
 export function addDays(isoDate, days) {
   const date = new Date(isoDate + 'T00:00:00Z');
@@ -227,6 +232,7 @@ export function buildIcs({ name, host, items }) {
       lines.push('DTSTART;VALUE=DATE:' + item.date.replaceAll('-', ''),
         'DTEND;VALUE=DATE:' + addDays(endDate, 1).replaceAll('-', ''));
     }
+    if (item.rrule) lines.push('RRULE:' + item.rrule);
     lines.push('SUMMARY:' + escapeIcsText(item.summary), 'END:VEVENT');
   }
 

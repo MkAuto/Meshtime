@@ -110,7 +110,7 @@ function onPasskeyButton(id, action) {
 }
 
 onPasskeyButton('passkey-add', async () => {
-  const options = await postJson('/settings/passkeys/options');
+  const options = await postJson('/profile/passkeys/options');
   const label = prompt('Name this passkey', 'My device');
   if (label === null) return;
 
@@ -130,7 +130,7 @@ onPasskeyButton('passkey-add', async () => {
   const publicKey = response.getPublicKey();
   if (!publicKey) throw new Error('This browser cannot export the passkey. Try another one.');
 
-  await postJson('/settings/passkeys', {
+  await postJson('/profile/passkeys', {
     id: credential.id,
     publicKey: toBase64url(publicKey),
     alg: response.getPublicKeyAlgorithm(),
@@ -139,7 +139,7 @@ onPasskeyButton('passkey-add', async () => {
     clientDataJSON: toBase64url(response.clientDataJSON),
     authenticatorData: toBase64url(response.getAuthenticatorData()),
   });
-  location.href = '/settings?msg=passkey';
+  location.href = '/profile?msg=passkey';
 });
 
 onPasskeyButton('passkey-login', async () => {

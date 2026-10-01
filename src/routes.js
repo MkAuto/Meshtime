@@ -3,7 +3,7 @@ import * as auth from './auth.js';
 import * as views from './views.js';
 import { logEvent, tailLog, LOG_PATH } from './log.js';
 import { createReadStream, existsSync } from 'node:fs';
-import { isValidDate, isValidMonth, isValidWeekStart, isValidDateFormat, isValidDayPart, eventError, bestDates, buildIcs, today, randomColor, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD, BASE_URL, RP_ID } from './lib.js';
+import { isValidDate, isValidMonth, isValidWeekStart, isValidDateFormat, isValidDayPart, eventError, bestDates, buildIcs, birthdayIn, birthdayRrule, today, randomColor, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD, BASE_URL, RP_ID } from './lib.js';
 
 export const routes = [];
 
@@ -132,7 +132,7 @@ on('POST', '/invite/(?<token>[\\w-]+)', async ctx => {
     if (isReset) {
       run('UPDATE users SET password_hash = ? WHERE id = ?', passwordHash, invite.user_id);
       // A reset is a recovery: log out every device and drop every passkey, so nothing an intruder
-      // planted on the account keeps working. The member re-adds their passkeys in Settings.
+      // planted on the account keeps working. The member re-adds their passkeys in Profile.
       auth.deleteUserSessions(invite.user_id);
       auth.deleteUserCredentials(invite.user_id);
       return invite.user_id;
@@ -171,8 +171,12 @@ on('GET', '/', ctx => {
                       WHERE e.date <= ? AND e.end_date >= ?
                       ORDER BY e.date, e.start_time IS NOT NULL, e.start_time, e.id`, yearMonth + '-31', yearMonth + '-01');
   const members = get('SELECT COUNT(*) AS n FROM users').n; // a day is "everyone free" at this count
+  // Birthdays are not events rows: each one is worked out from users.birthday for the month shown.
+  const birthdays = ctx.user.show_birthdays ? all('SELECT name, color, birthday FROM users WHERE birthday IS NOT NULL')
+    .map(member => ({ name: member.name, color: member.color, date: birthdayIn(yearMonth, member.birthday) }))
+    .filter(member => member.date) : [];
 
-  ctx.html(views.calendarPage(ctx.user, yearMonth, { free, mine, events, today: today(), members }));
+  ctx.html(views.calendarPage(ctx.user, yearMonth, { free, mine, events, birthdays, today: today(), members }));
 });
 
 // Two ways in. A plain click on a day sends no `part` and toggles it: try the delete first, insert
@@ -378,14 +382,7 @@ on('POST', '/polls/(?<id>\\d+)/confirm', ctx => {
 
 // ---- settings ----
 
-const settingsData = (ctx, extra = {}) => ({
-  base: BASE_URL,
-  msg: ctx.url.searchParams.get('msg'),
-  passkeys: auth.userCredentials(ctx.user.id),
-  ...extra,
-});
-
-on('GET', '/settings', ctx => ctx.html(views.settingsPage(ctx.user, settingsData(ctx))));
+on('GET', '/settings', ctx => ctx.html(views.settingsPage(ctx.user, { base: BASE_URL, msg: ctx.url.searchParams.get('msg') })));
 
 on('POST', '/settings/rotate-feed', ctx => {
   run('UPDATE users SET feed_token = ? WHERE id = ?', auth.token(), ctx.user.id);
@@ -393,30 +390,50 @@ on('POST', '/settings/rotate-feed', ctx => {
   ctx.redirect('/settings?msg=rotated');
 });
 
-on('POST', '/settings/color', ctx => {
-  const color = Number(ctx.body.get('color'));
-  if (!Number.isInteger(color) || color < 0 || color >= COLORS) return ctx.fail(400, 'Invalid color.');
-  run('UPDATE users SET color = ? WHERE id = ?', color, ctx.user.id);
-  ctx.redirect('/settings?msg=color');
-});
-
-on('POST', '/settings/week-start', ctx => {
+// The whole Customisation panel is one form: every value is checked before any is saved.
+on('POST', '/settings/customisation', ctx => {
   const weekStart = Number(ctx.body.get('week_start'));
-  if (!isValidWeekStart(weekStart)) return ctx.fail(400, 'Invalid first day of the week.');
-  run('UPDATE users SET week_start = ? WHERE id = ?', weekStart, ctx.user.id);
-  ctx.redirect('/settings?msg=week_start');
-});
-
-on('POST', '/settings/date-format', ctx => {
   const dateFormat = ctx.body.get('date_format');
+  const showBirthdays = ctx.body.get('show_birthdays') === '1' ? 1 : 0; // an unchecked checkbox posts nothing: hide
+  if (!isValidWeekStart(weekStart)) return ctx.fail(400, 'Invalid first day of the week.');
   if (!isValidDateFormat(dateFormat)) return ctx.fail(400, 'Invalid date format.');
-  run('UPDATE users SET date_format = ? WHERE id = ?', dateFormat, ctx.user.id);
-  ctx.redirect('/settings?msg=date_format');
+  run('UPDATE users SET week_start = ?, date_format = ?, show_birthdays = ? WHERE id = ?',
+    weekStart, dateFormat, showBirthdays, ctx.user.id);
+  ctx.redirect('/settings?msg=customisation');
 });
 
-on('POST', '/settings/password', async ctx => {
+// ---- profile: who you are (name, birthday, color) and how you log in ----
+
+const profileData = (ctx, extra = {}) => ({
+  msg: ctx.url.searchParams.get('msg'),
+  passkeys: auth.userCredentials(ctx.user.id),
+  ...extra,
+});
+
+on('GET', '/profile', ctx => ctx.html(views.profilePage(ctx.user, profileData(ctx))));
+
+// The whole About me panel is one form: every value is checked before any is saved.
+// The name is also the login, so it stays unique (users.name is COLLATE NOCASE). Changing only
+// your own capitalisation is allowed, hence `id != ?`. An empty birthday clears it; no future dates
+// (the input's max says the same to the browser).
+on('POST', '/profile/about', ctx => {
+  const name = cleanText(ctx.body.get('name'), 40);
+  const birthday = ctx.body.get('birthday') || '';
+  const color = Number(ctx.body.get('color'));
+  const reject = error => ctx.html(views.profilePage(ctx.user, profileData(ctx, { error })), 400);
+  if (!name) return reject('Name is required.');
+  if (get('SELECT 1 FROM users WHERE name = ? AND id != ?', name, ctx.user.id)) return reject('That name is already taken.');
+  if (birthday && !(isValidDate(birthday) && birthday <= today())) return ctx.fail(400, 'Invalid birthday.');
+  if (!Number.isInteger(color) || color < 0 || color >= COLORS) return ctx.fail(400, 'Invalid color.');
+  run('UPDATE users SET name = ?, birthday = ?, color = ? WHERE id = ?', name, birthday || null, color, ctx.user.id);
+  // Logged under the old name, so the log links the two.
+  if (name !== ctx.user.name) logUser(ctx, `name changed to ${JSON.stringify(name)}`);
+  ctx.redirect('/profile?msg=about');
+});
+
+on('POST', '/profile/password', async ctx => {
   const newPassword = ctx.body.get('password') || '';
-  const reject = error => ctx.html(views.settingsPage(ctx.user, settingsData(ctx, { error })), 400);
+  const reject = error => ctx.html(views.profilePage(ctx.user, profileData(ctx, { error })), 400);
   if (!(await auth.verifyPassword(ctx.body.get('current') || '', ctx.user.password_hash)))
     return reject('Current password is wrong.');
   if (newPassword.length < MIN_PASSWORD) return reject(`New password must be at least ${MIN_PASSWORD} characters.`);
@@ -426,12 +443,12 @@ on('POST', '/settings/password', async ctx => {
   auth.deleteUserSessions(ctx.user.id);
   ctx.setCookie('sid', auth.createSession(ctx.user.id), auth.SESSION_SECONDS);
   logUser(ctx, 'password changed');
-  ctx.redirect('/settings?msg=password');
+  ctx.redirect('/profile?msg=password');
 });
 
 // The user handle for the discoverable credential is the numeric user id: opaque, stable, no PII.
 // excludeCredentials stops one authenticator from registering itself against the same account twice.
-on('POST', '/settings/passkeys/options', ctx => ctx.json({
+on('POST', '/profile/passkeys/options', ctx => ctx.json({
   challenge: auth.createChallenge(),
   rpId: RP_ID,
   userId: String(ctx.user.id),
@@ -439,7 +456,7 @@ on('POST', '/settings/passkeys/options', ctx => ctx.json({
   exclude: auth.userCredentials(ctx.user.id).map(credential => credential.id),
 }));
 
-on('POST', '/settings/passkeys', ctx => {
+on('POST', '/profile/passkeys', ctx => {
   const challenge = ctx.body.get('challenge') || '';
   const label = cleanText(ctx.body.get('label'), 40) || 'Passkey';
   const added = auth.consumeChallenge(challenge) && auth.addCredential({
@@ -457,10 +474,10 @@ on('POST', '/settings/passkeys', ctx => {
 });
 
 // A plain form, so removing a passkey works with JS off.
-on('POST', '/settings/passkeys/delete', ctx => {
+on('POST', '/profile/passkeys/delete', ctx => {
   // Only logged when a row actually went: a stale form for an already removed passkey is not an event.
   if (auth.deleteCredential(ctx.body.get('id') || '', ctx.user.id).changes) logUser(ctx, 'passkey removed');
-  ctx.redirect('/settings?msg=passkey_removed');
+  ctx.redirect('/profile?msg=passkey_removed');
 });
 
 // ---- administration ----
@@ -517,6 +534,8 @@ on('POST', '/admin/members/(?<id>\\d+)/delete', ctx => {
 });
 
 // ---- ICS feeds: the only unauthenticated data routes; the token in the URL is the credential ----
+const ICS_HEADERS = { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'private, no-cache' };
+
 on('GET', '/feed/(?<token>[\\w-]+)/events\\.ics', ctx => {
   if (!get('SELECT 1 FROM users WHERE feed_token = ?', ctx.params.token)) return ctx.fail(404, 'Not found.');
   const host = new URL(BASE_URL).host;
@@ -531,6 +550,18 @@ on('GET', '/feed/(?<token>[\\w-]+)/events\\.ics', ctx => {
     stamp: event.created_at,
   }));
 
-  ctx.text(buildIcs({ name: 'Meshtime · Events', host, items }), 200,
-    { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'private, no-cache' });
+  ctx.text(buildIcs({ name: 'Meshtime · Events', host, items }), 200, ICS_HEADERS);
+}, true);
+
+// One yearly recurring all-day event per member who gave a birthday, starting on the birthday itself.
+on('GET', '/feed/(?<token>[\\w-]+)/birthdays\\.ics', ctx => {
+  if (!get('SELECT 1 FROM users WHERE feed_token = ?', ctx.params.token)) return ctx.fail(404, 'Not found.');
+  const items = all('SELECT id, name, birthday, created_at FROM users WHERE birthday IS NOT NULL').map(member => ({
+    uid: 'birthday-' + member.id,
+    date: member.birthday,
+    rrule: birthdayRrule(member.birthday),
+    summary: `🎉 ${member.name}'s birthday`,
+    stamp: member.created_at,
+  }));
+  ctx.text(buildIcs({ name: 'Meshtime · Birthdays', host: new URL(BASE_URL).host, items }), 200, ICS_HEADERS);
 }, true);

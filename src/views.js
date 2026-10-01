@@ -40,27 +40,28 @@ export const html = (strings, ...values) =>
 /** "Ada Lovelace" -> "AL". Shown in calendar cells and as the color swatch. */
 const initials = name => name.trim().split(/\s+/).map(word => word[0]).join('').slice(0, 2).toUpperCase();
 
-// Confirmations, keyed by the ?msg= value the settings routes redirect with.
+// Confirmations, keyed by the ?msg= value the settings and profile routes redirect with.
 const MSGS = {
   rotated: 'Feed links rotated. Re-subscribe in your calendar apps.',
   password: 'Password changed.',
   invite: 'Link created (see below).',
-  color: 'Color saved.',
-  week_start: 'First day of the week saved.',
-  date_format: 'Date format saved.',
+  about: 'Profile saved.',
+  customisation: 'Customisation saved.',
   passkey: 'Passkey added.',
   passkey_removed: 'Passkey removed.',
   removed: 'Member removed. Their sessions, passkeys and feed links no longer work.',
 };
 
-/** The ?msg= confirmation and the inline error line, shared by Settings and Administration. */
+/** The ?msg= confirmation and the inline error line, shared by Settings, Profile and Administration. */
 const notices = (msg, error) => html`${MSGS[msg] && html`<p class="ok">${MSGS[msg]}</p>`}${error && html`<p class="err">${error}</p>`}`;
 
-/** Page shell: head, header with nav (only when logged in), and the body inside <main>. */
+/** Page shell: head, header with nav (only when logged in), and the body inside <main>.
+ *  On a phone the nav is a native popover: the ☰ button (top left) opens it as a left side panel, a tap outside
+ *  or Esc closes it, no JS. On wider screens style.css shows it inline and hides the button. */
 export function layout(title, user, body) {
   return '<!doctype html>' + html`<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title} · Meshtime</title><link rel="stylesheet" href="${STYLE_URL}"><script src="${SCRIPT_URL}" defer></script></head><body>
-<header><a href="/" class="brand">Meshtime</a>${user ? html`<nav><a href="/">Calendar</a><a href="/polls">Polls</a><a href="/settings">Settings</a>${user.is_admin ? html`<a href="/admin">Administration</a>` : ''}
+<header>${user ? html`<button class="menu-btn" popovertarget="menu" aria-label="Menu">☰</button>` : ''}<a href="/" class="brand">Meshtime</a>${user ? html`<nav id="menu" popover><a href="/">Calendar</a><a href="/polls">Polls</a><a href="/profile">Profile</a><a href="/settings">Settings</a>${user.is_admin ? html`<a href="/admin">Administration</a>` : ''}
 <form method="post" action="/logout"><button class="link">Log out (${user.name})</button></form></nav>` : ''}</header>
 <main>${body}</main></body></html>`.s;
 }
@@ -93,7 +94,7 @@ const PART_LABELS = { all: 'all day', am: 'morning', pm: 'afternoon', eve: 'even
 // The long-press / double-click menu: each button posts its value as `part` to /free.
 const PART_CHOICES = { all: 'All day', am: 'Morning (AM)', pm: 'Afternoon (PM)', eve: 'Evening', none: 'Not free' };
 
-export function calendarPage(user, yearMonth, { free, mine, events, today, members }) {
+export function calendarPage(user, yearMonth, { free, mine, events, birthdays, today, members }) {
   const month = monthInfo(yearMonth, user.week_start);
   const lanes = eventLanes(events);
 
@@ -109,6 +110,7 @@ export function calendarPage(user, yearMonth, { free, mine, events, today, membe
     const bars = [];
     for (const event of dayEvents) if (lanes.has(event.id)) bars[lanes.get(event.id)] = event;
     const oneDay = dayEvents.filter(event => !lanes.has(event.id));
+    const dayBirthdays = birthdays.filter(member => member.date === date);
     // A bar is labelled where it starts, and again on day 1 and at the start of each week row.
     const column = (month.pad + day - 1) % 7;
     const startsRow = day === 1 || column === 0;
@@ -131,14 +133,15 @@ ${who.length ? html`<span class="who">${who.map(member => html`<span class="c${m
     // .from / .to: the bar carries on from yesterday / into tomorrow, so that side is square and joins the next cell
     ? html`<span class="ev bar${evColor(event)}${event.date < date ? ' from' : ''}${date < event.end_date ? ' to' : ''}" title="${tooltip(event)}">${event.date === date || startsRow ? html`<span class="ev-text run-${run(event)}">${label(event)}</span>` : raw('&nbsp;')}</span>`
     : html`<span class="ev bar gap">&nbsp;</span>`)}
+${dayBirthdays.map(member => html`<span class="ev colored c${member.color}" title="${member.name}'s birthday">🎉 ${member.name}'s birthday</span>`)}
 ${oneDay.map(event => html`<span class="ev${evColor(event)}" title="${tooltip(event)}">${label(event)}</span>`)}</span></button></form></div>`);
   }
 
   return layout(month.label, user, html`
 <h1><a href="/?m=${month.prev}" title="Previous month">&lsaquo;</a> ${month.label} <a href="/?m=${month.next}" title="Next month">&rsaquo;</a></h1>
-<p class="hint">Click a day to mark yourself free all day (outlined). For only the morning, afternoon or evening,
+<details class="hint"><summary>How to use</summary>Click a day to mark yourself free all day (outlined). For only the morning, afternoon or evening,
 hold the day on a phone or double-click it on a computer. Initials show who is free (<sup>am</sup> / <sup>pm</sup> / <sup>eve</sup> for part of the day);
-green means everyone is free at the same time.</p>
+green means everyone is free at the same time.</details>
 <div class="grid">${weekdayNames(user.week_start).map(name => html`<div class="dow">${name}</div>`)}${cells}</div>
 <dialog id="day-part" aria-labelledby="day-part-title"><form method="post" action="/free">
 <h2 id="day-part-title"></h2>
@@ -229,17 +232,19 @@ ${isOpen && canManage ? html`<p><form method="post" action="/polls/${poll.id}/cl
 
 // ---- settings ----
 
-export function settingsPage(user, { base, passkeys, msg, error }) {
+export function settingsPage(user, { base, msg }) {
   const feedUrl = `${base}/feed/${user.feed_token}/events.ics`;
   // webcal:// makes desktop calendar apps subscribe instead of downloading the file once.
-  const webcalUrl = feedUrl.replace(/^https?:\/\//, 'webcal://');
+  const webcal = url => url.replace(/^https?:\/\//, 'webcal://');
+  const birthdaysUrl = `${base}/feed/${user.feed_token}/birthdays.ics`;
 
   // Each panel is a <details>: collapsing is native, needs no JS and survives with JS off.
   // ponytail: all closed on load; remembering which you opened would need localStorage.
-  return layout('Settings', user, html`<h1>Settings</h1>${notices(msg, error)}
+  return layout('Settings', user, html`<h1>Settings</h1>${notices(msg)}
 <details class="panel panel-feeds"><summary><h2>Calendar feeds</h2></summary>
 <p class="hint">Private link: anyone who has it can read it. Rotating it requires re-subscribing.</p>
-<ul class="feeds"><li><b>Group events</b><br><code>${feedUrl}</code><br><a href="${webcalUrl}">webcal link (Apple / Outlook desktop)</a></li></ul>
+<ul class="feeds"><li><b>Group events</b><br><code>${feedUrl}</code><br><a href="${webcal(feedUrl)}">webcal link (Apple / Outlook desktop)</a></li>
+<li><b>Birthdays</b> (repeat every year)<br><code>${birthdaysUrl}</code><br><a href="${webcal(birthdaysUrl)}">webcal link (Apple / Outlook desktop)</a></li></ul>
 <details><summary>How to subscribe</summary><ul>
 <li><b>Google Calendar</b> (web): Other calendars → + → From URL → paste the https link. Google refreshes every 12–24 h and cannot be forced.</li>
 <li><b>Apple Calendar</b>: click the webcal link, or File → New Calendar Subscription. Choose a short auto-refresh interval.</li>
@@ -247,35 +252,44 @@ export function settingsPage(user, { base, passkeys, msg, error }) {
 <form method="post" action="/settings/rotate-feed"><button class="danger">Rotate feed links</button></form></details>
 
 <details class="panel panel-custom"><summary><h2>Customisation</h2></summary>
-<h3>My color</h3>
-<p class="hint">Your initials appear in this color on every day you mark yourself free.</p>
-<form method="post" action="/settings/color" class="row">
-<b class="c${user.color} swatch" id="swatch" title="Preview">${initials(user.name)}</b>
-<input type="range" name="color" class="hue" min="0" max="${COLORS - 1}" value="${user.color}" aria-label="Color">
-<button>Save color</button></form>
+<form method="post" action="/settings/customisation">
 <h3>First day of the week</h3>
-<p class="hint">The leftmost column of your calendar grid.</p>
-<form method="post" action="/settings/week-start" class="row">
 <select name="week_start" aria-label="First day of the week">${WEEK_START_CHOICES.map(day =>
     html`<option value="${day}"${day === user.week_start ? raw(' selected') : ''}>${WEEKDAYS[day]}</option>`)}</select>
-<button>Save first day</button></form>
 <h3>Date format</h3>
-<p class="hint">How dates are written across the app. Each choice shows today's date.</p>
-<form method="post" action="/settings/date-format" class="row">
 <select name="date_format" aria-label="Date format">${Object.keys(DATE_FORMATS).map(key =>
     html`<option value="${key}"${key === user.date_format ? raw(' selected') : ''}>${formatDate(today(), key)}</option>`)}</select>
-<button>Save date format</button></form></details>
+<h3>Birthdays</h3>
+<label><input type="checkbox" name="show_birthdays" value="1"${user.show_birthdays ? raw(' checked') : ''}> Show birthdays on my calendar</label>
+<p><button>Save</button></p></form></details>`);
+}
+
+// ---- profile ----
+
+// "About me" starts open: it is why you came here. Security stays folded like the settings panels.
+export function profilePage(user, { passkeys, msg, error }) {
+  return layout('Profile', user, html`<h1>Profile</h1>${notices(msg, error)}
+<details class="panel panel-profile" open><summary><h2>About me</h2></summary>
+<form method="post" action="/profile/about">
+<h3>Name</h3>
+<input name="name" required maxlength="40" value="${user.name}" aria-label="Name" autocomplete="username">
+<h3>Birthday</h3>
+<input type="date" name="birthday" value="${user.birthday ?? ''}" max="${today()}" aria-label="Birthday">
+<h3>My color</h3>
+<div class="row"><b class="c${user.color} swatch" id="swatch" title="Preview">${initials(user.name)}</b>
+<input type="range" name="color" class="hue" min="0" max="${COLORS - 1}" value="${user.color}" aria-label="Color"></div>
+<p><button>Save</button></p></form></details>
 
 <details class="panel panel-security"><summary><h2>Security</h2></summary>
 <h3>Change password</h3>
-<form method="post" action="/settings/password" class="stack">
+<form method="post" action="/profile/password" class="stack">
 <label>Current password <input name="current" type="password" required autocomplete="current-password"></label>
 <label>New password (min ${MIN_PASSWORD}) <input name="password" type="password" required minlength="${MIN_PASSWORD}" autocomplete="new-password"></label>
 <button>Change password</button></form>
 <h3>Passkeys</h3>
 <p class="hint">Log in with your fingerprint, face or device PIN instead of typing a password. Your password keeps working.</p>
 <ul>${passkeys.length ? passkeys.map(passkey => html`<li>${passkey.label} <small class="hint">added ${formatDate(passkey.created_at.slice(0, 10), user.date_format)}</small>
- <form method="post" action="/settings/passkeys/delete" class="inline"><input type="hidden" name="id" value="${passkey.id}"><button class="link danger">remove</button></form></li>`)
+ <form method="post" action="/profile/passkeys/delete" class="inline"><input type="hidden" name="id" value="${passkey.id}"><button class="link danger">remove</button></form></li>`)
     : html`<li class="hint">No passkeys yet.</li>`}</ul>
 <p id="passkey-add" hidden><button class="btn">Add a passkey</button> <span class="err"></span></p>
 <noscript class="hint">Adding a passkey needs JavaScript.</noscript></details>`);

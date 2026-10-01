@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
-import { isValidDate, isValidTime, eventError, formatEventWhen, eventLanes, isValidWeekStart, formatDate, isValidDateFormat, bestDates, fold, buildIcs, dayClass, monthInfo, weekdayNames, MAX_DATES, verifyWebAuthn, RP_ID, ORIGIN } from './src/lib.js';
+import { isValidDate, birthdayIn, birthdayRrule, isValidTime, eventError, formatEventWhen, eventLanes, isValidWeekStart, formatDate, isValidDateFormat, bestDates, fold, buildIcs, dayClass, monthInfo, weekdayNames, MAX_DATES, verifyWebAuthn, RP_ID, ORIGIN } from './src/lib.js';
 import { newPollPage, pollPage, eventPage } from './src/views.js';
 
 const thisYear = new Date().getUTCFullYear();
@@ -11,7 +11,7 @@ test('isValidDate', () => {
   assert.equal(isValidDate(`${thisYear}-02-30`), false);
   assert.equal(isValidDate(`${thisYear}-13-01`), false);
   assert.equal(isValidDate(`${thisYear}-2-1`), false);
-  assert.equal(isValidDate(`${thisYear + 3}-01-01`), false);
+  assert.equal(isValidDate(`${thisYear + 30}-01-01`), true, 'any year');
   assert.equal(isValidDate(undefined), false);
   assert.equal(isValidDate("2026-01-01' OR 1=1"), false);
 });
@@ -296,4 +296,31 @@ test('login limiter is keyed per client and per account, not global', async () =
   assert.equal(loginAllowed('10.0.0.99', 'bob'), false, 'a targeted account locks across clients');
   assert.equal(loginAllowed('10.0.0.99', 'Bob'), false, 'case-insensitive, like the name column');
   assert.equal(loginAllowed('10.0.0.99', 'carol'), true);
+});
+
+test('isValidDate: old dates and leap days (birthdays)', () => {
+  assert.ok(isValidDate('1990-05-17'));
+  assert.ok(isValidDate('2000-02-29'));
+  assert.ok(!isValidDate('1990-02-30'));
+  assert.ok(!isValidDate('1990-5-17'));
+  assert.ok(!isValidDate(''));
+});
+
+test('eventError accepts any year, birthdayIn places a birthday in a month', () => {
+  assert.equal(eventError({ date: '2040-06-01' }), null);
+  assert.equal(eventError({ date: '1999-12-31', endDate: '2000-01-02' }), null);
+  assert.equal(birthdayIn('2026-05', '1990-05-17'), '2026-05-17');
+  assert.equal(birthdayIn('2026-06', '1990-05-17'), null);
+  assert.equal(birthdayIn('2026-02', '2000-02-29'), '2026-02-28', 'Feb 29 falls on the 28th in other years');
+  assert.equal(birthdayIn('2028-02', '2000-02-29'), '2028-02-29');
+  assert.equal(birthdayIn('2026-05', null), null);
+});
+
+test('buildIcs: yearly birthday RRULE', () => {
+  const ics = buildIcs({ name: 'B', host: 'h', items: [
+    { uid: 'birthday-1', date: '2000-02-29', rrule: birthdayRrule('2000-02-29'), summary: '🎉 Ada', stamp: '2026-01-01T00:00:00Z' },
+    { uid: 'birthday-2', date: '1990-05-17', rrule: birthdayRrule('1990-05-17'), summary: '🎉 Bob', stamp: '2026-01-01T00:00:00Z' },
+  ] });
+  assert.ok(ics.includes('DTSTART;VALUE=DATE:20000229\r\nDTEND;VALUE=DATE:20000301\r\nRRULE:FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-1\r\n'));
+  assert.ok(ics.includes('DTSTART;VALUE=DATE:19900517\r\nDTEND;VALUE=DATE:19900518\r\nRRULE:FREQ=YEARLY\r\n'));
 });

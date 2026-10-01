@@ -36,7 +36,9 @@ CREATE TABLE IF NOT EXISTS users(
   created_at TEXT NOT NULL,
   color INTEGER NOT NULL DEFAULT 0,
   week_start INTEGER NOT NULL DEFAULT 0, -- first day of the week in the calendar grid, 0 = Sunday
-  date_format TEXT NOT NULL DEFAULT '${DEFAULT_DATE_FORMAT}'); -- a DATE_FORMATS key in src/lib.js
+  date_format TEXT NOT NULL DEFAULT '${DEFAULT_DATE_FORMAT}', -- a DATE_FORMATS key in src/lib.js
+  birthday TEXT, -- 'YYYY-MM-DD', NULL = not given
+  show_birthdays INTEGER NOT NULL DEFAULT 1); -- 0 hides everyone's birthdays from this member's calendar
 
 -- single-use links. user_id set => password reset for that user, otherwise a new-account invite.
 CREATE TABLE IF NOT EXISTS invites(
@@ -142,6 +144,10 @@ if (!freeDaysSql.includes(PART_CHECK)) {
 // DBs created before the date-format setting existed: everyone gets the default.
 if (!userColumns.includes('date_format'))
   db.exec(`ALTER TABLE users ADD COLUMN date_format TEXT NOT NULL DEFAULT '${DEFAULT_DATE_FORMAT}'`);
+
+// DBs created before the profile page existed: nobody has given a birthday yet.
+if (!userColumns.includes('birthday')) db.exec('ALTER TABLE users ADD COLUMN birthday TEXT');
+if (!userColumns.includes('show_birthdays')) db.exec('ALTER TABLE users ADD COLUMN show_birthdays INTEGER NOT NULL DEFAULT 1');
 
 // DBs created before times and multi-day events existed: every event was one whole day.
 const eventColumns = db.prepare('PRAGMA table_info(events)').all().map(column => column.name);

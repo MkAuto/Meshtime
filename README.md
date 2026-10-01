@@ -4,7 +4,7 @@ A small self-hosted web app for a group of friends:
 
 - **Calendar**: click a day to say you're free. Everyone's free days are overlaid, and the group can add events.
 - **Polls**: propose a few dates, everyone answers yes / maybe / no. When everyone has answered (or the creator closes it), the best date is shown with an **Add to calendar** button.
-- **Passkeys**: add one in Settings and log in with a fingerprint, face or device PIN instead of a password.
+- **Passkeys**: add one in Profile and log in with a fingerprint, face or device PIN instead of a password.
 - **Calendar feeds**: each member gets private ICS links to subscribe from Google Calendar, Apple Calendar or Outlook. No OAuth, no API keys.
 
 Zero npm dependencies: Node 26 built-ins only (`node:http`, `node:sqlite`, `node:crypto`) — passkeys included.
@@ -16,7 +16,7 @@ node --version   # >= 24
 npm start        # http://localhost:3000, database in ./data/app.db
 ```
 
-On first start the console prints a one-time **admin invite link**. Open it, pick a name and password. Then go to **Administration → Create invite link** to invite friends (links last 7 days, single use). The Administration page is only shown to admins; Settings is for everyone and holds calendar feeds, your color and your passkeys.
+On first start the console prints a one-time **admin invite link**. Open it, pick a name and password. Then go to **Administration → Create invite link** to invite friends (links last 7 days, single use). The Administration page is only shown to admins; Profile holds your name, birthday, color, password and passkeys; Settings holds calendar feeds and display preferences.
 
 ```sh
 npm test         # unit tests for date validation, poll ranking, ICS output, passkey verification
@@ -43,7 +43,7 @@ Environment variables: `BASE_URL` (public https URL, required behind a proxy), `
 
 ## Subscribing to the feeds
 
-Settings shows one link per member: **Group events**.
+Settings shows two links per member: **Group events**, and **Birthdays** (each member's birthday from their Profile, repeating every year).
 
 | App | How | Refresh |
 |---|---|---|
@@ -55,7 +55,7 @@ Anyone with the link can read the feed. **Rotate feed links** in Settings invali
 
 ## Forgot password
 
-An admin opens **Administration** → Members → *create reset-password link* and sends it to the member. Using it logs out every device and removes the member's passkeys, so anything an intruder left on the account stops working; passkeys are re-added in Settings.
+An admin opens **Administration** → Members → *create reset-password link* and sends it to the member. Using it logs out every device and removes the member's passkeys, so anything an intruder left on the account stops working; passkeys are re-added in Profile.
 
 ## Removing a member
 
