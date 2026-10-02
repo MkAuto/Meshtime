@@ -2,24 +2,26 @@
 
 A small self-hosted web app for a group of friends:
 
-- **Calendar**: click a day to say you're free. Everyone's free days are overlaid, and the group can add events.
+- **Calendar**: click a day to say you're free (hold it on a phone, or double-click it, for just the morning, afternoon or evening). Everyone's free days are overlaid, and the group can add events: all day or with times, over one day or several, in a color of their choice.
 - **Polls**: propose a few dates, everyone answers yes / maybe / no. When everyone has answered (or the creator closes it), the best date is shown with an **Add to calendar** button.
+- **Birthdays**: give yours in Profile and it shows on everyone's calendar every year (each member can hide them in Settings).
 - **Passkeys**: add one in Profile and log in with a fingerprint, face or device PIN instead of a password.
 - **Calendar feeds**: each member gets private ICS links to subscribe from Google Calendar, Apple Calendar or Outlook. No OAuth, no API keys.
 
-Zero npm dependencies: Node 26 built-ins only (`node:http`, `node:sqlite`, `node:crypto`) — passkeys included.
+One npm dependency, [`mustache`](https://github.com/janl/mustache.js) for the HTML templates in `src/templates/`. Everything else is Node built-ins (`node:http`, `node:sqlite`, `node:crypto`), passkeys included.
 
 ## Run locally
 
 ```sh
 node --version   # >= 24
+npm install      # once, and again after pulling a change to package.json
 npm start        # http://localhost:3000, database in ./data/app.db
 ```
 
 On first start the console prints a one-time **admin invite link**. Open it, pick a name and password. Then go to **Administration → Create invite link** to invite friends (links last 7 days, single use). The Administration page is only shown to admins; Profile holds your name, birthday, color, password and passkeys; Settings holds calendar feeds and display preferences.
 
 ```sh
-npm test         # unit tests for date validation, poll ranking, ICS output, passkey verification
+npm test         # unit tests: date and event validation, poll ranking, ICS output, passkey verification, page rendering
 ```
 
 ## Deploy with Docker + HTTPS
@@ -68,5 +70,5 @@ An admin opens **Administration** → Members → *create reset-password link* a
 - Passkeys are bound to `BASE_URL`. Reaching the app on a LAN IP or a different hostname offers password login only — that origin check is the spec's anti-phishing guarantee and is deliberately strict.
 - Every POST must come from the app's own origin (CSRF), bodies are capped at 16 KB, all SQL is parameterized, all output is HTML-escaped.
 - Strict `Content-Security-Policy`, `X-Content-Type-Options`, `Referrer-Policy`; HSTS is set by Caddy.
-- Login is rate-limited per client address (20 failures per 15 minutes) and per account (10), with a global backstop of 500, so one stranger cannot lock everyone out. Behind Caddy the address comes from , trusted only when . The feed links are the only unauthenticated routes.
+- Login is rate-limited per client address (20 failures per 15 minutes) and per account (10), with a global backstop of 500. The feed links are the only unauthenticated routes.
 - The container runs as the unprivileged `node` user.
