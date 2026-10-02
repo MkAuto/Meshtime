@@ -112,14 +112,18 @@ export const deleteUserCredentials = userId => run('DELETE FROM credentials WHER
 /** Stores a new passkey after checking the registration is genuine. False if it is not. */
 export function addCredential({ userId, id, publicKey, alg, label, clientDataJSON, authenticatorData, challenge }) {
   // An authenticator whose key the browser could not export is useless: it could never log in.
-  if (!id || !publicKey || !COSE_ALGS.includes(alg)) return false;
+  if (!id || !publicKey || !COSE_ALGS.includes(alg)) {
+    return false;
+  }
   const ok = verifyWebAuthn({
     clientDataJSON: fromBase64url(clientDataJSON),
     authenticatorData: fromBase64url(authenticatorData),
     type: 'webauthn.create',
     challenge,
   });
-  if (!ok) return false;
+  if (!ok) {
+    return false;
+  }
   run('INSERT INTO credentials(id, user_id, public_key, alg, label, created_at) VALUES (?,?,?,?,?,?)',
     id, userId, publicKey, alg, label, now());
   return true;
@@ -128,7 +132,9 @@ export function addCredential({ userId, id, publicKey, alg, label, clientDataJSO
 /** The user a login assertion proves, or undefined if the passkey is unknown or the signature is bad. */
 export function credentialUser({ id, clientDataJSON, authenticatorData, signature, challenge }) {
   const credential = get('SELECT * FROM credentials WHERE id = ?', id);
-  if (!credential) return undefined;
+  if (!credential) {
+    return undefined;
+  }
   const ok = verifyWebAuthn({
     clientDataJSON: fromBase64url(clientDataJSON),
     authenticatorData: fromBase64url(authenticatorData),
@@ -161,7 +167,13 @@ export const loginAllowed = (ip, account = '') =>
   keysFor(ip, account).every(([kind, key]) => recent(key).length < LIMITS[kind]);
 
 export function loginFailed(ip, account = '') {
-  for (const [, key] of keysFor(ip, account)) failures.set(key, [...recent(key), Date.now()]);
+  for (const [, key] of keysFor(ip, account)) {
+    failures.set(key, [...recent(key), Date.now()]);
+  }
   // Drop keys whose failures have all aged out, so the map does not grow forever.
-  for (const [key, at] of failures) if (!at.some(t => t > Date.now() - WINDOW_MS)) failures.delete(key);
+  for (const [key, at] of failures) {
+    if (!at.some(t => t > Date.now() - WINDOW_MS)) {
+      failures.delete(key);
+    }
+  }
 }

@@ -3,7 +3,10 @@ import * as auth from './auth.js';
 import * as views from './views.js';
 import { logEvent, tailLog, LOG_PATH } from './log.js';
 import { createReadStream, existsSync } from 'node:fs';
-import { isValidDate, isValidMonth, isValidWeekStart, isValidDateFormat, isValidDayPart, eventError, bestDates, buildIcs, birthdayIn, birthdayRrule, today, randomColor, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD, BASE_URL, RP_ID } from './lib.js';
+import {
+  isValidDate, isValidMonth, isValidWeekStart, isValidDateFormat, isValidDayPart, eventError, bestDates, buildIcs,
+  birthdayIn, birthdayRrule, today, randomColor, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD, BASE_URL, RP_ID,
+} from './lib.js';
 
 export const routes = [];
 
@@ -56,8 +59,12 @@ on('POST', '/login', async ctx => {
 
 on('POST', '/logout', ctx => {
   // No ctx.user means the session was already gone, and server.js logged that as a timeout.
-  if (ctx.user) logUser(ctx, 'logout');
-  if (ctx.sid) auth.deleteSession(ctx.sid);
+  if (ctx.user) {
+    logUser(ctx, 'logout');
+  }
+  if (ctx.sid) {
+    auth.deleteSession(ctx.sid);
+  }
   ctx.setCookie('sid', '', 0);
   ctx.redirect('/login');
 }, true);
@@ -68,7 +75,9 @@ on('POST', '/logout', ctx => {
 
 // Issuing a challenge is only gated per client, so a stranger's failures never hide the passkey button.
 on('POST', '/login/passkey/options', ctx => {
-  if (auth.loginAllowed(ctx.ip)) return ctx.json({ challenge: auth.createChallenge(), rpId: RP_ID });
+  if (auth.loginAllowed(ctx.ip)) {
+    return ctx.json({ challenge: auth.createChallenge(), rpId: RP_ID });
+  }
   logEvent({ ip: ctx.ip, action: BANNED }); // no passkey chosen yet, so no user to name
   ctx.json({ error: TOO_MANY }, 429);
 }, true);
@@ -77,7 +86,8 @@ on('POST', '/login/passkey', ctx => {
   const credentialId = ctx.body.get('id') || '';
   const owner = auth.credentialOwner(credentialId);
   // An unknown passkey has no member behind it: log a short prefix of its id instead.
-  const log = action => logEvent({ ip: ctx.ip, user: owner ?? 'passkey ' + credentialId.slice(0, 16), known: Boolean(owner), action });
+  const logName = owner ?? 'passkey ' + credentialId.slice(0, 16);
+  const log = action => logEvent({ ip: ctx.ip, user: logName, known: Boolean(owner), action });
   if (!auth.loginAllowed(ctx.ip, credentialId)) {
     log(BANNED);
     return ctx.json({ error: TOO_MANY }, 429);
@@ -107,28 +117,40 @@ const INVITE_GONE = 'This link is invalid, used, or expired.';
 
 on('GET', '/invite/(?<token>[\\w-]+)', ctx => {
   const invite = auth.getInvite(ctx.params.token);
-  if (!invite) return ctx.fail(410, INVITE_GONE);
+  if (!invite) {
+    return ctx.fail(410, INVITE_GONE);
+  }
   ctx.html(views.invitePage(invite.token, invite.user_name));
 }, true);
 
 // One form, two jobs: with invite.user_id it resets that user's password, otherwise it creates an account.
 on('POST', '/invite/(?<token>[\\w-]+)', async ctx => {
   const invite = auth.getInvite(ctx.params.token);
-  if (!invite) return ctx.fail(410, INVITE_GONE);
+  if (!invite) {
+    return ctx.fail(410, INVITE_GONE);
+  }
 
   const password = ctx.body.get('password') || '';
   const name = cleanText(ctx.body.get('name'), 40);
   const isReset = Boolean(invite.user_id);
   const reject = msg => ctx.html(views.invitePage(invite.token, invite.user_name, msg), 400);
 
-  if (password.length < MIN_PASSWORD) return reject(`Password must be at least ${MIN_PASSWORD} characters.`);
-  if (!isReset && !name) return reject('Name is required.');
-  if (!isReset && get('SELECT 1 FROM users WHERE name = ?', name)) return reject('That name is already taken.');
+  if (password.length < MIN_PASSWORD) {
+    return reject(`Password must be at least ${MIN_PASSWORD} characters.`);
+  }
+  if (!isReset && !name) {
+    return reject('Name is required.');
+  }
+  if (!isReset && get('SELECT 1 FROM users WHERE name = ?', name)) {
+    return reject('That name is already taken.');
+  }
 
   const passwordHash = await auth.hashPassword(password);
   const userId = tx(() => {
     // Consumed inside the transaction: two submissions of the same link cannot both succeed.
-    if (!auth.consumeInvite(invite.token)) throw Object.assign(new Error('invite gone'), { status: 410 });
+    if (!auth.consumeInvite(invite.token)) {
+      throw Object.assign(new Error('invite gone'), { status: 410 });
+    }
     if (isReset) {
       run('UPDATE users SET password_hash = ? WHERE id = ?', passwordHash, invite.user_id);
       // A reset is a recovery: log out every device and drop every passkey, so nothing an intruder
@@ -157,7 +179,9 @@ on('GET', '/', ctx => {
   for (const row of all(`SELECT f.date, f.part, u.name, u.color FROM free_days f
                          JOIN users u ON u.id = f.user_id
                          WHERE f.date LIKE ? ORDER BY u.name`, inMonth)) {
-    if (!free.has(row.date)) free.set(row.date, []);
+    if (!free.has(row.date)) {
+      free.set(row.date, []);
+    }
     free.get(row.date).push({ name: row.name, color: row.color, part: row.part });
   }
 
@@ -169,7 +193,8 @@ on('GET', '/', ctx => {
   const events = all(`SELECT e.*, u.name AS creator FROM events e
                       JOIN users u ON u.id = e.created_by
                       WHERE e.date <= ? AND e.end_date >= ?
-                      ORDER BY e.date, e.start_time IS NOT NULL, e.start_time, e.id`, yearMonth + '-31', yearMonth + '-01');
+                      ORDER BY e.date, e.start_time IS NOT NULL, e.start_time, e.id`,
+                      yearMonth + '-31', yearMonth + '-01');
   const members = get('SELECT COUNT(*) AS n FROM users').n; // a day is "everyone free" at this count
   // Birthdays are not events rows: each one is worked out from users.birthday for the month shown.
   const birthdays = ctx.user.show_birthdays ? all('SELECT name, color, birthday FROM users WHERE birthday IS NOT NULL')
@@ -185,11 +210,15 @@ on('GET', '/', ctx => {
 on('POST', '/free', ctx => {
   const date = ctx.body.get('date');
   const part = ctx.body.get('part');
-  if (!isValidDate(date)) return ctx.fail(400, 'Invalid date.');
+  if (!isValidDate(date)) {
+    return ctx.fail(400, 'Invalid date.');
+  }
 
   if (part === null) {
     const removed = run('DELETE FROM free_days WHERE user_id = ? AND date = ?', ctx.user.id, date).changes;
-    if (removed === 0) run('INSERT INTO free_days(user_id, date) VALUES (?,?)', ctx.user.id, date);
+    if (removed === 0) {
+      run('INSERT INTO free_days(user_id, date) VALUES (?,?)', ctx.user.id, date);
+    }
   } else if (part === 'none') {
     run('DELETE FROM free_days WHERE user_id = ? AND date = ?', ctx.user.id, date);
   } else if (isValidDayPart(part)) {
@@ -217,9 +246,10 @@ function readEventForm(ctx) {
     end_time: ctx.body.get('end_time') || null,
     color: colorText === '' ? null : Number(colorText),
   };
+  const colorOk = event.color === null || (Number.isInteger(event.color) && event.color >= 0 && event.color < COLORS);
   const error = !event.title ? 'A title is required.'
     : eventError({ date: event.date, endDate: event.end_date, startTime: event.start_time, endTime: event.end_time })
-    ?? (event.color !== null && !(Number.isInteger(event.color) && event.color >= 0 && event.color < COLORS) ? 'Invalid color.' : null);
+    ?? (colorOk ? null : 'Invalid color.');
   event.end_date ||= event.date;
   return { event, error };
 }
@@ -227,8 +257,12 @@ function readEventForm(ctx) {
 /** The event with this id, if the member may change it: their own, or any event if they are an admin. */
 const editableEvent = ctx => {
   const event = get('SELECT * FROM events WHERE id = ?', Number(ctx.params.id));
-  if (!event) return ctx.fail(404, 'Event not found.');
-  if (event.created_by !== ctx.user.id && !ctx.user.is_admin) return ctx.fail(403, 'Only its creator or an admin can change this event.');
+  if (!event) {
+    return ctx.fail(404, 'Event not found.');
+  }
+  if (event.created_by !== ctx.user.id && !ctx.user.is_admin) {
+    return ctx.fail(403, 'Only its creator or an admin can change this event.');
+  }
   return event;
 };
 
@@ -240,7 +274,9 @@ on('GET', '/events/new', ctx => {
 
 on('POST', '/events', ctx => {
   const { event, error } = readEventForm(ctx);
-  if (error) return ctx.html(views.eventPage(ctx.user, { event, error }), 400);
+  if (error) {
+    return ctx.html(views.eventPage(ctx.user, { event, error }), 400);
+  }
   run(`INSERT INTO events(title, date, end_date, start_time, end_time, color, created_by, created_at)
        VALUES (?,?,?,?,?,?,?,?)`,
     event.title, event.date, event.end_date, event.start_time, event.end_time, event.color, ctx.user.id, now());
@@ -249,15 +285,21 @@ on('POST', '/events', ctx => {
 
 on('GET', '/events/(?<id>\\d+)', ctx => {
   const event = editableEvent(ctx);
-  if (event) ctx.html(views.eventPage(ctx.user, { event }));
+  if (event) {
+    ctx.html(views.eventPage(ctx.user, { event }));
+  }
 });
 
 on('POST', '/events/(?<id>\\d+)', ctx => {
   const existing = editableEvent(ctx);
-  if (!existing) return;
+  if (!existing) {
+    return;
+  }
   const { event, error } = readEventForm(ctx);
   event.id = existing.id;
-  if (error) return ctx.html(views.eventPage(ctx.user, { event, error }), 400);
+  if (error) {
+    return ctx.html(views.eventPage(ctx.user, { event, error }), 400);
+  }
   run(`UPDATE events SET title = ?, date = ?, end_date = ?, start_time = ?, end_time = ?, color = ? WHERE id = ?`,
     event.title, event.date, event.end_date, event.start_time, event.end_time, event.color, existing.id);
   ctx.redirect('/?m=' + event.date.slice(0, 7));
@@ -275,7 +317,9 @@ on('POST', '/events/(?<id>\\d+)/delete', ctx => {
 /** Everything pollPage needs: the poll, its dates, all members, all votes, who still owes an answer. */
 function loadPoll(pollId) {
   const poll = get('SELECT * FROM polls WHERE id = ?', pollId);
-  if (!poll) return null;
+  if (!poll) {
+    return null;
+  }
 
   const dates = all('SELECT date FROM poll_dates WHERE poll_id = ? ORDER BY date', pollId).map(row => row.date);
   const members = all('SELECT id, name FROM users ORDER BY name');
@@ -283,7 +327,9 @@ function loadPoll(pollId) {
 
   // A member has finished only once they answered every proposed date.
   const datesAnsweredBy = {}; // user_id -> Set of dates
-  for (const vote of votes) (datesAnsweredBy[vote.user_id] ??= new Set()).add(vote.date);
+  for (const vote of votes) {
+    (datesAnsweredBy[vote.user_id] ??= new Set()).add(vote.date);
+  }
   const missing = members
     .filter(member => (datesAnsweredBy[member.id]?.size ?? 0) < dates.length)
     .map(member => member.name);
@@ -318,13 +364,16 @@ on('GET', '/polls/new', ctx => ctx.html(views.newPollPage(ctx.user)));
 on('POST', '/polls/new', ctx => {
   const title = cleanText(ctx.body.get('title'), 100);
   const dates = [...new Set(ctx.body.getAll('dates').filter(Boolean))].sort(); // drop blanks and duplicates
-  if (!title || !dates.length || dates.length > MAX_DATES || !dates.every(isValidDate))
+  if (!title || !dates.length || dates.length > MAX_DATES || !dates.every(isValidDate)) {
     return ctx.html(views.newPollPage(ctx.user, `A title and 1 to ${MAX_DATES} valid dates are required.`), 400);
+  }
 
   const pollId = tx(() => {
     const id = run('INSERT INTO polls(title, created_by, created_at) VALUES (?,?,?)',
       title, ctx.user.id, now()).lastInsertRowid;
-    for (const date of dates) run('INSERT INTO poll_dates(poll_id, date) VALUES (?,?)', id, date);
+    for (const date of dates) {
+      run('INSERT INTO poll_dates(poll_id, date) VALUES (?,?)', id, date);
+    }
     return id;
   });
   ctx.redirect('/polls/' + pollId);
@@ -332,7 +381,9 @@ on('POST', '/polls/new', ctx => {
 
 on('GET', '/polls/(?<id>\\d+)', ctx => {
   const data = loadPoll(Number(ctx.params.id));
-  if (!data) return ctx.fail(404, 'Poll not found.');
+  if (!data) {
+    return ctx.fail(404, 'Poll not found.');
+  }
   ctx.html(views.pollPage(ctx.user, data));
 });
 
@@ -340,13 +391,19 @@ on('GET', '/polls/(?<id>\\d+)', ctx => {
 on('POST', '/polls/(?<id>\\d+)', ctx => {
   const pollId = Number(ctx.params.id);
   const data = loadPoll(pollId);
-  if (!data) return ctx.fail(404, 'Poll not found.');
-  if (data.poll.closed_at) return ctx.fail(409, 'This poll is closed.');
+  if (!data) {
+    return ctx.fail(404, 'Poll not found.');
+  }
+  if (data.poll.closed_at) {
+    return ctx.fail(409, 'This poll is closed.');
+  }
 
   tx(() => {
     for (const date of data.dates) {
       const answer = ctx.body.get('v_' + date);
-      if (!ANSWERS.includes(answer)) continue;
+      if (!ANSWERS.includes(answer)) {
+        continue;
+      }
       run(`INSERT INTO poll_votes(poll_id, date, user_id, answer) VALUES (?,?,?,?)
            ON CONFLICT DO UPDATE SET answer = excluded.answer`, pollId, date, ctx.user.id, answer);
     }
@@ -367,22 +424,31 @@ on('POST', '/polls/(?<id>\\d+)/confirm', ctx => {
   const pollId = Number(ctx.params.id);
   const data = loadPoll(pollId);
   const date = ctx.body.get('date');
-  if (!data) return ctx.fail(404, 'Poll not found.');
-  if (!data.complete && !data.poll.closed_at) return ctx.fail(409, 'Not everyone has answered yet.');
+  if (!data) {
+    return ctx.fail(404, 'Poll not found.');
+  }
+  if (!data.complete && !data.poll.closed_at) {
+    return ctx.fail(409, 'Not everyone has answered yet.');
+  }
   // Only a winning date may be confirmed; the form offers exactly these, so this is the server-side twin.
-  if (!data.best.includes(date)) return ctx.fail(400, 'Not one of the best dates.');
+  if (!data.best.includes(date)) {
+    return ctx.fail(400, 'Not one of the best dates.');
+  }
 
-  if (!data.event) tx(() => { // idempotent: events.poll_id is UNIQUE, so a double click adds nothing
-    run('INSERT INTO events(title, date, end_date, created_by, poll_id, created_at) VALUES (?,?,?,?,?,?)',
-      data.poll.title, date, date, ctx.user.id, pollId, now());
-    run('UPDATE polls SET chosen_date = ?, closed_at = COALESCE(closed_at, ?) WHERE id = ?', date, now(), pollId);
-  });
+  if (!data.event) {
+    tx(() => { // idempotent: events.poll_id is UNIQUE, so a double click adds nothing
+      run('INSERT INTO events(title, date, end_date, created_by, poll_id, created_at) VALUES (?,?,?,?,?,?)',
+        data.poll.title, date, date, ctx.user.id, pollId, now());
+      run('UPDATE polls SET chosen_date = ?, closed_at = COALESCE(closed_at, ?) WHERE id = ?', date, now(), pollId);
+    });
+  }
   ctx.redirect('/polls/' + pollId);
 });
 
 // ---- settings ----
 
-on('GET', '/settings', ctx => ctx.html(views.settingsPage(ctx.user, { base: BASE_URL, msg: ctx.url.searchParams.get('msg') })));
+on('GET', '/settings', ctx =>
+  ctx.html(views.settingsPage(ctx.user, { base: BASE_URL, msg: ctx.url.searchParams.get('msg') })));
 
 on('POST', '/settings/rotate-feed', ctx => {
   run('UPDATE users SET feed_token = ? WHERE id = ?', auth.token(), ctx.user.id);
@@ -395,8 +461,12 @@ on('POST', '/settings/customisation', ctx => {
   const weekStart = Number(ctx.body.get('week_start'));
   const dateFormat = ctx.body.get('date_format');
   const showBirthdays = ctx.body.get('show_birthdays') === '1' ? 1 : 0; // an unchecked checkbox posts nothing: hide
-  if (!isValidWeekStart(weekStart)) return ctx.fail(400, 'Invalid first day of the week.');
-  if (!isValidDateFormat(dateFormat)) return ctx.fail(400, 'Invalid date format.');
+  if (!isValidWeekStart(weekStart)) {
+    return ctx.fail(400, 'Invalid first day of the week.');
+  }
+  if (!isValidDateFormat(dateFormat)) {
+    return ctx.fail(400, 'Invalid date format.');
+  }
   run('UPDATE users SET week_start = ?, date_format = ?, show_birthdays = ? WHERE id = ?',
     weekStart, dateFormat, showBirthdays, ctx.user.id);
   ctx.redirect('/settings?msg=customisation');
@@ -421,22 +491,36 @@ on('POST', '/profile/about', ctx => {
   const birthday = ctx.body.get('birthday') || '';
   const color = Number(ctx.body.get('color'));
   const reject = error => ctx.html(views.profilePage(ctx.user, profileData(ctx, { error })), 400);
-  if (!name) return reject('Name is required.');
-  if (get('SELECT 1 FROM users WHERE name = ? AND id != ?', name, ctx.user.id)) return reject('That name is already taken.');
-  if (birthday && !(isValidDate(birthday) && birthday <= today())) return ctx.fail(400, 'Invalid birthday.');
-  if (!Number.isInteger(color) || color < 0 || color >= COLORS) return ctx.fail(400, 'Invalid color.');
+  if (!name) {
+    return reject('Name is required.');
+  }
+  const nameTaken = get('SELECT 1 FROM users WHERE name = ? AND id != ?', name, ctx.user.id);
+  if (nameTaken) {
+    return reject('That name is already taken.');
+  }
+  if (birthday && !(isValidDate(birthday) && birthday <= today())) {
+    return ctx.fail(400, 'Invalid birthday.');
+  }
+  if (!Number.isInteger(color) || color < 0 || color >= COLORS) {
+    return ctx.fail(400, 'Invalid color.');
+  }
   run('UPDATE users SET name = ?, birthday = ?, color = ? WHERE id = ?', name, birthday || null, color, ctx.user.id);
   // Logged under the old name, so the log links the two.
-  if (name !== ctx.user.name) logUser(ctx, `name changed to ${JSON.stringify(name)}`);
+  if (name !== ctx.user.name) {
+    logUser(ctx, `name changed to ${JSON.stringify(name)}`);
+  }
   ctx.redirect('/profile?msg=about');
 });
 
 on('POST', '/profile/password', async ctx => {
   const newPassword = ctx.body.get('password') || '';
   const reject = error => ctx.html(views.profilePage(ctx.user, profileData(ctx, { error })), 400);
-  if (!(await auth.verifyPassword(ctx.body.get('current') || '', ctx.user.password_hash)))
+  if (!(await auth.verifyPassword(ctx.body.get('current') || '', ctx.user.password_hash))) {
     return reject('Current password is wrong.');
-  if (newPassword.length < MIN_PASSWORD) return reject(`New password must be at least ${MIN_PASSWORD} characters.`);
+  }
+  if (newPassword.length < MIN_PASSWORD) {
+    return reject(`New password must be at least ${MIN_PASSWORD} characters.`);
+  }
 
   run('UPDATE users SET password_hash = ? WHERE id = ?', await auth.hashPassword(newPassword), ctx.user.id);
   // Log every device out, then hand this browser a fresh session so the user stays put.
@@ -476,7 +560,9 @@ on('POST', '/profile/passkeys', ctx => {
 // A plain form, so removing a passkey works with JS off.
 on('POST', '/profile/passkeys/delete', ctx => {
   // Only logged when a row actually went: a stale form for an already removed passkey is not an event.
-  if (auth.deleteCredential(ctx.body.get('id') || '', ctx.user.id).changes) logUser(ctx, 'passkey removed');
+  if (auth.deleteCredential(ctx.body.get('id') || '', ctx.user.id).changes) {
+    logUser(ctx, 'passkey removed');
+  }
   ctx.redirect('/profile?msg=passkey_removed');
 });
 
@@ -496,21 +582,29 @@ on('GET', '/admin', ctx => requireAdmin(ctx) && ctx.html(views.adminPage(ctx.use
 
 // The whole connection log as a file. Streamed, since it only ever grows.
 on('GET', '/admin/log', ctx => {
-  if (!requireAdmin(ctx)) return;
+  if (!requireAdmin(ctx)) {
+    return;
+  }
   ctx.res.writeHead(200, {
     'Content-Type': 'text/plain; charset=utf-8',
     'Content-Disposition': 'attachment; filename="meshtime.log"',
     'Cache-Control': 'private, no-store',
   });
-  if (ctx.req.method === 'HEAD' || !existsSync(LOG_PATH)) return ctx.res.end(); // nothing logged yet: empty file
+  if (ctx.req.method === 'HEAD' || !existsSync(LOG_PATH)) {
+    return ctx.res.end(); // nothing logged yet: empty file
+  }
   createReadStream(LOG_PATH).pipe(ctx.res);
 });
 
 on('POST', '/admin/invite', ctx => {
-  if (!requireAdmin(ctx)) return;
+  if (!requireAdmin(ctx)) {
+    return;
+  }
   const userId = ctx.body.get('user_id') ? Number(ctx.body.get('user_id')) : null;
   const target = userId && get('SELECT name FROM users WHERE id = ?', userId);
-  if (userId && !target) return ctx.fail(400, 'Unknown user.');
+  if (userId && !target) {
+    return ctx.fail(400, 'Unknown user.');
+  }
   auth.createInvite({ createdBy: ctx.user.id, userId }); // userId set => password-reset link
   logUser(ctx, target ? `admin: reset link created for ${JSON.stringify(target.name)}` : 'admin: invite link created');
   ctx.redirect('/admin?msg=invite');
@@ -519,11 +613,17 @@ on('POST', '/admin/invite', ctx => {
 // Offboarding. ON DELETE CASCADE takes sessions, passkeys, votes, free days and reset links with the
 // row, and the feed token dies with it. Events and polls they created stay, so they are re-owned first.
 on('POST', '/admin/members/(?<id>\\d+)/delete', ctx => {
-  if (!requireAdmin(ctx)) return;
+  if (!requireAdmin(ctx)) {
+    return;
+  }
   const memberId = Number(ctx.params.id);
-  if (memberId === ctx.user.id) return ctx.fail(400, 'You cannot remove yourself.');
+  if (memberId === ctx.user.id) {
+    return ctx.fail(400, 'You cannot remove yourself.');
+  }
   const member = get('SELECT name FROM users WHERE id = ?', memberId);
-  if (!member) return ctx.fail(404, 'Unknown member.');
+  if (!member) {
+    return ctx.fail(404, 'Unknown member.');
+  }
   tx(() => {
     run('UPDATE events SET created_by = ? WHERE created_by = ?', ctx.user.id, memberId);
     run('UPDATE polls SET created_by = ? WHERE created_by = ?', ctx.user.id, memberId);
@@ -537,7 +637,9 @@ on('POST', '/admin/members/(?<id>\\d+)/delete', ctx => {
 const ICS_HEADERS = { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'private, no-cache' };
 
 on('GET', '/feed/(?<token>[\\w-]+)/events\\.ics', ctx => {
-  if (!get('SELECT 1 FROM users WHERE feed_token = ?', ctx.params.token)) return ctx.fail(404, 'Not found.');
+  if (!get('SELECT 1 FROM users WHERE feed_token = ?', ctx.params.token)) {
+    return ctx.fail(404, 'Not found.');
+  }
   const host = new URL(BASE_URL).host;
 
   const items = all('SELECT * FROM events').map(event => ({
@@ -555,7 +657,9 @@ on('GET', '/feed/(?<token>[\\w-]+)/events\\.ics', ctx => {
 
 // One yearly recurring all-day event per member who gave a birthday, starting on the birthday itself.
 on('GET', '/feed/(?<token>[\\w-]+)/birthdays\\.ics', ctx => {
-  if (!get('SELECT 1 FROM users WHERE feed_token = ?', ctx.params.token)) return ctx.fail(404, 'Not found.');
+  if (!get('SELECT 1 FROM users WHERE feed_token = ?', ctx.params.token)) {
+    return ctx.fail(404, 'Not found.');
+  }
   const items = all('SELECT id, name, birthday, created_at FROM users WHERE birthday IS NOT NULL').map(member => ({
     uid: 'birthday-' + member.id,
     date: member.birthday,

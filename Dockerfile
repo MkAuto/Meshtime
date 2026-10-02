@@ -1,7 +1,8 @@
 FROM node:26-alpine
 WORKDIR /app
 ENV NODE_ENV=production DB_PATH=/data/app.db PORT=3000
-COPY package.json ./
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 COPY src ./src
 COPY public ./public
 RUN mkdir /data && chown node:node /data

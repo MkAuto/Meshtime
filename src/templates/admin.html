@@ -1,0 +1,60 @@
+{{! Admin only: the route enforces it, this only draws it.
+    Future admin-only tools get their own section with class "panel panel-admin" here. }}
+<h1>Administration</h1>
+{{> notices}}
+<section class="panel panel-admin">
+  <h2>Members</h2>
+  <p class="hint">A member who forgot their password needs a reset link — send them the one you create here.</p>
+  <ul>
+    {{#members}}
+    <li>
+      {{name}}{{#is_admin}} (admin){{/is_admin}} —
+      <form method="post" action="/admin/invite" class="inline">
+        <input type="hidden" name="user_id" value="{{id}}"><button class="link">create reset-password link</button>
+      </form>
+      {{^isMe}}
+      · <form method="post" action="/admin/members/{{id}}/delete" class="inline"
+          data-confirm="Remove {{name}}? Their events and polls are kept.">
+        <button class="link danger">remove</button>
+      </form>
+      {{/isMe}}
+    </li>
+    {{/members}}
+  </ul>
+  <h3>Invite someone new</h3>
+  <form method="post" action="/admin/invite"><button>Create invite link</button></form>
+  {{#invites.length}}
+  <h3>Open links (valid 7 days, single use)</h3>
+  <ul>
+    {{#invites}}
+    <li>{{label}}: <code>{{url}}</code></li>
+    {{/invites}}
+  </ul>
+  {{/invites.length}}
+</section>
+
+<section class="panel panel-admin">
+  <h2>Connection log</h2>
+  <p class="hint"><a href="/admin/log" download>Download meshtime.log</a></p>
+  {{#log.length}}
+  <div class="log-wrap">
+    <table class="log">
+      <thead><tr><th>#</th><th>Time (Eastern)</th><th>IP</th><th>User</th><th>Action</th></tr></thead>
+      <tbody>
+        {{#log}}
+        <tr>
+          <td class="n">{{number}}</td>
+          <td>{{time}}</td>
+          <td>{{ip}}</td>
+          <td>{{user}}{{^known}} <span class="hint">(unknown)</span>{{/known}}</td>
+          <td>{{action}}</td>
+        </tr>
+        {{/log}}
+      </tbody>
+    </table>
+  </div>
+  {{/log.length}}
+  {{^log}}
+  <p class="hint">Nothing logged yet.</p>
+  {{/log}}
+</section>

@@ -1,0 +1,100 @@
+<h1>
+  <a href="/?m={{month.prev}}" title="Previous month">&lsaquo;</a>
+  {{month.label}}
+  <a href="/?m={{month.next}}" title="Next month">&rsaquo;</a>
+</h1>
+<details class="hint">
+  <summary>How to use</summary>
+  Click a day to mark yourself free all day (outlined). For only the morning, afternoon or evening,
+  hold the day on a phone or double-click it on a computer. Initials show who is free
+  (<sup>am</sup> / <sup>pm</sup> / <sup>eve</sup> for part of the day);
+  green means everyone is free at the same time.
+</details>
+
+<div class="grid">
+  {{#weekdays}}
+  <div class="dow">{{.}}</div>
+  {{/weekdays}}
+  {{! Blank cells so day 1 lands on its weekday. }}
+  {{#padding}}
+  <div class="day pad"></div>
+  {{/padding}}
+  {{! The whole cell is the toggle button: posting /free flips my own free-all-day / not-free.
+      Initials and events live inside it as spans, so every pixel of the square is clickable while each
+      keeps its own tooltip. data-date-label and data-part feed the morning / afternoon menu in app.js.
+      Two parts, each a row shared by the whole week (subgrid in style.css): number + initials, then the
+      events, so the bars start level even when the initials differ. }}
+  {{#days}}
+  <div class="{{classes}}">
+    <form method="post" action="/free">
+      <input type="hidden" name="date" value="{{date}}">
+      <input type="hidden" name="m" value="{{yearMonth}}">
+      <button title="{{tooltip}}" data-date-label="{{dateLabel}}" data-part="{{part}}">
+        <span class="head">
+          <span class="num">{{day}}</span>
+          {{#free.length}}
+          <span class="who">
+            {{#free}}
+            <span class="c{{color}}" title="{{tooltip}}">{{initials}}{{#sup}}<sup>{{sup}}</sup>{{/sup}}</span>
+            {{/free}}
+          </span>
+          {{/free.length}}
+        </span>
+        <span class="day-events">
+          {{! Multi-day bars, one per lane, so a bar lines up across its days. A lane with nothing
+              today still takes its row (an invisible .gap) to keep the lanes below it level. }}
+          {{#bars}}
+          {{#gap}}
+          <span class="ev bar gap">&nbsp;</span>
+          {{/gap}}
+          {{^gap}}
+          <span class="{{classes}}" title="{{tooltip}}">
+            {{#showLabel}}<span class="ev-text run-{{run}}">{{label}}</span>{{/showLabel}}
+            {{^showLabel}}&nbsp;{{/showLabel}}
+          </span>
+          {{/gap}}
+          {{/bars}}
+          {{#birthdays}}
+          <span class="ev colored c{{color}}" title="{{name}}'s birthday">🎉 {{name}}'s birthday</span>
+          {{/birthdays}}
+          {{! One-day events follow; the lanes above (gaps included) keep them off the bars. }}
+          {{#oneDay}}
+          <span class="{{classes}}" title="{{tooltip}}">{{label}}</span>
+          {{/oneDay}}
+        </span>
+      </button>
+    </form>
+  </div>
+  {{/days}}
+</div>
+
+{{! The long-press / double-click menu: each button posts its value as `part` to /free. }}
+<dialog id="day-part" aria-labelledby="day-part-title">
+  <form method="post" action="/free">
+    <h2 id="day-part-title"></h2>
+    <input type="hidden" name="date">
+    <input type="hidden" name="m" value="{{yearMonth}}">
+    <div class="stack">
+      {{#partChoices}}
+      <button name="part" value="{{value}}" class="{{classes}}">{{label}}</button>
+      {{/partChoices}}
+    </div>
+  </form>
+  <form method="dialog"><button class="link">Cancel</button></form>
+</dialog>
+
+<section>
+  <h2>Events this month</h2>
+  <p><a class="btn" href="/events/new">Add event</a></p>
+  <ul class="events">
+    {{#events}}
+    <li class="{{classes}}">
+      {{when}} — <b>{{title}}</b> <small class="hint">by {{creator}}</small>
+      {{#canEdit}}<a href="/events/{{id}}">edit</a>{{/canEdit}}
+    </li>
+    {{/events}}
+    {{^events}}
+    <li class="hint">No events this month.</li>
+    {{/events}}
+  </ul>
+</section>

@@ -113,18 +113,21 @@ CREATE TABLE IF NOT EXISTS challenges(
 
 // DBs created before user colors existed: add the column and hand out random colors.
 const userColumns = db.prepare('PRAGMA table_info(users)').all().map(column => column.name);
-if (!userColumns.includes('color'))
+if (!userColumns.includes('color')) {
   db.exec(`ALTER TABLE users ADD COLUMN color INTEGER NOT NULL DEFAULT 0;
            UPDATE users SET color = abs(random()) % ${COLORS}`);
+}
 
 // DBs created before the week-start setting existed: everyone gets the Sunday default.
-if (!userColumns.includes('week_start'))
+if (!userColumns.includes('week_start')) {
   db.exec('ALTER TABLE users ADD COLUMN week_start INTEGER NOT NULL DEFAULT 0');
+}
 
 // DBs created before morning/afternoon existed: every free day already marked was a whole day.
 const freeDayColumns = db.prepare('PRAGMA table_info(free_days)').all().map(column => column.name);
-if (!freeDayColumns.includes('part'))
+if (!freeDayColumns.includes('part')) {
   db.exec(`ALTER TABLE free_days ADD COLUMN part TEXT NOT NULL DEFAULT 'all' ${PART_CHECK}`);
+}
 
 // DAY_PARTS changed (evening was added after am/pm): SQLite cannot alter a CHECK, so the table is
 // rebuilt with the current one. A part that is no longer offered becomes a whole day.
@@ -142,21 +145,31 @@ if (!freeDaysSql.includes(PART_CHECK)) {
 }
 
 // DBs created before the date-format setting existed: everyone gets the default.
-if (!userColumns.includes('date_format'))
+if (!userColumns.includes('date_format')) {
   db.exec(`ALTER TABLE users ADD COLUMN date_format TEXT NOT NULL DEFAULT '${DEFAULT_DATE_FORMAT}'`);
+}
 
 // DBs created before the profile page existed: nobody has given a birthday yet.
-if (!userColumns.includes('birthday')) db.exec('ALTER TABLE users ADD COLUMN birthday TEXT');
-if (!userColumns.includes('show_birthdays')) db.exec('ALTER TABLE users ADD COLUMN show_birthdays INTEGER NOT NULL DEFAULT 1');
+if (!userColumns.includes('birthday')) {
+  db.exec('ALTER TABLE users ADD COLUMN birthday TEXT');
+}
+if (!userColumns.includes('show_birthdays')) {
+  db.exec('ALTER TABLE users ADD COLUMN show_birthdays INTEGER NOT NULL DEFAULT 1');
+}
 
 // DBs created before times and multi-day events existed: every event was one whole day.
 const eventColumns = db.prepare('PRAGMA table_info(events)').all().map(column => column.name);
-for (const column of ['end_date', 'start_time', 'end_time'])
-  if (!eventColumns.includes(column)) db.exec(`ALTER TABLE events ADD COLUMN ${column} TEXT`);
+for (const column of ['end_date', 'start_time', 'end_time']) {
+  if (!eventColumns.includes(column)) {
+    db.exec(`ALTER TABLE events ADD COLUMN ${column} TEXT`);
+  }
+}
 db.exec('UPDATE events SET end_date = date WHERE end_date IS NULL');
 
 // DBs created before event colors existed: every event keeps the default look.
-if (!eventColumns.includes('color')) db.exec('ALTER TABLE events ADD COLUMN color INTEGER');
+if (!eventColumns.includes('color')) {
+  db.exec('ALTER TABLE events ADD COLUMN color INTEGER');
+}
 
 // A format that is no longer offered goes back to the default.
 db.prepare(`UPDATE users SET date_format = ? WHERE date_format NOT IN (${Object.keys(DATE_FORMATS).map(() => '?')})`)

@@ -1,0 +1,42 @@
+{{! One page for adding and editing an event. }}
+<h1>{{heading}}</h1>
+<p class="hint">Leave the times empty for an all-day event, and the end date empty for a one-day event.</p>
+{{> notices}}
+<form method="post" action="{{action}}" class="stack">
+  <label>
+    Title
+    {{#editing}}<input name="title" required maxlength="100" value="{{title}}">{{/editing}}
+    {{^editing}}<input name="title" required maxlength="100" value="{{title}}" autofocus>{{/editing}}
+  </label>
+  <label>
+    Starts
+    <span class="row">
+      <input type="date" name="date" required value="{{date}}">
+      <input type="time" name="start_time" aria-label="Start time" value="{{startTime}}">
+    </span>
+  </label>
+  <label>
+    Ends
+    <span class="row">
+      <input type="date" name="end_date" aria-label="End date" value="{{endDate}}">
+      <input type="time" name="end_time" aria-label="End time" value="{{endTime}}">
+    </span>
+  </label>
+  <fieldset class="colors">
+    <legend>Color</legend>
+    {{#colors}}
+    <label class="{{classes}}" title="{{label}}">
+      {{#checked}}<input type="radio" name="color" value="{{value}}" aria-label="{{label}}" checked>{{/checked}}
+      {{^checked}}<input type="radio" name="color" value="{{value}}" aria-label="{{label}}">{{/checked}}
+    </label>
+    {{/colors}}
+  </fieldset>
+  <button>{{button}}</button>
+</form>
+{{#editing}}
+<form method="post" action="/events/{{id}}/delete" class="stack delete-event" data-confirm="Delete {{title}}?">
+  <input type="hidden" name="m" value="{{month}}">
+  <button class="danger">Delete event</button>
+</form>
+{{/editing}}
+<p><a href="/?m={{month}}">Back to calendar</a></p>

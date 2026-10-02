@@ -1,10 +1,17 @@
 // Forms with data-confirm ask before submitting (CSP forbids inline onsubmit). Without JS they just submit.
-for (const form of document.querySelectorAll('form[data-confirm]'))
-  form.addEventListener('submit', event => { if (!confirm(form.dataset.confirm)) event.preventDefault(); });
+for (const form of document.querySelectorAll('form[data-confirm]')) {
+  form.addEventListener('submit', event => {
+    if (!confirm(form.dataset.confirm)) {
+      event.preventDefault();
+    }
+  });
+}
 
 // Live preview of the color slider in Settings.
 const hue = document.querySelector('.hue'), swatch = document.getElementById('swatch');
-if (hue && swatch) hue.addEventListener('input', () => { swatch.className = `c${hue.value} swatch`; });
+if (hue && swatch) {
+  hue.addEventListener('input', () => { swatch.className = `c${hue.value} swatch`; });
+}
 
 // Calendar. A tap or a single click submits the day's form as-is: free all day, or clear it.
 // Holding the day (touch) or double-clicking it (mouse) opens the #day-part menu instead, to pick
@@ -19,9 +26,12 @@ if (partMenu) {
   const openMenu = day => {
     choiceForm.elements.date.value = day.form.elements.date.value;
     partMenu.querySelector('h2').textContent = day.dataset.dateLabel;
-    for (const choice of choiceForm.querySelectorAll('button[name=part]'))
+    for (const choice of choiceForm.querySelectorAll('button[name=part]')) {
       choice.classList.toggle('current', choice.value === day.dataset.part);
-    if (!partMenu.open) partMenu.showModal();
+    }
+    if (!partMenu.open) {
+      partMenu.showModal();
+    }
   };
 
   let pointerType = 'mouse';
@@ -32,27 +42,39 @@ if (partMenu) {
     day.addEventListener('pointerdown', event => {
       pointerType = event.pointerType;
       menuOpenedByPress = false;
-      if (pointerType !== 'touch') return;
+      if (pointerType !== 'touch') {
+        return;
+      }
       pressTimer = setTimeout(() => { menuOpenedByPress = true; openMenu(day); }, LONG_PRESS_MS);
     });
     // Lifting the finger early, or starting to scroll (pointercancel), is not a long press.
-    for (const type of ['pointerup', 'pointercancel']) day.addEventListener(type, () => clearTimeout(pressTimer));
+    for (const type of ['pointerup', 'pointercancel']) {
+      day.addEventListener(type, () => clearTimeout(pressTimer));
+    }
 
     // Android sends contextmenu on a long press, desktops on right-click / the menu key.
     day.addEventListener('contextmenu', event => {
       event.preventDefault();
       clearTimeout(pressTimer);
-      if (pointerType === 'touch') menuOpenedByPress = true;
+      if (pointerType === 'touch') {
+        menuOpenedByPress = true;
+      }
       openMenu(day);
     });
 
     day.addEventListener('click', event => {
-      if (menuOpenedByPress) return event.preventDefault();
-      if (pointerType === 'touch' || event.detail === 0) return; // a tap, or Enter / Space: submit now
+      if (menuOpenedByPress) {
+        return event.preventDefault();
+      }
+      if (pointerType === 'touch' || event.detail === 0) {
+        return; // a tap, or Enter / Space: submit now
+      }
       // Mouse: hold the submit briefly, since this click may be the first half of a double-click.
       event.preventDefault();
       clearTimeout(clickTimer);
-      if (event.detail >= 2) return openMenu(day);
+      if (event.detail >= 2) {
+        return openMenu(day);
+      }
       clickTimer = setTimeout(() => day.form.submit(), DOUBLE_CLICK_MS);
     });
   }
@@ -62,12 +84,15 @@ if (partMenu) {
 const dates = document.querySelector('.dates');
 if (dates) {
   const rows = () => dates.querySelectorAll('input');
-  for (const extra of [...rows()].slice(1)) extra.remove();
+  for (const extra of [...rows()].slice(1)) {
+    extra.remove();
+  }
   dates.addEventListener('focusin', event => {
     const last = dates.lastElementChild;
     // cloneNode copies the value (spec: input cloning propagates value + dirty flag), so blank it.
-    if (event.target === last && rows().length < Number(dates.dataset.max))
+    if (event.target === last && rows().length < Number(dates.dataset.max)) {
       dates.append(Object.assign(last.cloneNode(), { value: '' }));
+    }
   });
 }
 
@@ -82,14 +107,18 @@ const fromBase64url = value =>
 async function postJson(url, fields = {}) {
   const response = await fetch(url, { method: 'POST', body: new URLSearchParams(fields) });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || 'Something went wrong.');
+  if (!response.ok) {
+    throw new Error(data.error || 'Something went wrong.');
+  }
   return data;
 }
 
 /** Reveals a hidden "<p><button><span class=err>" block and runs `action` when the button is clicked. */
 function onPasskeyButton(id, action) {
   const holder = document.getElementById(id);
-  if (!holder || !window.PublicKeyCredential) return;
+  if (!holder || !window.PublicKeyCredential) {
+    return;
+  }
   holder.hidden = false;
 
   const button = holder.querySelector('button');
@@ -102,7 +131,9 @@ function onPasskeyButton(id, action) {
       await action();
     } catch (err) {
       // NotAllowedError is the user dismissing the system prompt; that needs no error message.
-      if (err.name !== 'NotAllowedError') error.textContent = err.message;
+      if (err.name !== 'NotAllowedError') {
+        error.textContent = err.message;
+      }
     } finally {
       button.disabled = false;
     }
@@ -112,7 +143,9 @@ function onPasskeyButton(id, action) {
 onPasskeyButton('passkey-add', async () => {
   const options = await postJson('/profile/passkeys/options');
   const label = prompt('Name this passkey', 'My device');
-  if (label === null) return;
+  if (label === null) {
+    return;
+  }
 
   const credential = await navigator.credentials.create({
     publicKey: {
@@ -128,7 +161,9 @@ onPasskeyButton('passkey-add', async () => {
 
   const response = credential.response;
   const publicKey = response.getPublicKey();
-  if (!publicKey) throw new Error('This browser cannot export the passkey. Try another one.');
+  if (!publicKey) {
+    throw new Error('This browser cannot export the passkey. Try another one.');
+  }
 
   await postJson('/profile/passkeys', {
     id: credential.id,

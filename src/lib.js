@@ -11,14 +11,18 @@ export const isValidMonth = text => /^\d{4}-(0[1-9]|1[0-2])$/.test(text || '');
 
 // A real 'YYYY-MM-DD' calendar date, any year. Anything else (including junk) is rejected.
 export function isValidDate(text) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(text || '')) return false;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text || '')) {
+    return false;
+  }
   const date = new Date(text + 'T00:00:00Z');
   // Round-trip check: Date rolls 2026-02-30 forward into March instead of failing.
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === text;
 }
 
 export function birthdayIn(yearMonth, birthday) {
-  if (birthday?.slice(5, 7) !== yearMonth.slice(5)) return null;
+  if (birthday?.slice(5, 7) !== yearMonth.slice(5)) {
+    return null;
+  }
   const date = `${yearMonth}-${birthday.slice(8)}`;
   return isValidDate(date) ? date : `${yearMonth}-28`;
 }
@@ -51,7 +55,9 @@ export const isValidDateFormat = value => Object.hasOwn(DATE_FORMATS, value);
 
 export function formatDate(isoDate, format) {
   const match = /^(\d{4})-(\d\d)-(\d\d)$/.exec(isoDate ?? '');
-  if (!match) return isoDate;
+  if (!match) {
+    return isoDate;
+  }
   const render = DATE_FORMATS[isValidDateFormat(format) ? format : DEFAULT_DATE_FORMAT];
   return render(...match.slice(1).map(Number));
 }
@@ -63,21 +69,35 @@ export const isValidTime = text => /^([01]\d|2[0-3]):[0-5]\d$/.test(text || '');
 
 /** Why an event's when is unusable, or null when it is fine. endDate/times may be null. */
 export function eventError({ date, endDate, startTime, endTime }) {
-  if (!isValidDate(date)) return 'A valid start date is required.';
-  if (endDate && (!isValidDate(endDate) || endDate < date)) return 'The end date must be on or after the start date.';
-  if ((startTime && !isValidTime(startTime)) || (endTime && !isValidTime(endTime))) return 'Invalid time.';
-  if (endTime && !startTime) return 'An end time needs a start time.';
+  if (!isValidDate(date)) {
+    return 'A valid start date is required.';
+  }
+  if (endDate && (!isValidDate(endDate) || endDate < date)) {
+    return 'The end date must be on or after the start date.';
+  }
+  if ((startTime && !isValidTime(startTime)) || (endTime && !isValidTime(endTime))) {
+    return 'Invalid time.';
+  }
+  if (endTime && !startTime) {
+    return 'An end time needs a start time.';
+  }
   const multiDay = endDate && endDate !== date;
   // A timed event over several days has no sensible end without one (the ICS feed needs it).
-  if (multiDay && startTime && !endTime) return 'A timed event over several days needs an end time.';
-  if (!multiDay && endTime && endTime <= startTime) return 'The end time must be after the start time.';
+  if (multiDay && startTime && !endTime) {
+    return 'A timed event over several days needs an end time.';
+  }
+  if (!multiDay && endTime && endTime <= startTime) {
+    return 'The end time must be after the start time.';
+  }
   return null;
 }
 
 /** '3 Oct. 2026 19:00–22:00', '3 Oct. 2026 – 5 Oct. 2026', ... in the member's date format. */
 export function formatEventWhen({ date, end_date, start_time, end_time }, format) {
   const start = formatDate(date, format) + (start_time ? ' ' + start_time : '');
-  if (end_date && end_date !== date) return `${start} – ${formatDate(end_date, format)}${end_time ? ' ' + end_time : ''}`;
+  if (end_date && end_date !== date) {
+    return `${start} – ${formatDate(end_date, format)}${end_time ? ' ' + end_time : ''}`;
+  }
   return end_time ? `${start}–${end_time}` : start;
 }
 
@@ -90,9 +110,13 @@ export function eventLanes(events) {
   const lanes = new Map();
   const laneEnds = []; // lane -> end_date of the last event placed in it
   for (const event of events) {
-    if (event.end_date <= event.date) continue;
+    if (event.end_date <= event.date) {
+      continue;
+    }
     let lane = laneEnds.findIndex(end => end < event.date);
-    if (lane === -1) lane = laneEnds.length;
+    if (lane === -1) {
+      lane = laneEnds.length;
+    }
     laneEnds[lane] = event.end_date;
     lanes.set(event.id, lane);
   }
@@ -157,12 +181,16 @@ export const ANSWERS = ['yes', 'maybe', 'no'];
 // Most "yes", then fewest "no", then earliest date. Returns every date tied at the top,
 // so the UI can ask the user to pick. votes: [{ date, answer }]; "maybe" counts for neither side.
 export function bestDates(dates, votes) {
-  if (!dates.length) return [];
+  if (!dates.length) {
+    return [];
+  }
 
   const tally = Object.fromEntries(dates.map(date => [date, { yes: 0, no: 0 }]));
   for (const vote of votes) {
     const counts = tally[vote.date];
-    if (counts && vote.answer in counts) counts[vote.answer]++;
+    if (counts && vote.answer in counts) {
+      counts[vote.answer]++;
+    }
   }
 
   const ranked = [...dates].sort((a, b) =>
@@ -226,13 +254,17 @@ export function buildIcs({ name, host, items }) {
     if (item.startTime) {
       lines.push('DTSTART:' + icsLocalTime(item.date, item.startTime));
       // No end time: DTEND left out, which RFC 5545 reads as ending when it starts.
-      if (item.endTime) lines.push('DTEND:' + icsLocalTime(endDate, item.endTime));
+      if (item.endTime) {
+        lines.push('DTEND:' + icsLocalTime(endDate, item.endTime));
+      }
     } else {
       // All-day event: DTEND is exclusive, so it points at the day after the last one.
       lines.push('DTSTART;VALUE=DATE:' + item.date.replaceAll('-', ''),
         'DTEND;VALUE=DATE:' + addDays(endDate, 1).replaceAll('-', ''));
     }
-    if (item.rrule) lines.push('RRULE:' + item.rrule);
+    if (item.rrule) {
+      lines.push('RRULE:' + item.rrule);
+    }
     lines.push('SUMMARY:' + escapeIcsText(item.summary), 'END:VEVENT');
   }
 
@@ -271,17 +303,33 @@ export function verifyWebAuthn({ clientDataJSON, authenticatorData, signature, p
   try { clientData = JSON.parse(clientDataJSON.toString('utf8')); } catch { return false; }
 
   // 1-3: the browser's side of the story. challenge is base64url, exactly as we issued it.
-  if (clientData.type !== type) return false;
-  if (clientData.challenge !== challenge) return false;
-  if (clientData.origin !== ORIGIN) return false;
-  if (clientData.crossOrigin) return false;
+  if (clientData.type !== type) {
+    return false;
+  }
+  if (clientData.challenge !== challenge) {
+    return false;
+  }
+  if (clientData.origin !== ORIGIN) {
+    return false;
+  }
+  if (clientData.crossOrigin) {
+    return false;
+  }
 
   // 4-5: the authenticator's side. 37 bytes is the minimum: rpIdHash(32) + flags(1) + counter(4).
-  if (authenticatorData.length < 37) return false;
-  if (!authenticatorData.subarray(0, 32).equals(sha256Bytes(RP_ID))) return false;
-  if (!(authenticatorData[32] & 1)) return false; // UP: a human actually touched the authenticator
+  if (authenticatorData.length < 37) {
+    return false;
+  }
+  if (!authenticatorData.subarray(0, 32).equals(sha256Bytes(RP_ID))) {
+    return false;
+  }
+  if (!(authenticatorData[32] & 1)) {
+    return false; // UP: a human actually touched the authenticator
+  }
 
-  if (!signature) return true;
+  if (!signature) {
+    return true;
+  }
 
   // 6: the signature covers the authenticator data and a hash of everything the browser said.
   const signed = Buffer.concat([authenticatorData, sha256Bytes(clientDataJSON)]);

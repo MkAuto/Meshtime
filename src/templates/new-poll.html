@@ -1,0 +1,18 @@
+{{! Six date rows are the no-JS fallback; public/app.js collapses them to one and grows rows on demand,
+    up to data-max. }}
+<h1>New poll</h1>
+{{> notices}}
+<form method="post" action="/polls/new" class="stack">
+  <label>What for? <input name="title" required maxlength="100" placeholder="Board game night" autofocus></label>
+  <fieldset class="stack dates" data-max="{{maxDates}}">
+    <legend>Proposed dates (max {{maxDates}})</legend>
+    <noscript class="hint">Leave extras empty.</noscript>
+    <input type="date" name="dates">
+    <input type="date" name="dates">
+    <input type="date" name="dates">
+    <input type="date" name="dates">
+    <input type="date" name="dates">
+    <input type="date" name="dates">
+  </fieldset>
+  <button>Create poll</button>
+</form>

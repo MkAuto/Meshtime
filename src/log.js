@@ -50,7 +50,9 @@ const LINE_RE = /^(\S+) ip=(\S+) user=(-|"(?:[^"\\]|\\.)*")( \(unknown\))? actio
 /** One log line as table columns. A line in no known shape keeps its raw text as the action. */
 export function parseLogLine(line) {
   const match = LINE_RE.exec(line);
-  if (!match) return { time: '', ip: '', user: '', known: true, action: line };
+  if (!match) {
+    return { time: '', ip: '', user: '', known: true, action: line };
+  }
   const [, rawTime, ip, user, unknown, action] = match;
   // Lines written before the switch to Eastern are in UTC ("...Z"): convert them so the table reads as one zone.
   const date = new Date(rawTime);
@@ -64,7 +66,11 @@ function countLines(fd, size) {
   let lines = 0;
   for (let position = 0; position < size; position += chunk.length) {
     const read = readSync(fd, chunk, 0, chunk.length, position);
-    for (let i = 0; i < read; i++) if (chunk[i] === 10) lines++;
+    for (let i = 0; i < read; i++) {
+      if (chunk[i] === 10) {
+        lines++;
+      }
+    }
   }
   return lines;
 }

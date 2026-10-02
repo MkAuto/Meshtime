@@ -40,7 +40,9 @@ function isSameOrigin(req) {
     try { ok = new URL(origin || referer).host === host; }
     catch { ok = false; } // absent or unparseable: treat as cross-origin
   }
-  if (!ok) console.warn('Rejected cross-origin POST', { host, origin, referer, 'sec-fetch-site': fetchSite });
+  if (!ok) {
+    console.warn('Rejected cross-origin POST', { host, origin, referer, 'sec-fetch-site': fetchSite });
+  }
   return ok;
 }
 
@@ -111,7 +113,8 @@ function makeCtx(req, res, url) {
 }
 
 async function handle(req, res) {
-  res.setHeader('Content-Security-Policy', "default-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
+  res.setHeader('Content-Security-Policy',
+    "default-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
 
@@ -127,9 +130,12 @@ async function handle(req, res) {
     }
 
     if (method === 'POST') { // every mutation: SameSite=Lax cookie + same-origin check
-      if (!isSameOrigin(req)) return ctx.fail(403, 'Cross-origin request rejected.');
-      if (!(req.headers['content-type'] || '').startsWith('application/x-www-form-urlencoded'))
+      if (!isSameOrigin(req)) {
+        return ctx.fail(403, 'Cross-origin request rejected.');
+      }
+      if (!(req.headers['content-type'] || '').startsWith('application/x-www-form-urlencoded')) {
         return ctx.fail(415, 'Unsupported content type.');
+      }
       ctx.body = await readBody(req);
     }
 
@@ -144,26 +150,36 @@ async function handle(req, res) {
     }
 
     const route = routes.find(r => r.method === method && r.path.test(url.pathname));
-    if (!route) return ctx.fail(404, 'Page not found.');
+    if (!route) {
+      return ctx.fail(404, 'Page not found.');
+    }
 
     ctx.params = url.pathname.match(route.path).groups || {};
-    if (!route.public && !ctx.user)
+    if (!route.public && !ctx.user) {
       return method === 'GET' ? ctx.redirect('/login') : ctx.fail(401, 'Please log in.');
+    }
     return await route.handler(ctx);
   } catch (err) {
-    if (res.headersSent) return res.end();
+    if (res.headersSent) {
+      return res.end();
+    }
     // err.status means we threw it deliberately and the message is safe to show.
-    if (!err.status) console.error(err);
+    if (!err.status) {
+      console.error(err);
+    }
     ctx.fail(err.status || 500, err.status ? err.message : 'Something went wrong.');
   }
 }
 
 /** First run: print an invite link for the admin account. Reuses an unused one across restarts. */
 function printFirstAdminInvite() {
-  if (get('SELECT 1 FROM users LIMIT 1')) return;
+  if (get('SELECT 1 FROM users LIMIT 1')) {
+    return;
+  }
   const existing = get('SELECT token FROM invites WHERE is_admin = 1 AND used_at IS NULL AND expires_at > ?', now());
   const inviteToken = existing?.token || createInvite({ isAdmin: 1 });
-  console.log(`\nNo users yet. Open this link to create the first (admin) account:\n  ${BASE_URL}/invite/${inviteToken}\n`);
+  console.log('\nNo users yet. Open this link to create the first (admin) account:');
+  console.log(`  ${BASE_URL}/invite/${inviteToken}\n`);
 }
 
 const server = createServer(handle);
