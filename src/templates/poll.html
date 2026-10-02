@@ -1,0 +1,73 @@
+{{! A grid of members × proposed dates: my row holds selects, everyone else's is read-only. }}
+<h1>{{title}}</h1>
+<p class="hint">{{status}}</p>
+{{#errors.answers}}<p class="err">{{errors.answers}}</p>{{/errors.answers}}
+<form method="post" action="/polls/{{id}}">
+  <table class="poll">
+    <thead>
+      <tr>
+        <th></th>
+        {{#columns}}
+        <th class="{{classes}}">{{label}}</th>
+        {{/columns}}
+      </tr>
+    </thead>
+    <tbody>
+      {{#rows}}
+      <tr><td>{{name}}</td>
+        {{#cells}}
+        <td>
+          {{#editable}}
+          <select name="v_{{date}}">
+            {{^current}}<option value="" selected>—</option>{{/current}}
+            {{#options}}
+            <option value="{{value}}"{{#selected}} selected{{/selected}}>{{value}}</option>
+            {{/options}}
+          </select>
+          {{/editable}}
+          {{^editable}}<span class="a {{answerClass}}">{{answerText}}</span>{{/editable}}
+        </td>
+        {{/cells}}
+      </tr>
+      {{/rows}}
+      <tr class="tot">
+        <td>yes / maybe / no</td>
+        {{#totals}}
+        <td>{{yes}} / {{maybe}} / {{no}}</td>
+        {{/totals}}
+      </tr>
+    </tbody>
+  </table>
+  {{#isOpen}}
+  <button>Save my answers</button>
+  {{/isOpen}}
+</form>
+
+{{#result}}
+<section class="result">
+  <h2>{{heading}}</h2>
+  {{#errors.result}}<p class="err">{{errors.result}}</p>{{/errors.result}}
+  {{#tied}}
+  <p class="hint">Tied on yes and no — pick the one you want.</p>
+  {{/tied}}
+  {{#event}}
+  <p>Added to the calendar as <b>{{title}}</b> on {{date}}. <a href="/?m={{month}}">View</a></p>
+  {{/event}}
+  {{^event}}
+  <div class="row">
+    {{#choices}}
+    <form method="post" action="/polls/{{pollId}}/confirm">
+      <input type="hidden" name="date" value="{{date}}">
+      <button>Add {{label}} to calendar</button>
+    </form>
+    {{/choices}}
+  </div>
+  {{/event}}
+</section>
+{{/result}}
+
+{{#canClose}}
+<form method="post" action="/polls/{{id}}/close">
+  <p><button class="link danger">Close poll now</button></p>
+</form>
+{{/canClose}}

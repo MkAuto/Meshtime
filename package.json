@@ -1,10 +1,15 @@
 {
-  "name": "Meshtime",
+  "name": "meshtime",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "start": "node src/server.js",
     "test": "node --test"
+  },
+  "dependencies": {
+    "mustache": "4.2.0"
   }
 }

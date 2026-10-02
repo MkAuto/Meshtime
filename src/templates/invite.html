@@ -1,0 +1,16 @@
+{{! One page for both invite kinds. A password-reset link already knows the name, so the field is left out. }}
+<h1>{{heading}}</h1>
+<form method="post" action="/invite/{{token}}" class="stack">
+  {{^isReset}}
+  <label>
+    Your name <input name="name" required maxlength="40" value="{{name}}" autocomplete="username" autofocus>
+  </label>
+  {{#errors.name}}<p class="err">{{errors.name}}</p>{{/errors.name}}
+  {{/isReset}}
+  <label>
+    Password (min {{minPassword}} characters)
+    <input name="password" type="password" required minlength="{{minPassword}}" autocomplete="new-password">
+  </label>
+  {{#errors.password}}<p class="err">{{errors.password}}</p>{{/errors.password}}
+  <button>{{button}}</button>
+</form>

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{title}} · Meshtime</title>
+  <link rel="stylesheet" href="{{styleUrl}}">
+  <script src="{{scriptUrl}}" defer></script>
+</head>
+<body>
+  {{! On a phone the nav is a native popover: the ☰ button (top left) opens it as a side panel,
+      a tap outside or Esc closes it, no JS. On wider screens style.css shows the nav inline and
+      hides the button. }}
+  <header>
+    {{#user}}
+    <button class="menu-btn" popovertarget="menu" aria-label="Menu">☰</button>
+    {{/user}}
+    <a href="/" class="brand">Meshtime</a>
+    {{#user}}
+    <nav id="menu" popover>
+      <a href="/">Calendar</a>
+      <a href="/polls">Polls</a>
+      <a href="/profile">Profile</a>
+      <a href="/settings">Settings</a>
+      {{#is_admin}}
+      <a href="/admin">Administration</a>
+      {{/is_admin}}
+      <form method="post" action="/logout"><button class="link">Log out ({{name}})</button></form>
+    </nav>
+    {{/user}}
+  </header>
+  <main>
+{{{body}}}
+  </main>
+</body>
+</html>

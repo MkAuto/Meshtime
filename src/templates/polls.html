@@ -1,0 +1,13 @@
+<h1>Polls</h1>
+<p><a class="btn" href="/polls/new">New poll</a></p>
+<ul class="polls">
+  {{#polls}}
+  <li>
+    <a href="/polls/{{id}}">{{title}}</a>
+    <small>{{status}}</small>
+  </li>
+  {{/polls}}
+  {{^polls}}
+  <li class="hint">No polls yet.</li>
+  {{/polls}}
+</ul>

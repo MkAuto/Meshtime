@@ -1,0 +1,64 @@
+{{! Each panel is a details element: collapsing is native, needs no JS and works with JS off.
+    ponytail: all closed on load; remembering which you opened would need localStorage. }}
+<h1>Settings</h1>
+{{> notices}}
+<details class="panel panel-feeds">
+  <summary><h2>Calendar feeds</h2></summary>
+  <p class="hint">Private link: anyone who has it can read it. Rotating it requires re-subscribing.</p>
+  <ul class="feeds">
+    <li>
+      <b>Group events</b><br>
+      <code>{{eventsFeed}}</code><br>
+      <a href="{{eventsWebcal}}">webcal link (Apple / Outlook desktop)</a>
+    </li>
+    <li>
+      <b>Birthdays</b> (repeat every year)<br>
+      <code>{{birthdaysFeed}}</code><br>
+      <a href="{{birthdaysWebcal}}">webcal link (Apple / Outlook desktop)</a>
+    </li>
+  </ul>
+  <details>
+    <summary>How to subscribe</summary>
+    <ul>
+      <li>
+        <b>Google Calendar</b> (web): Other calendars → + → From URL → paste the https link.
+        Google refreshes every 12–24 h and cannot be forced.
+      </li>
+      <li>
+        <b>Apple Calendar</b>: click the webcal link, or File → New Calendar Subscription.
+        Choose a short auto-refresh interval.
+      </li>
+      <li>
+        <b>Outlook</b> (web): Add calendar → Subscribe from web → paste the https link.
+        Refreshes every few hours.
+      </li>
+    </ul>
+  </details>
+  <form method="post" action="/settings/rotate-feed"><button class="danger">Rotate feed links</button></form>
+</details>
+
+<details class="panel panel-custom" {{#customisationOpen}}open{{/customisationOpen}}>
+  <summary><h2>Customisation</h2></summary>
+  <form method="post" action="/settings/customisation">
+    <h3>First day of the week</h3>
+    <select name="week_start" aria-label="First day of the week">
+      {{#weekStarts}}
+      <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
+      {{/weekStarts}}
+    </select>
+    {{#errors.weekStart}}<p class="err">{{errors.weekStart}}</p>{{/errors.weekStart}}
+    <h3>Date format</h3>
+    <select name="date_format" aria-label="Date format">
+      {{#dateFormats}}
+      <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
+      {{/dateFormats}}
+    </select>
+    {{#errors.dateFormat}}<p class="err">{{errors.dateFormat}}</p>{{/errors.dateFormat}}
+    <h3>Birthdays</h3>
+    <label>
+      <input type="checkbox" name="show_birthdays" value="1"{{#showBirthdays}} checked{{/showBirthdays}}>
+      Show birthdays on my calendar
+    </label>
+    <p><button>Save</button></p>
+  </form>
+</details>

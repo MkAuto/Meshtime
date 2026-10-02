@@ -1,0 +1,48 @@
+{{! One page for adding and editing an event. Ticking "All day" hides the time inputs (style.css, no JS),
+    and the server ignores any times sent with it. }}
+<h1>{{heading}}</h1>
+<p class="hint">Leave the end date empty for a one-day event.</p>
+<form method="post" action="{{action}}" class="stack">
+  <label>
+    Title
+    <input name="title" required maxlength="100" value="{{title}}"{{^editing}} autofocus{{/editing}}>
+  </label>
+  {{#errors.title}}<p class="err">{{errors.title}}</p>{{/errors.title}}
+  <label class="check">
+    <input type="checkbox" name="all_day" value="1" id="all-day"{{#allDay}} checked{{/allDay}}>
+    All day
+  </label>
+  <label>
+    Starts
+    <span class="row">
+      <input type="date" name="date" required value="{{date}}">
+      <input type="time" name="start_time" aria-label="Start time" value="{{startTime}}">
+    </span>
+  </label>
+  {{#errors.start}}<p class="err">{{errors.start}}</p>{{/errors.start}}
+  <label>
+    Ends
+    <span class="row">
+      <input type="date" name="end_date" aria-label="End date" value="{{endDate}}">
+      <input type="time" name="end_time" aria-label="End time" value="{{endTime}}">
+    </span>
+  </label>
+  {{#errors.end}}<p class="err">{{errors.end}}</p>{{/errors.end}}
+  <fieldset class="colors">
+    <legend>Color</legend>
+    {{#colors}}
+    <label class="{{classes}}" title="{{label}}">
+      <input type="radio" name="color" value="{{value}}" aria-label="{{label}}"{{#checked}} checked{{/checked}}>
+    </label>
+    {{/colors}}
+  </fieldset>
+  {{#errors.color}}<p class="err">{{errors.color}}</p>{{/errors.color}}
+  <button>{{button}}</button>
+</form>
+{{#editing}}
+<form method="post" action="/events/{{id}}/delete" class="stack delete-event" data-confirm="Delete {{title}}?">
+  <input type="hidden" name="m" value="{{month}}">
+  <button class="danger">Delete event</button>
+</form>
+{{/editing}}
+<p><a href="/?m={{month}}">Back to calendar</a></p>

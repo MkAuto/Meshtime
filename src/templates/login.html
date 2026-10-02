@@ -1,0 +1,9 @@
+<h1>Log in</h1>
+{{> notices}}
+<form method="post" action="/login" class="stack">
+  <label>Name <input name="name" required maxlength="40" autocomplete="username" autofocus></label>
+  <label>Password <input name="password" type="password" required autocomplete="current-password"></label>
+  <button>Log in</button>
+</form>
+<p id="passkey-login" hidden>or <button class="link">log in with a passkey</button> <span class="err"></span></p>
+<p class="hint">No account? Ask a member for an invite link.</p>

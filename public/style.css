@@ -1,23 +1,102 @@
-:root { --bg: #fafafa; --card: #fff; --fg: #1f2328; --muted: #6b7280; --line: #e5e7eb; --accent: #2563eb; --on-accent: #fff;
-  --ok: #15803d; --ok-bg: #dcfce7; --err: #b91c1c; --maybe: #b45309; --code-bg: #f1f5f9; --ev-bg: #fef3c7; --ev-fg: #92400e; }
+:root {
+  --bg: #fafafa;
+  --card: #fff;
+  --fg: #1f2328;
+  --muted: #6b7280;
+  --line: #e5e7eb;
+  --accent: #2563eb;
+  --on-accent: #fff;
+  --ok: #15803d;
+  --ok-bg: #dcfce7;
+  --err: #b91c1c;
+  --maybe: #b45309;
+  --code-bg: #f1f5f9;
+  --ev-bg: #fef3c7;
+  --ev-fg: #92400e;
+}
 * { box-sizing: border-box; }
 body { margin: 0; font: 16px/1.4 system-ui, sans-serif; color: var(--fg); background: var(--bg); }
-header { display: flex; align-items: center; gap: 1rem; padding: .6rem 1rem; background: var(--card); border-bottom: 1px solid var(--line); }
+header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: .6rem 1rem;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+}
 header .brand { font-weight: 700; text-decoration: none; color: var(--fg); margin-right: auto; }
-nav { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+/* nav has the popover attribute (the phone menu); the last six lines undo the browser's popover look
+   on wide screens. */
+nav {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+  position: static;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  overflow: visible;
+}
+.menu-btn { display: none; font-size: 1.3rem; line-height: 1; padding: .2rem .5rem; }
+@media (max-width: 600px) {
+  .menu-btn { display: block; }
+  nav:not(:popover-open) { display: none; }
+  nav:popover-open {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(16rem, 80vw);
+    height: 100%;
+    box-sizing: border-box;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    gap: 1.2rem;
+    padding: 1.2rem;
+    background: var(--card);
+    border-right: 1px solid var(--line);
+    box-shadow: 4px 0 16px rgb(0 0 0 / .15);
+  }
+  nav::backdrop { background: rgb(0 0 0 / .35); }
+}
 nav a { color: var(--accent); text-decoration: none; }
 main { max-width: 900px; margin: 0 auto; padding: 1rem; }
 h1 { font-size: 1.4rem; display: flex; align-items: center; gap: .6rem; }
 h1 a { color: var(--accent); text-decoration: none; padding: 0 .4rem; }
 h2 { font-size: 1.1rem; margin: 1.5rem 0 .5rem; }
 .hint { color: var(--muted); font-size: .9rem; }
-.err { color: var(--err); } .ok { color: var(--ok); }
-input, select, button { font: inherit; padding: .4rem .6rem; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--fg); }
+.err { color: var(--err); }
+/* A form error sits right under its field: tight above, a little room below. */
+p.err { margin: .3rem 0 .6rem; }
+.stack > p.err { margin: -.5rem 0 0; }
+.ok { color: var(--ok); }
+input, select, button {
+  font: inherit;
+  padding: .4rem .6rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--fg);
+}
 button { background: var(--accent); color: var(--on-accent); border-color: var(--accent); cursor: pointer; }
 button.link { background: none; color: var(--accent); border: none; padding: 0; text-decoration: underline; }
-button.danger, .danger { color: var(--err); } button.danger:not(.link) { background: var(--err); border-color: var(--err); color: #fff; }
-.btn { display: inline-block; background: var(--accent); color: var(--on-accent); padding: .4rem .8rem; border-radius: 6px; text-decoration: none; }
-.stack { display: grid; gap: .8rem; max-width: 360px; } .stack label { display: grid; gap: .2rem; }
+button.danger, .danger { color: var(--err); }
+button.danger:not(.link) { background: var(--err); border-color: var(--err); color: #fff; }
+.btn {
+  display: inline-block;
+  background: var(--accent);
+  color: var(--on-accent);
+  padding: .4rem .8rem;
+  border-radius: 6px;
+  text-decoration: none;
+}
+.stack { display: grid; gap: .8rem; max-width: 360px; }
+.stack label { display: grid; gap: .2rem; }
+.stack label.check { display: flex; align-items: center; gap: .4rem; }
+/* Event form: an all-day event has no times, so its time inputs are hidden. */
+form:has(#all-day:checked) input[type=time] { display: none; }
 .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
 .inline { display: inline; }
 form { margin: 0; }
@@ -25,30 +104,52 @@ code { word-break: break-all; font-size: .85rem; background: var(--code-bg); pad
 
 /* settings / admin panels: one tinted card per topic, so the page reads as groups, not one long list.
    Each .panel-* only sets --panel (fill) and --panel-edge (stripe + heading); dark mode reuses the names. */
-.panel { background: var(--panel); border: 1px solid var(--line); border-left: 5px solid var(--panel-edge);
-  border-radius: 10px; padding: .4rem 1.2rem 1.2rem; margin: 1.2rem 0;
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--panel-edge);
+  border-radius: 10px;
+  padding: .4rem 1.2rem 1.2rem;
+  margin: 1.2rem 0;
   /* the tint costs .hint about .2 of contrast ratio; one step darker keeps it over 4.5:1 */
-  --muted: #4b5563; }
+  --muted: #4b5563;
+}
 /* The default ::marker collides with the block-level h2, so the summary lays itself out as a
    flex row and draws its own triangle. list-style + the -webkit rule kill the native one. */
 .panel > summary { cursor: pointer; display: flex; align-items: center; gap: .5rem; list-style: none; }
 .panel > summary::-webkit-details-marker { display: none; }
-.panel > summary::before { content: "▶"; font-size: .7rem; color: var(--panel-edge);
-  transition: transform .15s ease; }
+.panel > summary::before {
+  content: "▶";
+  font-size: .7rem;
+  color: var(--panel-edge);
+  transition: transform .15s ease;
+}
 .panel[open] > summary::before { transform: rotate(90deg); }
 /* Only the section title is enlarged. Subtitles stay at body size and lean on weight, not size. */
 .panel h2 { font-size: 1.3rem; color: var(--panel-edge); margin: .6rem 0; }
-.panel > h3 { font-size: 1rem; margin: 1.3rem 0 .3rem; }
+.panel > h3, .panel > form > h3 { font-size: 1rem; margin: 1.3rem 0 .3rem; }
 /* collapsed: drop the bottom padding so the closed panel is a tidy title bar.
    Scoped to details so the admin page's plain <section class=panel> keeps its padding. */
 details.panel:not([open]) { padding-bottom: .4rem; }
 /* Admin connection log: the panel's full width. It scrolls both ways inside itself (long actions on
    a phone); the header row stays pinned while scrolling down. */
-/* Tall enough for the header + 20 rows, then it scrolls. --log-row is one row: text (.8rem at line-height 1.4),
-   padding (2 × .25rem) and the 1px bottom border, the same numbers table.log uses below. */
-.log-wrap { --log-row: calc(.8rem * 1.4 + .5rem + 1px); max-height: calc(21 * var(--log-row)); overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--card); }
+/* Tall enough for the header + 20 rows, then it scrolls. --log-row is one row: text (.8rem at
+   line-height 1.4), padding (2 × .25rem) and the 1px bottom border, the same numbers table.log uses below. */
+.log-wrap {
+  --log-row: calc(.8rem * 1.4 + .5rem + 1px);
+  max-height: calc(21 * var(--log-row));
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+}
 table.log { border-collapse: collapse; width: 100%; font-size: .8rem; line-height: 1.4; }
-table.log th, table.log td { padding: .25rem .6rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+table.log th, table.log td {
+  padding: .25rem .6rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
 table.log th { position: sticky; top: 0; background: var(--card); }
 /* one entry per row: no wrapping, except the action, which takes whatever width is left */
 table.log td:not(:last-child), table.log th { white-space: nowrap; }
@@ -58,6 +159,7 @@ table.log td.n { text-align: right; color: var(--muted); font-variant-numeric: t
 table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 .panel-feeds    { --panel: #eff6ff; --panel-edge: #2563eb; }
 .panel-custom   { --panel: #f5f3ff; --panel-edge: #7c3aed; }
+.panel-profile  { --panel: #fdf2f8; --panel-edge: #db2777; }
 .panel-security { --panel: #fff7ed; --panel-edge: #c2410c; }
 .panel-admin    { --panel: #fef2f2; --panel-edge: #b91c1c; }
 
@@ -65,17 +167,28 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 /* minmax(0, …): a plain 1fr won't shrink below its content, so one long title would widen its column */
 .grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
 .dow { text-align: center; font-size: .75rem; color: var(--muted); padding: .2rem 0; }
-.day { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: .2rem; font-size: .75rem; }
+.day {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: .2rem;
+  font-size: .75rem;
+}
 .day.pad { background: none; border: none; }
 .day.today { border-color: var(--accent); }
 /* the button is the whole cell: grid on every wrapper stretches it edge to edge, no fixed heights.
-   Each day spans two rows of .grid (head, events, see calendarPage) and passes them down as a
+   Each day spans two rows of .grid (head, events, see calendar.html) and passes them down as a
    subgrid, so the head row is as tall as the tallest one in the week: bars start level under
    initials of any height. row-gap 0 inside the cell; the 3px gap stays between weeks. */
-.day, .day form, .day button { display: grid; grid-row: span 2; grid-template-rows: subgrid; row-gap: 0;
+.day, .day form, .day button {
+  display: grid;
+  grid-row: span 2;
+  grid-template-rows: subgrid;
+  row-gap: 0;
   /* minmax(0, …): a label stretched over the next days (.ev-text) must not widen the cell's own column,
      or the day's other events would stretch with it and spill into the next day */
-  grid-template-columns: minmax(0, 1fr); }
+  grid-template-columns: minmax(0, 1fr);
+}
 .day button { text-align: left; background: none; border: none; color: var(--fg); padding: .1rem .2rem; }
 .day .head { display: block; }
 /* the cell's minimum height lives in the events row, so the head stays packed at the top */
@@ -84,30 +197,81 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 /* Holding a day opens the morning/afternoon menu (public/app.js), so the phone's own long-press
    reactions must not fire: no text selection, no iOS callout. manipulation also drops the
    double-tap zoom, so taps land at once. */
-.day button { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
+.day button {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
 /* "am" / "pm" after the initials of a half-day member */
 .who sup { font-size: .7em; font-weight: 600; margin-left: 1px; }
 
 /* the morning / afternoon / all day menu */
-#day-part { border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; background: var(--card); color: var(--fg); min-width: 240px; }
+#day-part {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1rem 1.2rem;
+  background: var(--card);
+  color: var(--fg);
+  min-width: 240px;
+}
 #day-part::backdrop { background: rgb(0 0 0 / .4); }
 #day-part h2 { margin: 0 0 .8rem; }
 #day-part .stack button { width: 100%; }
-#day-part .stack button.current { outline: 3px solid var(--fg); outline-offset: 2px; } /* what the day is set to now */
+/* what the day is set to now */
+#day-part .stack button.current { outline: 3px solid var(--fg); outline-offset: 2px; }
 #day-part form[method=dialog] { margin-top: .8rem; text-align: center; }
 /* day states: one class per DAY_STATES key in src/lib.js */
 .day.mine { outline: 2px solid var(--accent); outline-offset: -2px; }
 .day.all { background: var(--ok-bg); }
 .day.all .num::after { content: " ✓"; color: var(--ok); }
 .who { display: flex; flex-wrap: wrap; gap: 2px; }
-/* user colors: 13 distinct colors, index stored in users.color. Add .cN{--c:light;--cd:dark} + a gradient stop, bump COLORS in src/lib.js */
-.c0{--c:#dc2626;--cd:#f87171}.c1{--c:#ea580c;--cd:#fb923c}.c2{--c:#ca8a04;--cd:#facc15}.c3{--c:#65a30d;--cd:#a3e635}.c4{--c:#16a34a;--cd:#4ade80}.c5{--c:#0d9488;--cd:#2dd4bf}.c6{--c:#0284c7;--cd:#38bdf8}.c7{--c:#2563eb;--cd:#60a5fa}.c8{--c:#4f46e5;--cd:#818cf8}.c9{--c:#9333ea;--cd:#c084fc}.c10{--c:#db2777;--cd:#f472b6}.c11{--c:#7c4a1d;--cd:#c9915a}.c12{--c:#475569;--cd:#94a3b8}
+/* user colors: 13 distinct colors, index stored in users.color. --c is for light mode, --cd for dark.
+   To add one: a .cN line here, a stop in the .hue gradient below, and bump COLORS in src/lib.js. */
+.c0  { --c: #dc2626; --cd: #f87171; }
+.c1  { --c: #ea580c; --cd: #fb923c; }
+.c2  { --c: #ca8a04; --cd: #facc15; }
+.c3  { --c: #65a30d; --cd: #a3e635; }
+.c4  { --c: #16a34a; --cd: #4ade80; }
+.c5  { --c: #0d9488; --cd: #2dd4bf; }
+.c6  { --c: #0284c7; --cd: #38bdf8; }
+.c7  { --c: #2563eb; --cd: #60a5fa; }
+.c8  { --c: #4f46e5; --cd: #818cf8; }
+.c9  { --c: #9333ea; --cd: #c084fc; }
+.c10 { --c: #db2777; --cd: #f472b6; }
+.c11 { --c: #7c4a1d; --cd: #c9915a; }
+.c12 { --c: #475569; --cd: #94a3b8; }
 .who span, .swatch { color: var(--c, var(--accent)); padding: 0 .15rem; font-weight: 700; }
 .swatch { font-size: 1.3rem; min-width: 2.2rem; text-align: center; }
-.hue::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--card); border: 2px solid var(--fg); }
-.hue::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--card); border: 2px solid var(--fg); }
-.hue { appearance: none; width: 240px; height: 10px; border: none; border-radius: 5px; padding: 0;
-  background: linear-gradient(to right, #dc2626 0.00% 7.69%, #ea580c 7.69% 15.38%, #ca8a04 15.38% 23.08%, #65a30d 23.08% 30.77%, #16a34a 30.77% 38.46%, #0d9488 38.46% 46.15%, #0284c7 46.15% 53.85%, #2563eb 53.85% 61.54%, #4f46e5 61.54% 69.23%, #9333ea 69.23% 76.92%, #db2777 76.92% 84.62%, #7c4a1d 84.62% 92.31%, #475569 92.31% 100.00%); }
+.hue::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--card);
+  border: 2px solid var(--fg);
+}
+.hue::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--card);
+  border: 2px solid var(--fg);
+}
+.hue {
+  appearance: none;
+  width: 240px;
+  height: 10px;
+  border: none;
+  border-radius: 5px;
+  padding: 0;
+  /* one equal band per color, .c0 to .c12 */
+  background: linear-gradient(to right,
+    #dc2626 0.00% 7.69%, #ea580c 7.69% 15.38%, #ca8a04 15.38% 23.08%, #65a30d 23.08% 30.77%,
+    #16a34a 30.77% 38.46%, #0d9488 38.46% 46.15%, #0284c7 46.15% 53.85%, #2563eb 53.85% 61.54%,
+    #4f46e5 61.54% 69.23%, #9333ea 69.23% 76.92%, #db2777 76.92% 84.62%, #7c4a1d 84.62% 92.31%,
+    #475569 92.31% 100.00%);
+}
 .ev { background: var(--ev-bg); color: var(--ev-fg); border-radius: 4px; padding: 0 .25rem; margin-top: 2px; }
 /* An event with a color (events.color): a tint of its .cN palette color, text in the color itself. */
 .ev.colored { background: color-mix(in srgb, var(--c) 18%, var(--card)); color: var(--c); }
@@ -115,8 +279,15 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 .colors { display: flex; flex-wrap: wrap; gap: .4rem; border: none; padding: 0; margin: 0; }
 .colors legend { padding: 0; margin-bottom: .3rem; }
 /* "Default" has no .cN, so it falls back to the default event look */
-.swatch-pick { position: relative; width: 1.8rem; height: 1.8rem; border-radius: 50%; cursor: pointer;
-  background: var(--c, var(--ev-bg)); border: 2px solid var(--c, var(--ev-fg)); }
+.swatch-pick {
+  position: relative;
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 50%;
+  cursor: pointer;
+  background: var(--c, var(--ev-bg));
+  border: 2px solid var(--c, var(--ev-fg));
+}
 .swatch-pick input { position: absolute; opacity: 0; pointer-events: none; }
 .swatch-pick:has(:checked) { outline: 3px solid var(--fg); outline-offset: 2px; }
 .swatch-pick:has(:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
@@ -124,15 +295,28 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 .delete-event { margin-top: 1.5rem; }
 /* Multi-day bars: one line each so every piece of a bar is the same height; the tooltip has the full title. */
 .ev.bar { white-space: nowrap; }
-/* The label runs across the bar's next cells in the week (run-N = N cells, set in calendarPage).
+/* The label runs across the bar's next cells in the week (run-N = N cells, set in views.js).
    One cell step is a column plus the 3px gap: (100cqw + 3px) / 7, cqw being 1% of .grid's width.
    Minus the gap, the cell's inset on both sides (.4rem padding + 1px border) and the bar's padding.
    z-index lifts it over the later cells, which paint after this one; pointer-events: none lets a
    click on the text still reach the day under it. */
 .grid { container-type: inline-size; }
-.ev-text { display: block; position: relative; z-index: 1; pointer-events: none; overflow: hidden; text-overflow: ellipsis;
-  width: calc(var(--run) * (100cqw + 3px) / 7 - 3px - .8rem - 2px - .5rem); }
-.run-1{--run:1}.run-2{--run:2}.run-3{--run:3}.run-4{--run:4}.run-5{--run:5}.run-6{--run:6}.run-7{--run:7}
+.ev-text {
+  display: block;
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: calc(var(--run) * (100cqw + 3px) / 7 - 3px - .8rem - 2px - .5rem);
+}
+.run-1 { --run: 1; }
+.run-2 { --run: 2; }
+.run-3 { --run: 3; }
+.run-4 { --run: 4; }
+.run-5 { --run: 5; }
+.run-6 { --run: 6; }
+.run-7 { --run: 7; }
 .ev.gap { visibility: hidden; }
 /* A piece that carries on stretches over the cell's padding (.2rem + .2rem on the button) and 1px border,
    and the one continuing it also over the 3px grid gap, so the two meet edge to edge.
@@ -147,23 +331,46 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 .events li.past { color: var(--muted); } /* its last day is before today */
 
 /* polls */
-.polls li { margin: .4rem 0; } .polls small { color: var(--muted); margin-left: .5rem; }
+.polls li { margin: .4rem 0; }
+.polls small { color: var(--muted); margin-left: .5rem; }
 table.poll { border-collapse: collapse; width: 100%; margin: 1rem 0; background: var(--card); }
 table.poll th, table.poll td { border: 1px solid var(--line); padding: .4rem; text-align: center; font-size: .9rem; }
 table.poll th.best { background: var(--ok-bg); }
 table.poll td:first-child { text-align: left; }
 table.poll tr.tot td { color: var(--muted); font-size: .8rem; }
-.a.yes { color: var(--ok); font-weight: 600; } .a.no { color: var(--err); } .a.maybe { color: var(--maybe); } .a.none { color: var(--muted); }
+.a.yes { color: var(--ok); font-weight: 600; }
+.a.no { color: var(--err); }
+.a.maybe { color: var(--maybe); }
+.a.none { color: var(--muted); }
 .result { background: var(--ok-bg); padding: 1rem; border-radius: 8px; margin: 1rem 0; }
 .result h2 { margin-top: 0; }
 .feeds li { margin: .8rem 0; }
 details { margin: .8rem 0; }
-@media (max-width: 600px) { .day { font-size: .65rem; } .day .day-events { min-height: 1.8rem; } .who span { padding: 0 .15rem; } }
+@media (max-width: 600px) {
+  .day { font-size: .65rem; }
+  .day .day-events { min-height: 1.8rem; }
+  .who span { padding: 0 .15rem; }
+}
 
-/* dark dark mode: follows the OS setting */
+/* dark mode: follows the OS setting */
 @media (prefers-color-scheme: dark) {
-  :root { color-scheme: dark; --bg: #000; --card: #0b0b0b; --fg: #e6e6e6; --muted: #8a8a8a; --line: #222; --accent: #60a5fa; --on-accent: #0b0b0b;
-    --ok: #4ade80; --ok-bg: #0c2a17; --err: #f87171; --maybe: #fbbf24; --code-bg: #161616; --ev-bg: #2a1f05; --ev-fg: #fcd34d; }
+  :root {
+    color-scheme: dark;
+    --bg: #000;
+    --card: #0b0b0b;
+    --fg: #e6e6e6;
+    --muted: #8a8a8a;
+    --line: #222;
+    --accent: #60a5fa;
+    --on-accent: #0b0b0b;
+    --ok: #4ade80;
+    --ok-bg: #0c2a17;
+    --err: #f87171;
+    --maybe: #fbbf24;
+    --code-bg: #161616;
+    --ev-bg: #2a1f05;
+    --ev-fg: #fcd34d;
+  }
   .who span, .swatch { color: var(--cd, var(--accent)); }
   .ev.colored { background: color-mix(in srgb, var(--cd) 22%, var(--card)); color: var(--cd); }
   .swatch-pick { background: var(--cd, var(--ev-bg)); border-color: var(--cd, var(--ev-fg)); }
@@ -171,6 +378,7 @@ details { margin: .8rem 0; }
      Dark needs no --muted bump: #8a8a8a clears 5.2:1 on all four. */
   .panel-feeds    { --panel: #0a1526; --panel-edge: #60a5fa; }
   .panel-custom   { --panel: #140f26; --panel-edge: #a78bfa; }
+  .panel-profile  { --panel: #26091a; --panel-edge: #f472b6; }
   .panel-security { --panel: #211206; --panel-edge: #fb923c; }
   .panel-admin    { --panel: #240d0d; --panel-edge: #f87171; }
 }

@@ -1,90 +1,87 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { monthInfo, formatDate, formatEventWhen, eventLanes, DATE_FORMATS, today, dayClass, weekdayNames, WEEKDAYS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD } from './lib.js';
+import { readdirSync, readFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
+import Mustache from 'mustache';
+import {
+  monthInfo, formatDate, formatEventWhen, eventLanes, dayClass, weekdayNames, today,
+  DATE_FORMATS, WEEKDAYS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD,
+} from './lib.js';
+
+// Each page is a Mustache template in src/templates/ (https://mustache.github.io/mustache.5.html).
+// The functions here only work out the values it shows; the markup lives in the template.
+// {{value}} is HTML-escaped, {{{value}}} is not (only used for the page body inside the layout).
+// All templates are read once at startup, keyed by file name, so any of them can be a {{> partial}}.
+const TEMPLATE_DIR = join(import.meta.dirname, 'templates');
+const templates = Object.fromEntries(readdirSync(TEMPLATE_DIR)
+  .filter(file => file.endsWith('.html'))
+  .map(file => [basename(file, '.html'), readFileSync(join(TEMPLATE_DIR, file), 'utf8')]));
+const render = (name, values) => Mustache.render(templates[name], values, templates);
+
+// Mustache's default escaping also encodes / ` and =, so every URL would come out as &#x2F;…
+// Every value goes into text or a double-quoted attribute, where these five are all that matter.
+const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+Mustache.escape = text => String(text).replace(/[&<>"']/g, char => ESCAPES[char]);
 
 // Static files are cached for an hour (server.js). A hash of the content in the URL makes every
 // change a new URL, so a restart after editing public/ reaches browsers at once, no Ctrl+F5.
 // server.js serves by pathname, so the ?v= is ignored there.
-const versioned = file => `/${file}?v=` + createHash('sha256')
-  .update(readFileSync(join(import.meta.dirname, '..', 'public', file))).digest('hex').slice(0, 8);
+const versioned = file => {
+  const content = readFileSync(join(import.meta.dirname, '..', 'public', file));
+  return `/${file}?v=` + createHash('sha256').update(content).digest('hex').slice(0, 8);
+};
 const STYLE_URL = versioned('style.css');
 const SCRIPT_URL = versioned('app.js');
-
-// ---- the html`` template tag ----
-// Every interpolation is escaped, so untrusted text is safe by default. Wrap trusted
-// markup in raw(); nested html`` results are already trusted. Arrays are joined with no
-// separator, null / undefined / false render as nothing (handy for `cond && html`...``).
-
-const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-
-class Raw {
-  constructor(s) { this.s = s; }
-  toString() { return this.s; }
-}
-
-export const raw = s => new Raw(String(s));
-
-function render(value) {
-  if (value instanceof Raw) return value.s;
-  if (Array.isArray(value)) return value.map(render).join('');
-  if (value == null || value === false) return '';
-  return String(value).replace(/[&<>"']/g, char => ESC[char]);
-}
-
-export const html = (strings, ...values) =>
-  new Raw(strings.reduce((out, string, i) => out + render(values[i - 1]) + string));
 
 // ---- shared bits ----
 
 /** "Ada Lovelace" -> "AL". Shown in calendar cells and as the color swatch. */
 const initials = name => name.trim().split(/\s+/).map(word => word[0]).join('').slice(0, 2).toUpperCase();
 
-// Confirmations, keyed by the ?msg= value the settings routes redirect with.
-const MSGS = {
+// Confirmations, keyed by the ?msg= value the settings, profile and admin routes redirect with.
+const MESSAGES = {
   rotated: 'Feed links rotated. Re-subscribe in your calendar apps.',
   password: 'Password changed.',
   invite: 'Link created (see below).',
-  color: 'Color saved.',
-  week_start: 'First day of the week saved.',
-  date_format: 'Date format saved.',
+  about: 'Profile saved.',
+  customisation: 'Customisation saved.',
   passkey: 'Passkey added.',
   passkey_removed: 'Passkey removed.',
   removed: 'Member removed. Their sessions, passkeys and feed links no longer work.',
 };
 
-/** The ?msg= confirmation and the inline error line, shared by Settings and Administration. */
-const notices = (msg, error) => html`${MSGS[msg] && html`<p class="ok">${MSGS[msg]}</p>`}${error && html`<p class="err">${error}</p>`}`;
+/** The value the notices partial shows for ?msg=. Form errors are shown under their fields instead. */
+const notices = msg => ({ notice: MESSAGES[msg] });
 
-/** Page shell: head, header with nav (only when logged in), and the body inside <main>. */
+/** Wraps a page's own HTML in the shell (head, header, nav). `user` is null on logged-out pages. */
 export function layout(title, user, body) {
-  return '<!doctype html>' + html`<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${title} · Meshtime</title><link rel="stylesheet" href="${STYLE_URL}"><script src="${SCRIPT_URL}" defer></script></head><body>
-<header><a href="/" class="brand">Meshtime</a>${user ? html`<nav><a href="/">Calendar</a><a href="/polls">Polls</a><a href="/settings">Settings</a>${user.is_admin ? html`<a href="/admin">Administration</a>` : ''}
-<form method="post" action="/logout"><button class="link">Log out (${user.name})</button></form></nav>` : ''}</header>
-<main>${body}</main></body></html>`.s;
+  return render('layout', { title, user, body, styleUrl: STYLE_URL, scriptUrl: SCRIPT_URL });
 }
 
-export const errorPage = (status, msg, user) => layout(`Error ${status}`, user, html`<h1>${status}</h1><p>${msg}</p><p><a href="/">Back to calendar</a></p>`);
+/** Renders template `name` with `values`, inside the shell. */
+const page = (title, user, name, values) => layout(title, user, render(name, values));
+
+/** Options for a <select>: `selected` marks the current one. */
+const options = (entries, current) => entries.map(([value, label]) => ({ value, label, selected: value === current }));
+
+export const errorPage = (status, message, user) => page(`Error ${status}`, user, 'error', { status, message });
 
 // ---- auth pages ----
 
-export const loginPage = error => layout('Log in', null, html`<h1>Log in</h1>${error && html`<p class="err">${error}</p>`}
-<form method="post" action="/login" class="stack">
-<label>Name <input name="name" required maxlength="40" autocomplete="username" autofocus></label>
-<label>Password <input name="password" type="password" required autocomplete="current-password"></label>
-<button>Log in</button></form>
-<p id="passkey-login" hidden>or <button class="link">log in with a passkey</button> <span class="err"></span></p>
-<p class="hint">No account? Ask a member for an invite link.</p>`);
+export const loginPage = error => page('Log in', null, 'login', { error });
 
-// One page for both invite kinds: resetName is set only for a password-reset link,
-// in which case the name is already known and the field is left out.
-export const invitePage = (token, resetName, error) => layout(resetName ? 'Reset password' : 'Join', null, html`
-<h1>${resetName ? `Reset password for ${resetName}` : 'Create your account'}</h1>${error && html`<p class="err">${error}</p>`}
-<form method="post" action="/invite/${token}" class="stack">
-${resetName ? '' : html`<label>Your name <input name="name" required maxlength="40" autocomplete="username" autofocus></label>`}
-<label>Password (min ${MIN_PASSWORD} characters) <input name="password" type="password" required minlength="${MIN_PASSWORD}" autocomplete="new-password"></label>
-<button>${resetName ? 'Set password' : 'Create account'}</button></form>`);
+// One page for both invite kinds: resetName is set only for a password-reset link.
+// After a rejected form, `errors` ({ name, password }) shows under each field and `name` is kept.
+export function invitePage(token, resetName, { errors = {}, name = '' } = {}) {
+  return page(resetName ? 'Reset password' : 'Join', null, 'invite', {
+    token,
+    errors,
+    name,
+    isReset: Boolean(resetName),
+    heading: resetName ? `Reset password for ${resetName}` : 'Create your account',
+    button: resetName ? 'Set password' : 'Create account',
+    minPassword: MIN_PASSWORD,
+  });
+}
 
 // ---- calendar ----
 
@@ -93,208 +90,297 @@ const PART_LABELS = { all: 'all day', am: 'morning', pm: 'afternoon', eve: 'even
 // The long-press / double-click menu: each button posts its value as `part` to /free.
 const PART_CHOICES = { all: 'All day', am: 'Morning (AM)', pm: 'Afternoon (PM)', eve: 'Evening', none: 'Not free' };
 
-export function calendarPage(user, yearMonth, { free, mine, events, today, members }) {
+/** ' colored cN' for an event with a bar color (events.color), '' for the default look. */
+const eventColor = event => event.color == null ? '' : ` colored c${event.color}`;
+
+const MS_PER_DAY = 864e5;
+
+// `error` is set when a /free post was rejected: it shows under the month title.
+export function calendarPage(user, yearMonth, { free, mine, events, birthdays, today, members, error }) {
   const month = monthInfo(yearMonth, user.week_start);
   const lanes = eventLanes(events);
+  const eventTooltip = event => `${event.title}, ${formatEventWhen(event, user.date_format)} (by ${event.creator})`;
 
-  // Blank cells so day 1 lands on its weekday, then one cell per day of the month.
-  const cells = Array.from({ length: month.pad }, () => html`<div class="day pad"></div>`);
+  const days = [];
   for (let day = 1; day <= month.days; day++) {
     const date = `${yearMonth}-${String(day).padStart(2, '0')}`;
-    const who = free.get(date) || [];
+    const whoIsFree = free.get(date) || [];
     const myPart = mine.get(date); // undefined when I have not marked this day
     const dayEvents = events.filter(event => event.date <= date && date <= event.end_date);
-    // Multi-day bars go by lane, so a bar lines up across its days. A lane with nothing today still
-    // takes its row (an invisible .gap) to keep the lanes below it level.
-    const bars = [];
-    for (const event of dayEvents) if (lanes.has(event.id)) bars[lanes.get(event.id)] = event;
-    const oneDay = dayEvents.filter(event => !lanes.has(event.id));
+
     // A bar is labelled where it starts, and again on day 1 and at the start of each week row.
     const column = (month.pad + day - 1) % 7;
     const startsRow = day === 1 || column === 0;
     // How many cells the label may run over: to the end of the event, the week row or the month.
-    const run = event => Math.min((Date.parse(event.end_date) - Date.parse(date)) / 864e5 + 1, 7 - column, month.days - day + 1);
+    const labelRun = event => Math.min(
+      (Date.parse(event.end_date) - Date.parse(date)) / MS_PER_DAY + 1,
+      7 - column,
+      month.days - day + 1,
+    );
     const label = event => (event.start_time && event.date === date ? event.start_time + ' ' : '') + event.title;
-    const tooltip = event => `${event.title}, ${formatEventWhen(event, user.date_format)} (by ${event.creator})`;
-    // The whole cell is the toggle button: posting /free flips my own free-all-day/not-free.
-    // Initials and events live inside it, as spans, so every pixel of the square is clickable
-    // while each one keeps its own title tooltip on hover.
-    // data-date-label and data-part feed the morning/afternoon menu in public/app.js.
-    // Two parts, each a row shared by the whole week (subgrid in style.css): number + initials, then
-    // the events. So the bars start level even when the initials differ. One-day events follow this
-    // day's own bars; the lanes (gaps included) keep a bar level, so they never land on one.
-    cells.push(html`<div class="day ${dayClass({ who, members, mine: Boolean(myPart) })}${date === today ? ' today' : ''}">
-<form method="post" action="/free"><input type="hidden" name="date" value="${date}"><input type="hidden" name="m" value="${yearMonth}">
-<button title="${myPart ? `You: ${PART_LABELS[myPart]}. Click to clear` : 'Click: I am free all day'}" data-date-label="${formatDate(date, user.date_format)}" data-part="${myPart || 'none'}"><span class="head"><span class="num">${day}</span>
-${who.length ? html`<span class="who">${who.map(member => html`<span class="c${member.color}" title="${member.name}, ${PART_LABELS[member.part]}">${initials(member.name)}${member.part === 'all' ? '' : html`<sup>${member.part}</sup>`}</span>`)}</span>` : ''}</span>
-<span class="day-events">${Array.from(bars, event => event
-    // .from / .to: the bar carries on from yesterday / into tomorrow, so that side is square and joins the next cell
-    ? html`<span class="ev bar${evColor(event)}${event.date < date ? ' from' : ''}${date < event.end_date ? ' to' : ''}" title="${tooltip(event)}">${event.date === date || startsRow ? html`<span class="ev-text run-${run(event)}">${label(event)}</span>` : raw('&nbsp;')}</span>`
-    : html`<span class="ev bar gap">&nbsp;</span>`)}
-${oneDay.map(event => html`<span class="ev${evColor(event)}" title="${tooltip(event)}">${label(event)}</span>`)}</span></button></form></div>`);
+
+    // Multi-day events sit in their lane; a lane with nothing today stays as a gap.
+    const bars = [];
+    for (const event of dayEvents) {
+      if (lanes.has(event.id)) {
+        bars[lanes.get(event.id)] = event;
+      }
+    }
+    const barValues = Array.from(bars, event => {
+      if (!event) {
+        return { gap: true };
+      }
+      // .from / .to: the bar carries on from yesterday / into tomorrow, so that side is square
+      // and joins the next cell.
+      const continues = (event.date < date ? ' from' : '') + (date < event.end_date ? ' to' : '');
+      return {
+        gap: false,
+        classes: `ev bar${eventColor(event)}${continues}`,
+        tooltip: eventTooltip(event),
+        showLabel: event.date === date || startsRow,
+        run: labelRun(event),
+        label: label(event),
+      };
+    });
+
+    const dayStates = dayClass({ who: whoIsFree, members, mine: Boolean(myPart) });
+    days.push({
+      day,
+      date,
+      classes: `day ${dayStates}${date === today ? ' today' : ''}`,
+      tooltip: myPart ? `You: ${PART_LABELS[myPart]}. Click to clear` : 'Click: I am free all day',
+      dateLabel: formatDate(date, user.date_format),
+      part: myPart || 'none',
+      free: whoIsFree.map(member => ({
+        color: member.color,
+        tooltip: `${member.name}, ${PART_LABELS[member.part]}`,
+        initials: initials(member.name),
+        sup: member.part === 'all' ? null : member.part,
+      })),
+      bars: barValues,
+      birthdays: birthdays.filter(member => member.date === date),
+      oneDay: dayEvents.filter(event => !lanes.has(event.id)).map(event => ({
+        classes: `ev${eventColor(event)}`,
+        tooltip: eventTooltip(event),
+        label: label(event),
+      })),
+    });
   }
 
-  return layout(month.label, user, html`
-<h1><a href="/?m=${month.prev}" title="Previous month">&lsaquo;</a> ${month.label} <a href="/?m=${month.next}" title="Next month">&rsaquo;</a></h1>
-<p class="hint">Click a day to mark yourself free all day (outlined). For only the morning, afternoon or evening,
-hold the day on a phone or double-click it on a computer. Initials show who is free (<sup>am</sup> / <sup>pm</sup> / <sup>eve</sup> for part of the day);
-green means everyone is free at the same time.</p>
-<div class="grid">${weekdayNames(user.week_start).map(name => html`<div class="dow">${name}</div>`)}${cells}</div>
-<dialog id="day-part" aria-labelledby="day-part-title"><form method="post" action="/free">
-<h2 id="day-part-title"></h2>
-<input type="hidden" name="date"><input type="hidden" name="m" value="${yearMonth}">
-<div class="stack">${Object.entries(PART_CHOICES).map(([value, label]) =>
-    html`<button name="part" value="${value}"${value === 'none' ? raw(' class="danger"') : ''}>${label}</button>`)}</div></form>
-<form method="dialog"><button class="link">Cancel</button></form></dialog>
-<section><h2>Events this month</h2>
-<p><a class="btn" href="/events/new">Add event</a></p>
-<ul class="events">${events.length ? events.map(event => html`<li${event.end_date < today ? raw(' class="past"') : ''}>${formatEventWhen(event, user.date_format)} — <b>${event.title}</b> <small class="hint">by ${event.creator}</small>
-${event.created_by === user.id || user.is_admin ? html` <a href="/events/${event.id}">edit</a>` : ''}</li>`)
-    : html`<li class="hint">No events this month.</li>`}</ul></section>`);
+  return page(month.label, user, 'calendar', {
+    error,
+    month,
+    yearMonth,
+    weekdays: weekdayNames(user.week_start),
+    padding: Array.from({ length: month.pad }, () => ({})),
+    days,
+    partChoices: Object.entries(PART_CHOICES).map(([value, label]) => ({
+      value,
+      label,
+      classes: value === 'none' ? 'danger' : '',
+    })),
+    events: events.map(event => ({
+      id: event.id,
+      title: event.title,
+      creator: event.creator,
+      when: formatEventWhen(event, user.date_format),
+      classes: event.end_date < today ? 'past' : '', // its last day is before today
+      canEdit: event.created_by === user.id || Boolean(user.is_admin),
+    })),
+  });
 }
-
-/** ' colored cN' for an event with a bar color (events.color), '' for the default look. */
-const evColor = event => event.color == null ? '' : ` colored c${event.color}`;
 
 // ---- events ----
 
 // One page for both: event.id set means editing that event, otherwise adding one.
-// `event` is an events row, or what was posted when the form is shown again with an error.
-export function eventPage(user, { event, error }) {
+// `event` is an events row, or what was posted when the form is shown again with `errors`
+// ({ title, start, end, color }: each shows under that part of the form).
+export function eventPage(user, { event, errors = {} }) {
   const editing = Boolean(event.id);
-  // A one-day event shows no end date, so moving its start date does not leave the end behind.
-  const endDate = event.end_date && event.end_date !== event.date ? event.end_date : '';
-  const colorChoice = (value, label) => html`<label class="swatch-pick${value === '' ? '' : ` c${value}`}" title="${label}">
-<input type="radio" name="color" value="${value}" aria-label="${label}"${String(event.color ?? '') === String(value) ? raw(' checked') : ''}></label>`;
+  const heading = editing ? 'Edit event' : 'New event';
+  const savedColor = String(event.color ?? '');
+  const colorChoice = (value, label) => ({
+    value,
+    label,
+    classes: `swatch-pick${value === '' ? '' : ` c${value}`}`,
+    checked: savedColor === String(value),
+  });
 
-  return layout(editing ? 'Edit event' : 'New event', user, html`<h1>${editing ? 'Edit event' : 'New event'}</h1>
-<p class="hint">Leave the times empty for an all-day event, and the end date empty for a one-day event.</p>${error && html`<p class="err">${error}</p>`}
-<form method="post" action="/events${editing ? `/${event.id}` : ''}" class="stack">
-<label>Title <input name="title" required maxlength="100" value="${event.title ?? ''}"${editing ? '' : raw(' autofocus')}></label>
-<label>Starts <span class="row"><input type="date" name="date" required value="${event.date ?? ''}"> <input type="time" name="start_time" aria-label="Start time" value="${event.start_time ?? ''}"></span></label>
-<label>Ends <span class="row"><input type="date" name="end_date" aria-label="End date" value="${endDate}"> <input type="time" name="end_time" aria-label="End time" value="${event.end_time ?? ''}"></span></label>
-<fieldset class="colors"><legend>Color</legend>${colorChoice('', 'Default')}${Array.from({ length: COLORS }, (_, i) => colorChoice(i, `Color ${i + 1}`))}</fieldset>
-<button>${editing ? 'Save' : 'Add event'}</button></form>
-${editing ? html`<form method="post" action="/events/${event.id}/delete" class="stack delete-event" data-confirm="Delete ${event.title}?"><input type="hidden" name="m" value="${event.date.slice(0, 7)}"><button class="danger">Delete event</button></form>` : ''}
-<p><a href="/?m=${(event.date || today()).slice(0, 7)}">Back to calendar</a></p>`);
+  return page(heading, user, 'event', {
+    heading,
+    errors,
+    editing,
+    id: event.id,
+    action: editing ? `/events/${event.id}` : '/events',
+    button: editing ? 'Save' : 'Add event',
+    title: event.title ?? '',
+    date: event.date ?? '',
+    // A saved event is all day when it has no start time; a rejected form keeps the box as posted.
+    allDay: event.allDay ?? !event.start_time,
+    startTime: event.start_time ?? '',
+    // A one-day event shows no end date, so moving its start date does not leave the end behind.
+    endDate: event.end_date && event.end_date !== event.date ? event.end_date : '',
+    endTime: event.end_time ?? '',
+    colors: [colorChoice('', 'Default'), ...Array.from({ length: COLORS }, (_, i) => colorChoice(i, `Color ${i + 1}`))],
+    month: (event.date || today()).slice(0, 7),
+  });
 }
 
 // ---- polls ----
 
-export const pollsPage = (user, polls) => layout('Polls', user, html`<h1>Polls</h1>
-<p><a class="btn" href="/polls/new">New poll</a></p>
-<ul class="polls">${polls.length ? polls.map(poll => html`<li><a href="/polls/${poll.id}">${poll.title}</a>
-<small>${poll.closed_at ? (poll.chosen_date ? `✓ ${formatDate(poll.chosen_date, user.date_format)}` : 'closed') : `open · ${poll.voters}/${poll.members} answered`}</small></li>`)
-  : html`<li class="hint">No polls yet.</li>`}</ul>`);
+export function pollsPage(user, polls) {
+  const status = poll => {
+    if (!poll.closed_at) {
+      return `open · ${poll.voters}/${poll.members} answered`;
+    }
+    return poll.chosen_date ? `✓ ${formatDate(poll.chosen_date, user.date_format)}` : 'closed';
+  };
+  return page('Polls', user, 'polls', {
+    polls: polls.map(poll => ({ id: poll.id, title: poll.title, status: status(poll) })),
+  });
+}
 
-// Six date rows are rendered server-side as the no-JS fallback; public/app.js collapses
-// them to one and grows rows on demand, up to data-max.
-export const newPollPage = (user, error) => layout('New poll', user, html`<h1>New poll</h1>${error && html`<p class="err">${error}</p>`}
-<form method="post" action="/polls/new" class="stack">
-<label>What for? <input name="title" required maxlength="100" placeholder="Board game night" autofocus></label>
-<fieldset class="stack dates" data-max="${MAX_DATES}"><legend>Proposed dates (max ${MAX_DATES})</legend><noscript class="hint">Leave extras empty.</noscript>${[1, 2, 3, 4, 5, 6].map(() => html`<input type="date" name="dates">`)}</fieldset>
-<button>Create poll</button></form>`);
+// After a rejected form, `errors` ({ title, dates }) shows under each field and `title` is kept.
+export const newPollPage = (user, { errors = {}, title = '' } = {}) =>
+  page('New poll', user, 'new-poll', { errors, title, maxDates: MAX_DATES });
 
-// A grid of members × proposed dates: my row holds selects, everyone else's is read-only.
-export function pollPage(user, { poll, dates, members, votes, missing, complete, best, event }) {
+// `errors` after a rejected form: `answers` shows under the title, `result` in the result section.
+export function pollPage(user, { poll, dates, members, votes, missing, complete, best, event, errors = {} }) {
   const answers = {}; // user_id -> { date: answer }
-  for (const vote of votes) (answers[vote.user_id] ??= {})[vote.date] = vote.answer;
-
-  const answerOf = (memberId, date) => answers[memberId]?.[date];
+  for (const vote of votes) {
+    (answers[vote.user_id] ??= {})[vote.date] = vote.answer;
+  }
   const myAnswers = answers[user.id] || {};
   const countAnswer = (date, answer) => votes.filter(vote => vote.date === date && vote.answer === answer).length;
+  const formatted = date => formatDate(date, user.date_format);
 
   const isOpen = !poll.closed_at;
-  const canManage = poll.created_by === user.id || user.is_admin;
+  const canManage = poll.created_by === user.id || Boolean(user.is_admin);
   // The result only makes sense once everyone answered, or the poll was closed early.
   const showResult = (complete || !isOpen) && best.length > 0;
   // You first, then everyone else A to Z. localeCompare puts "Élodie" next to "Eric", not after "Zoé".
-  const rows = members.toSorted((a, b) =>
+  const sortedMembers = members.toSorted((a, b) =>
     (b.id === user.id) - (a.id === user.id) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 
-  return layout(poll.title, user, html`<h1>${poll.title}</h1>
-<p class="hint">${isOpen ? (complete ? 'Everyone has answered.' : `Waiting for: ${missing.join(', ')}`) : 'Poll closed.'}</p>
-<form method="post" action="/polls/${poll.id}"><table class="poll"><thead><tr><th></th>${dates.map(date => html`<th class="${showResult && best.includes(date) ? 'best' : ''}">${formatDate(date, user.date_format)}</th>`)}</tr></thead><tbody>
-${rows.map(member => html`<tr><td>${member.name}${member.id === user.id ? ' (you)' : ''}</td>${dates.map(date => html`<td>${member.id === user.id && isOpen
-    ? html`<select name="v_${date}">${myAnswers[date] ? '' : html`<option value="" selected>—</option>`}${ANSWERS.map(answer => html`<option value="${answer}"${myAnswers[date] === answer ? raw(' selected') : ''}>${answer}</option>`)}</select>`
-    : html`<span class="a ${answerOf(member.id, date) || 'none'}">${answerOf(member.id, date) || '–'}</span>`}</td>`)}</tr>`)}
-<tr class="tot"><td>yes / maybe / no</td>${dates.map(date => html`<td>${countAnswer(date, 'yes')} / ${countAnswer(date, 'maybe')} / ${countAnswer(date, 'no')}</td>`)}</tr></tbody></table>
-${isOpen ? html`<button>Save my answers</button>` : ''}</form>
-${showResult ? html`<section class="result"><h2>Best date${best.length > 1 ? 's' : ''}: ${best.map(date => formatDate(date, user.date_format)).join(', ')}</h2>
-${best.length > 1 ? html`<p class="hint">Tied on yes and no — pick the one you want.</p>` : ''}
-${event ? html`<p>Added to the calendar as <b>${event.title}</b> on ${formatDate(event.date, user.date_format)}. <a href="/?m=${event.date.slice(0, 7)}">View</a></p>`
-    : html`<div class="row">${best.map(date => html`<form method="post" action="/polls/${poll.id}/confirm"><input type="hidden" name="date" value="${date}"><button>Add ${formatDate(date, user.date_format)} to calendar</button></form>`)}</div>`}</section>` : ''}
-${isOpen && canManage ? html`<p><form method="post" action="/polls/${poll.id}/close" class="inline"><button class="link danger">Close poll now</button></form></p>` : ''}`);
+  let status = 'Poll closed.';
+  if (isOpen) {
+    status = complete ? 'Everyone has answered.' : `Waiting for: ${missing.join(', ')}`;
+  }
+
+  const rows = sortedMembers.map(member => {
+    const isMe = member.id === user.id;
+    return {
+      name: member.name + (isMe ? ' (you)' : ''),
+      cells: dates.map(date => {
+        const answer = answers[member.id]?.[date];
+        return {
+          date,
+          editable: isMe && isOpen,
+          current: myAnswers[date] ?? null,
+          options: ANSWERS.map(value => ({ value, selected: myAnswers[date] === value })),
+          answerClass: answer || 'none',
+          answerText: answer || '–',
+        };
+      }),
+    };
+  });
+
+  const result = showResult && {
+    heading: `Best date${best.length > 1 ? 's' : ''}: ${best.map(formatted).join(', ')}`,
+    tied: best.length > 1,
+    event: event && { title: event.title, date: formatted(event.date), month: event.date.slice(0, 7) },
+    choices: best.map(date => ({ pollId: poll.id, date, label: formatted(date) })),
+  };
+
+  return page(poll.title, user, 'poll', {
+    errors,
+    id: poll.id,
+    title: poll.title,
+    status,
+    isOpen,
+    canClose: isOpen && canManage,
+    columns: dates.map(date => ({ label: formatted(date), classes: showResult && best.includes(date) ? 'best' : '' })),
+    rows,
+    totals: dates.map(date => ({
+      yes: countAnswer(date, 'yes'),
+      maybe: countAnswer(date, 'maybe'),
+      no: countAnswer(date, 'no'),
+    })),
+    result,
+  });
 }
 
 // ---- settings ----
 
-export function settingsPage(user, { base, passkeys, msg, error }) {
-  const feedUrl = `${base}/feed/${user.feed_token}/events.ics`;
-  // webcal:// makes desktop calendar apps subscribe instead of downloading the file once.
-  const webcalUrl = feedUrl.replace(/^https?:\/\//, 'webcal://');
+// webcal:// makes desktop calendar apps subscribe instead of downloading the file once.
+const webcal = url => url.replace(/^https?:\/\//, 'webcal://');
 
-  // Each panel is a <details>: collapsing is native, needs no JS and survives with JS off.
-  // ponytail: all closed on load; remembering which you opened would need localStorage.
-  return layout('Settings', user, html`<h1>Settings</h1>${notices(msg, error)}
-<details class="panel panel-feeds"><summary><h2>Calendar feeds</h2></summary>
-<p class="hint">Private link: anyone who has it can read it. Rotating it requires re-subscribing.</p>
-<ul class="feeds"><li><b>Group events</b><br><code>${feedUrl}</code><br><a href="${webcalUrl}">webcal link (Apple / Outlook desktop)</a></li></ul>
-<details><summary>How to subscribe</summary><ul>
-<li><b>Google Calendar</b> (web): Other calendars → + → From URL → paste the https link. Google refreshes every 12–24 h and cannot be forced.</li>
-<li><b>Apple Calendar</b>: click the webcal link, or File → New Calendar Subscription. Choose a short auto-refresh interval.</li>
-<li><b>Outlook</b> (web): Add calendar → Subscribe from web → paste the https link. Refreshes every few hours.</li></ul></details>
-<form method="post" action="/settings/rotate-feed"><button class="danger">Rotate feed links</button></form></details>
+// `errors` after a rejected Customisation form ({ weekStart, dateFormat }): shown under each field.
+export function settingsPage(user, { base, msg, errors = {} }) {
+  const eventsFeed = `${base}/feed/${user.feed_token}/events.ics`;
+  const birthdaysFeed = `${base}/feed/${user.feed_token}/birthdays.ics`;
 
-<details class="panel panel-custom"><summary><h2>Customisation</h2></summary>
-<h3>My color</h3>
-<p class="hint">Your initials appear in this color on every day you mark yourself free.</p>
-<form method="post" action="/settings/color" class="row">
-<b class="c${user.color} swatch" id="swatch" title="Preview">${initials(user.name)}</b>
-<input type="range" name="color" class="hue" min="0" max="${COLORS - 1}" value="${user.color}" aria-label="Color">
-<button>Save color</button></form>
-<h3>First day of the week</h3>
-<p class="hint">The leftmost column of your calendar grid.</p>
-<form method="post" action="/settings/week-start" class="row">
-<select name="week_start" aria-label="First day of the week">${WEEK_START_CHOICES.map(day =>
-    html`<option value="${day}"${day === user.week_start ? raw(' selected') : ''}>${WEEKDAYS[day]}</option>`)}</select>
-<button>Save first day</button></form>
-<h3>Date format</h3>
-<p class="hint">How dates are written across the app. Each choice shows today's date.</p>
-<form method="post" action="/settings/date-format" class="row">
-<select name="date_format" aria-label="Date format">${Object.keys(DATE_FORMATS).map(key =>
-    html`<option value="${key}"${key === user.date_format ? raw(' selected') : ''}>${formatDate(today(), key)}</option>`)}</select>
-<button>Save date format</button></form></details>
+  return page('Settings', user, 'settings', {
+    ...notices(msg),
+    errors,
+    // A panel holding an error starts open, or the message would be hidden in a folded panel.
+    customisationOpen: Boolean(errors.weekStart || errors.dateFormat),
+    eventsFeed,
+    eventsWebcal: webcal(eventsFeed),
+    birthdaysFeed,
+    birthdaysWebcal: webcal(birthdaysFeed),
+    weekStarts: options(WEEK_START_CHOICES.map(day => [day, WEEKDAYS[day]]), user.week_start),
+    // Each format is shown as today's date written that way.
+    dateFormats: options(Object.keys(DATE_FORMATS).map(key => [key, formatDate(today(), key)]), user.date_format),
+    showBirthdays: Boolean(user.show_birthdays),
+  });
+}
 
-<details class="panel panel-security"><summary><h2>Security</h2></summary>
-<h3>Change password</h3>
-<form method="post" action="/settings/password" class="stack">
-<label>Current password <input name="current" type="password" required autocomplete="current-password"></label>
-<label>New password (min ${MIN_PASSWORD}) <input name="password" type="password" required minlength="${MIN_PASSWORD}" autocomplete="new-password"></label>
-<button>Change password</button></form>
-<h3>Passkeys</h3>
-<p class="hint">Log in with your fingerprint, face or device PIN instead of typing a password. Your password keeps working.</p>
-<ul>${passkeys.length ? passkeys.map(passkey => html`<li>${passkey.label} <small class="hint">added ${formatDate(passkey.created_at.slice(0, 10), user.date_format)}</small>
- <form method="post" action="/settings/passkeys/delete" class="inline"><input type="hidden" name="id" value="${passkey.id}"><button class="link danger">remove</button></form></li>`)
-    : html`<li class="hint">No passkeys yet.</li>`}</ul>
-<p id="passkey-add" hidden><button class="btn">Add a passkey</button> <span class="err"></span></p>
-<noscript class="hint">Adding a passkey needs JavaScript.</noscript></details>`);
+// ---- profile ----
+
+// After a rejected form, `errors` shows under each field ({ name, birthday, color } in About me,
+// { current, password } in Security), and `about` holds the About me values as they were typed.
+export function profilePage(user, { passkeys, msg, errors = {}, about = user }) {
+  return page('Profile', user, 'profile', {
+    ...notices(msg),
+    errors,
+    // A panel holding an error starts open, or the message would be hidden in a folded panel.
+    securityOpen: Boolean(errors.current || errors.password),
+    name: about.name,
+    birthday: about.birthday ?? '',
+    today: today(),
+    color: about.color,
+    maxColor: COLORS - 1,
+    initials: initials(about.name || user.name),
+    minPassword: MIN_PASSWORD,
+    passkeys: passkeys.map(passkey => ({
+      id: passkey.id,
+      label: passkey.label,
+      added: formatDate(passkey.created_at.slice(0, 10), user.date_format),
+    })),
+  });
 }
 
 // ---- administration (admin only; the route enforces it, this only draws it) ----
-// Future admin-only tools get their own <section class="panel panel-admin"> here.
 
-export const adminPage = (user, { base, invites, members, log, msg, error }) =>
-  layout('Administration', user, html`<h1>Administration</h1>${notices(msg, error)}
-<section class="panel panel-admin"><h2>Members</h2>
-<p class="hint">A member who forgot their password needs a reset link — send them the one you create here.</p>
-<ul>${members.map(member => html`<li>${member.name}${member.is_admin ? ' (admin)' : ''} — <form method="post" action="/admin/invite" class="inline"><input type="hidden" name="user_id" value="${member.id}"><button class="link">create reset-password link</button></form>${member.id === user.id ? '' : html` · <form method="post" action="/admin/members/${member.id}/delete" class="inline" data-confirm="Remove ${member.name}? Their events and polls are kept."><button class="link danger">remove</button></form>`}</li>`)}</ul>
-<h3>Invite someone new</h3>
-<form method="post" action="/admin/invite"><button>Create invite link</button></form>
-${invites.length ? html`<h3>Open links (valid 7 days, single use)</h3><ul>${invites.map(invite => html`<li>${invite.user_name ? `Reset for ${invite.user_name}` : 'Invite'}: <code>${base}/invite/${invite.token}</code></li>`)}</ul>` : ''}</section>
-<section class="panel panel-admin"><h2>Connection log</h2>
-<p class="hint"><a href="/admin/log" download>Download meshtime.log</a></p>
-${log.length ? html`<div class="log-wrap"><table class="log">
-<thead><tr><th>#</th><th>Time (Eastern)</th><th>IP</th><th>User</th><th>Action</th></tr></thead>
-<tbody>${log.toReversed().map(entry => html`<tr><td class="n">${entry.number}</td><td>${formatDate(entry.time.slice(0, 10), user.date_format)} ${entry.time.slice(11, 19)}</td><td>${entry.ip}</td><td>${entry.user}${entry.known ? '' : html` <span class="hint">(unknown)</span>`}</td><td>${entry.action}</td></tr>`)}</tbody>
-</table></div>` : html`<p class="hint">Nothing logged yet.</p>`}</section>`);
+// `errors.members` after a rejected member action: shown under the Members title.
+export function adminPage(user, { base, invites, members, log, msg, errors = {} }) {
+  return page('Administration', user, 'admin', {
+    ...notices(msg),
+    errors,
+    members: members.map(member => ({ ...member, isMe: member.id === user.id })),
+    invites: invites.map(invite => ({
+      label: invite.user_name ? `Reset for ${invite.user_name}` : 'Invite',
+      url: `${base}/invite/${invite.token}`,
+    })),
+    // Newest first. Times are stored as local ISO strings: the date part is formatted, the clock kept.
+    log: log.toReversed().map(entry => ({
+      number: entry.number,
+      time: `${formatDate(entry.time.slice(0, 10), user.date_format)} ${entry.time.slice(11, 19)}`,
+      ip: entry.ip,
+      user: entry.user,
+      known: entry.known,
+      action: entry.action,
+    })),
+  });
+}
