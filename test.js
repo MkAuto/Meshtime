@@ -404,3 +404,22 @@ test('profilePage: a rejected form keeps what was typed and opens the panel hold
   assert.match(page, /<details class="panel panel-security" open>/);
   assert.match(page, /autocomplete="new-password">\s*<\/label>\s*<p class="err">Too short\.<\/p>/);
 });
+
+// Security review: an empty name must not share one counter that blocks everyone's passkey login.
+test('login limiter: failures with no name cannot block passkey login for others', async () => {
+  const { loginAllowed, loginFailed } = await import('./src/auth.js');
+  for (let i = 0; i < 10; i++) {
+    loginFailed('10.9.0.' + i, ''); // ten clients, under the per-client limit, all with an empty name
+  }
+  assert.equal(loginAllowed('10.9.1.1'), true, 'the passkey options request from someone else still passes');
+});
+
+// Security review: a lone CR in a member's text must not start a new line in the feed.
+test('buildIcs: no line break or control character in text survives', () => {
+  const ics = buildIcs({ name: 'T', host: 'h', items: [
+    { uid: 'x', date: '2026-10-05', summary: 'Party\rEND:VEVENT\rBEGIN:VEVENT\x0b\x00', stamp: '2026-01-01T00:00:00Z' },
+  ] });
+  assert.ok(ics.includes('SUMMARY:Party\\nEND:VEVENT\\nBEGIN:VEVENT\r\n'));
+  assert.equal((ics.match(/BEGIN:VEVENT/g) || []).length, 2, 'the one real event, plus the escaped text');
+  assert.equal(ics.split('\r\n').some(line => /[\x00-\x1f\x7f]/.test(line)), false);
+});

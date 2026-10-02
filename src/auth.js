@@ -160,7 +160,11 @@ const LIMITS = { ip: 20, account: 10, all: 500 };
 const failures = new Map(); // 'ip:1.2.3.4' | 'account:alice' | 'all' -> [timestamps]
 
 const recent = key => (failures.get(key) || []).filter(at => at > Date.now() - WINDOW_MS);
-const keysFor = (ip, account) => [['ip', 'ip:' + ip], ['account', 'account:' + account.toLowerCase()], ['all', 'all']];
+const keysFor = (ip, account) => [
+  ['ip', 'ip:' + ip],
+  ...(account ? [['account', 'account:' + account.toLowerCase()]] : []),
+  ['all', 'all'],
+];
 
 /** `account` is the submitted name, or the credential id for a passkey login. */
 export const loginAllowed = (ip, account = '') =>

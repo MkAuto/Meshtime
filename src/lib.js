@@ -217,7 +217,8 @@ const escapeIcsText = value => String(value)
   .replace(/\\/g, '\\\\')
   .replace(/;/g, '\\;')
   .replace(/,/g, '\\,')
-  .replace(/\r?\n/g, '\\n');
+  .replace(/\r\n|\r|\n/g, '\\n')
+  .replace(/[\x00-\x1f\x7f]/g, '');
 
 // 2026-09-14T11:40:00.123Z -> 20260914T114000Z
 const icsTimestamp = iso => new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
