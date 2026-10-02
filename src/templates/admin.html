@@ -4,6 +4,7 @@
 {{> notices}}
 <section class="panel panel-admin">
   <h2>Members</h2>
+  {{#errors.members}}<p class="err">{{errors.members}}</p>{{/errors.members}}
   <p class="hint">A member who forgot their password needs a reset link — send them the one you create here.</p>
   <ul>
     {{#members}}

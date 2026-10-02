@@ -67,27 +67,33 @@ export function formatDate(isoDate, format) {
 
 export const isValidTime = text => /^([01]\d|2[0-3]):[0-5]\d$/.test(text || '');
 
-/** Why an event's when is unusable, or null when it is fine. endDate/times may be null. */
+/**
+ * Why an event's when is unusable, or null when it is fine. endDate/times may be null.
+ * `field` says which row of the event form the message goes under: 'start' (date + time) or 'end'.
+ */
 export function eventError({ date, endDate, startTime, endTime }) {
   if (!isValidDate(date)) {
-    return 'A valid start date is required.';
+    return { field: 'start', message: 'A valid start date is required.' };
   }
   if (endDate && (!isValidDate(endDate) || endDate < date)) {
-    return 'The end date must be on or after the start date.';
+    return { field: 'end', message: 'The end date must be on or after the start date.' };
   }
-  if ((startTime && !isValidTime(startTime)) || (endTime && !isValidTime(endTime))) {
-    return 'Invalid time.';
+  if (startTime && !isValidTime(startTime)) {
+    return { field: 'start', message: 'Invalid time.' };
+  }
+  if (endTime && !isValidTime(endTime)) {
+    return { field: 'end', message: 'Invalid time.' };
   }
   if (endTime && !startTime) {
-    return 'An end time needs a start time.';
+    return { field: 'start', message: 'An end time needs a start time.' };
   }
   const multiDay = endDate && endDate !== date;
   // A timed event over several days has no sensible end without one (the ICS feed needs it).
   if (multiDay && startTime && !endTime) {
-    return 'A timed event over several days needs an end time.';
+    return { field: 'end', message: 'A timed event over several days needs an end time.' };
   }
   if (!multiDay && endTime && endTime <= startTime) {
-    return 'The end time must be after the start time.';
+    return { field: 'end', message: 'The end time must be after the start time.' };
   }
   return null;
 }
@@ -128,6 +134,9 @@ export const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const DEFAULT_WEEK_START = 0; // Sunday
 // The first days a member may pick, in the order Settings lists them: Saturday, Sunday, Monday.
 export const WEEK_START_CHOICES = [6, 0, 1];
+/** A member or event color: an index into the COLORS hues. */
+export const isValidColor = value => Number.isInteger(value) && value >= 0 && value < COLORS;
+
 export const isValidWeekStart = value => WEEK_START_CHOICES.includes(value);
 export const weekdayNames = weekStart => [...WEEKDAYS.slice(weekStart), ...WEEKDAYS.slice(0, weekStart)];
 

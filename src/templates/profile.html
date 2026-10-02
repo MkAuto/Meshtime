@@ -6,26 +6,31 @@
   <form method="post" action="/profile/about">
     <h3>Name</h3>
     <input name="name" required maxlength="40" value="{{name}}" aria-label="Name" autocomplete="username">
+    {{#errors.name}}<p class="err">{{errors.name}}</p>{{/errors.name}}
     <h3>Birthday</h3>
     <input type="date" name="birthday" value="{{birthday}}" max="{{today}}" aria-label="Birthday">
+    {{#errors.birthday}}<p class="err">{{errors.birthday}}</p>{{/errors.birthday}}
     <h3>My color</h3>
     <div class="row">
       <b class="c{{color}} swatch" id="swatch" title="Preview">{{initials}}</b>
       <input type="range" name="color" class="hue" min="0" max="{{maxColor}}" value="{{color}}" aria-label="Color">
     </div>
+    {{#errors.color}}<p class="err">{{errors.color}}</p>{{/errors.color}}
     <p><button>Save</button></p>
   </form>
 </details>
 
-<details class="panel panel-security">
+<details class="panel panel-security" {{#securityOpen}}open{{/securityOpen}}>
   <summary><h2>Security</h2></summary>
   <h3>Change password</h3>
   <form method="post" action="/profile/password" class="stack">
     <label>Current password <input name="current" type="password" required autocomplete="current-password"></label>
+    {{#errors.current}}<p class="err">{{errors.current}}</p>{{/errors.current}}
     <label>
       New password (min {{minPassword}})
       <input name="password" type="password" required minlength="{{minPassword}}" autocomplete="new-password">
     </label>
+    {{#errors.password}}<p class="err">{{errors.password}}</p>{{/errors.password}}
     <button>Change password</button>
   </form>
   <h3>Passkeys</h3>

@@ -3,6 +3,9 @@
   {{month.label}}
   <a href="/?m={{month.next}}" title="Next month">&rsaquo;</a>
 </h1>
+{{#error}}
+<p class="err">{{error}}</p>
+{{/error}}
 <details class="hint">
   <summary>How to use</summary>
   Click a day to mark yourself free all day (outlined). For only the morning, afternoon or evening,

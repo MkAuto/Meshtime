@@ -4,8 +4,9 @@ import * as views from './views.js';
 import { logEvent, tailLog, LOG_PATH } from './log.js';
 import { createReadStream, existsSync } from 'node:fs';
 import {
-  isValidDate, isValidMonth, isValidWeekStart, isValidDateFormat, isValidDayPart, eventError, bestDates, buildIcs,
-  birthdayIn, birthdayRrule, today, randomColor, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD, BASE_URL, RP_ID,
+  isValidDate, isValidMonth, isValidWeekStart, isValidDateFormat, isValidDayPart, isValidColor, eventError,
+  bestDates, buildIcs, birthdayIn, birthdayRrule, today, randomColor, ANSWERS, MAX_DATES, MIN_PASSWORD, BASE_URL,
+  RP_ID,
 } from './lib.js';
 
 export const routes = [];
@@ -18,11 +19,17 @@ const on = (method, path, handler, isPublic = false) =>
 /** Form values are untrusted: trim and cap the length before anything else touches them. */
 const cleanText = (value, maxLength) => (value ?? '').toString().trim().slice(0, maxLength);
 
+// A rejected form never leads to an error page: its page is drawn again with an `errors` object,
+// { field: message }, and the template shows each message in red under that field (or under the
+// section title for errors about the whole form). Error pages are left for links that lead nowhere.
+const hasErrors = errors => Object.keys(errors).length > 0;
+
 /** Calendar forms post the month they were rendered for, so a redirect lands back on it. */
-const backToMonth = ctx => {
+const postedMonth = ctx => {
   const month = ctx.body.get('m');
-  return '/?m=' + (isValidMonth(month) ? month : today().slice(0, 7));
+  return isValidMonth(month) ? month : today().slice(0, 7);
 };
+const backToMonth = ctx => '/?m=' + postedMonth(ctx);
 
 const TOO_MANY = 'Too many attempts. Try again in 15 minutes.';
 const BANNED = 'banned (too many attempts)'; // the log's name for a login the rate limit refused
@@ -133,16 +140,17 @@ on('POST', '/invite/(?<token>[\\w-]+)', async ctx => {
   const password = ctx.body.get('password') || '';
   const name = cleanText(ctx.body.get('name'), 40);
   const isReset = Boolean(invite.user_id);
-  const reject = msg => ctx.html(views.invitePage(invite.token, invite.user_name, msg), 400);
-
-  if (password.length < MIN_PASSWORD) {
-    return reject(`Password must be at least ${MIN_PASSWORD} characters.`);
-  }
+  const errors = {};
   if (!isReset && !name) {
-    return reject('Name is required.');
+    errors.name = 'Name is required.';
+  } else if (!isReset && get('SELECT 1 FROM users WHERE name = ?', name)) {
+    errors.name = 'That name is already taken.';
   }
-  if (!isReset && get('SELECT 1 FROM users WHERE name = ?', name)) {
-    return reject('That name is already taken.');
+  if (password.length < MIN_PASSWORD) {
+    errors.password = `Password must be at least ${MIN_PASSWORD} characters.`;
+  }
+  if (hasErrors(errors)) {
+    return ctx.html(views.invitePage(invite.token, invite.user_name, { errors, name }), 400);
   }
 
   const passwordHash = await auth.hashPassword(password);
@@ -169,9 +177,9 @@ on('POST', '/invite/(?<token>[\\w-]+)', async ctx => {
 }, true);
 
 // ---- calendar ----
-on('GET', '/', ctx => {
-  const requestedMonth = ctx.url.searchParams.get('m');
-  const yearMonth = isValidMonth(requestedMonth) ? requestedMonth : today().slice(0, 7);
+
+/** Draws one month of the calendar. `error` goes under the month title (a rejected /free). */
+function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
   const inMonth = yearMonth + '-%'; // dates are 'YYYY-MM-DD' strings, so LIKE is enough
 
   // date -> everyone who marked themselves free that day, for the initials in each cell
@@ -201,7 +209,13 @@ on('GET', '/', ctx => {
     .map(member => ({ name: member.name, color: member.color, date: birthdayIn(yearMonth, member.birthday) }))
     .filter(member => member.date) : [];
 
-  ctx.html(views.calendarPage(ctx.user, yearMonth, { free, mine, events, birthdays, today: today(), members }));
+  ctx.html(views.calendarPage(ctx.user, yearMonth, { free, mine, events, birthdays, today: today(), members, error }),
+    status);
+}
+
+on('GET', '/', ctx => {
+  const requestedMonth = ctx.url.searchParams.get('m');
+  showCalendar(ctx, isValidMonth(requestedMonth) ? requestedMonth : today().slice(0, 7));
 });
 
 // Two ways in. A plain click on a day sends no `part` and toggles it: try the delete first, insert
@@ -211,7 +225,7 @@ on('POST', '/free', ctx => {
   const date = ctx.body.get('date');
   const part = ctx.body.get('part');
   if (!isValidDate(date)) {
-    return ctx.fail(400, 'Invalid date.');
+    return showCalendar(ctx, postedMonth(ctx), { status: 400, error: 'Invalid date.' });
   }
 
   if (part === null) {
@@ -225,7 +239,7 @@ on('POST', '/free', ctx => {
     run(`INSERT INTO free_days(user_id, date, part) VALUES (?,?,?)
          ON CONFLICT DO UPDATE SET part = excluded.part`, ctx.user.id, date, part);
   } else {
-    return ctx.fail(400, 'Invalid part of the day.');
+    return showCalendar(ctx, postedMonth(ctx), { status: 400, error: 'Invalid part of the day.' });
   }
   ctx.redirect(backToMonth(ctx));
 });
@@ -238,20 +252,35 @@ on('POST', '/free', ctx => {
  */
 function readEventForm(ctx) {
   const colorText = ctx.body.get('color') || '';
+  // The time inputs are only hidden when "All day" is ticked, so the browser still sends them: drop them.
+  const allDay = ctx.body.get('all_day') === '1';
   const event = {
     title: cleanText(ctx.body.get('title'), 100),
     date: ctx.body.get('date') || '',
     end_date: ctx.body.get('end_date') || null,
-    start_time: ctx.body.get('start_time') || null,
-    end_time: ctx.body.get('end_time') || null,
+    start_time: allDay ? null : ctx.body.get('start_time') || null,
+    end_time: allDay ? null : ctx.body.get('end_time') || null,
     color: colorText === '' ? null : Number(colorText),
+    allDay, // not a column: lets a rejected form show the box as it was posted
   };
-  const colorOk = event.color === null || (Number.isInteger(event.color) && event.color >= 0 && event.color < COLORS);
-  const error = !event.title ? 'A title is required.'
-    : eventError({ date: event.date, endDate: event.end_date, startTime: event.start_time, endTime: event.end_time })
-    ?? (colorOk ? null : 'Invalid color.');
+  const errors = {};
+  if (!event.title) {
+    errors.title = 'A title is required.';
+  }
+  const whenError = eventError({
+    date: event.date, endDate: event.end_date, startTime: event.start_time, endTime: event.end_time,
+  });
+  if (whenError) {
+    errors[whenError.field] = whenError.message;
+  }
+  if (!allDay && !event.start_time) {
+    errors.start ??= 'Pick a start time, or tick All day.';
+  }
+  if (event.color !== null && !isValidColor(event.color)) {
+    errors.color = 'Invalid color.';
+  }
   event.end_date ||= event.date;
-  return { event, error };
+  return { event, errors };
 }
 
 /** The event with this id, if the member may change it: their own, or any event if they are an admin. */
@@ -273,9 +302,9 @@ on('GET', '/events/new', ctx => {
 });
 
 on('POST', '/events', ctx => {
-  const { event, error } = readEventForm(ctx);
-  if (error) {
-    return ctx.html(views.eventPage(ctx.user, { event, error }), 400);
+  const { event, errors } = readEventForm(ctx);
+  if (hasErrors(errors)) {
+    return ctx.html(views.eventPage(ctx.user, { event, errors }), 400);
   }
   run(`INSERT INTO events(title, date, end_date, start_time, end_time, color, created_by, created_at)
        VALUES (?,?,?,?,?,?,?,?)`,
@@ -295,10 +324,10 @@ on('POST', '/events/(?<id>\\d+)', ctx => {
   if (!existing) {
     return;
   }
-  const { event, error } = readEventForm(ctx);
+  const { event, errors } = readEventForm(ctx);
   event.id = existing.id;
-  if (error) {
-    return ctx.html(views.eventPage(ctx.user, { event, error }), 400);
+  if (hasErrors(errors)) {
+    return ctx.html(views.eventPage(ctx.user, { event, errors }), 400);
   }
   run(`UPDATE events SET title = ?, date = ?, end_date = ?, start_time = ?, end_time = ?, color = ? WHERE id = ?`,
     event.title, event.date, event.end_date, event.start_time, event.end_time, event.color, existing.id);
@@ -364,8 +393,15 @@ on('GET', '/polls/new', ctx => ctx.html(views.newPollPage(ctx.user)));
 on('POST', '/polls/new', ctx => {
   const title = cleanText(ctx.body.get('title'), 100);
   const dates = [...new Set(ctx.body.getAll('dates').filter(Boolean))].sort(); // drop blanks and duplicates
-  if (!title || !dates.length || dates.length > MAX_DATES || !dates.every(isValidDate)) {
-    return ctx.html(views.newPollPage(ctx.user, `A title and 1 to ${MAX_DATES} valid dates are required.`), 400);
+  const errors = {};
+  if (!title) {
+    errors.title = 'A title is required.';
+  }
+  if (!dates.length || dates.length > MAX_DATES || !dates.every(isValidDate)) {
+    errors.dates = `Propose 1 to ${MAX_DATES} valid dates.`;
+  }
+  if (hasErrors(errors)) {
+    return ctx.html(views.newPollPage(ctx.user, { errors, title }), 400);
   }
 
   const pollId = tx(() => {
@@ -387,6 +423,9 @@ on('GET', '/polls/(?<id>\\d+)', ctx => {
   ctx.html(views.pollPage(ctx.user, data));
 });
 
+/** The poll page again after a rejected form. errors.answers goes under the title, errors.result in the result. */
+const rejectPoll = (ctx, data, status, errors) => ctx.html(views.pollPage(ctx.user, { ...data, errors }), status);
+
 // Saving answers replaces this user's previous ones. Dates left on "—" stay unanswered.
 on('POST', '/polls/(?<id>\\d+)', ctx => {
   const pollId = Number(ctx.params.id);
@@ -395,7 +434,7 @@ on('POST', '/polls/(?<id>\\d+)', ctx => {
     return ctx.fail(404, 'Poll not found.');
   }
   if (data.poll.closed_at) {
-    return ctx.fail(409, 'This poll is closed.');
+    return rejectPoll(ctx, data, 409, { answers: 'This poll is closed: your answers were not saved.' });
   }
 
   tx(() => {
@@ -428,11 +467,11 @@ on('POST', '/polls/(?<id>\\d+)/confirm', ctx => {
     return ctx.fail(404, 'Poll not found.');
   }
   if (!data.complete && !data.poll.closed_at) {
-    return ctx.fail(409, 'Not everyone has answered yet.');
+    return rejectPoll(ctx, data, 409, { answers: 'Not everyone has answered yet.' });
   }
   // Only a winning date may be confirmed; the form offers exactly these, so this is the server-side twin.
   if (!data.best.includes(date)) {
-    return ctx.fail(400, 'Not one of the best dates.');
+    return rejectPoll(ctx, data, 400, { result: 'Not one of the best dates.' });
   }
 
   if (!data.event) {
@@ -447,8 +486,11 @@ on('POST', '/polls/(?<id>\\d+)/confirm', ctx => {
 
 // ---- settings ----
 
-on('GET', '/settings', ctx =>
-  ctx.html(views.settingsPage(ctx.user, { base: BASE_URL, msg: ctx.url.searchParams.get('msg') })));
+/** The settings page; after a rejected form, `errors` shows under its fields and opens its panel. */
+const showSettings = (ctx, { status = 200, errors = {} } = {}) =>
+  ctx.html(views.settingsPage(ctx.user, { base: BASE_URL, msg: ctx.url.searchParams.get('msg'), errors }), status);
+
+on('GET', '/settings', ctx => showSettings(ctx));
 
 on('POST', '/settings/rotate-feed', ctx => {
   run('UPDATE users SET feed_token = ? WHERE id = ?', auth.token(), ctx.user.id);
@@ -461,11 +503,15 @@ on('POST', '/settings/customisation', ctx => {
   const weekStart = Number(ctx.body.get('week_start'));
   const dateFormat = ctx.body.get('date_format');
   const showBirthdays = ctx.body.get('show_birthdays') === '1' ? 1 : 0; // an unchecked checkbox posts nothing: hide
+  const errors = {};
   if (!isValidWeekStart(weekStart)) {
-    return ctx.fail(400, 'Invalid first day of the week.');
+    errors.weekStart = 'Invalid first day of the week.';
   }
   if (!isValidDateFormat(dateFormat)) {
-    return ctx.fail(400, 'Invalid date format.');
+    errors.dateFormat = 'Invalid date format.';
+  }
+  if (hasErrors(errors)) {
+    return showSettings(ctx, { status: 400, errors });
   }
   run('UPDATE users SET week_start = ?, date_format = ?, show_birthdays = ? WHERE id = ?',
     weekStart, dateFormat, showBirthdays, ctx.user.id);
@@ -474,13 +520,18 @@ on('POST', '/settings/customisation', ctx => {
 
 // ---- profile: who you are (name, birthday, color) and how you log in ----
 
-const profileData = (ctx, extra = {}) => ({
+/**
+ * The profile page. After a rejected form, `errors` shows under its fields and opens its panel,
+ * and `about` holds the About me values as they were typed, so nothing has to be typed twice.
+ */
+const showProfile = (ctx, { status = 200, errors = {}, about } = {}) => ctx.html(views.profilePage(ctx.user, {
   msg: ctx.url.searchParams.get('msg'),
   passkeys: auth.userCredentials(ctx.user.id),
-  ...extra,
-});
+  errors,
+  about,
+}), status);
 
-on('GET', '/profile', ctx => ctx.html(views.profilePage(ctx.user, profileData(ctx))));
+on('GET', '/profile', ctx => showProfile(ctx));
 
 // The whole About me panel is one form: every value is checked before any is saved.
 // The name is also the login, so it stays unique (users.name is COLLATE NOCASE). Changing only
@@ -490,19 +541,24 @@ on('POST', '/profile/about', ctx => {
   const name = cleanText(ctx.body.get('name'), 40);
   const birthday = ctx.body.get('birthday') || '';
   const color = Number(ctx.body.get('color'));
-  const reject = error => ctx.html(views.profilePage(ctx.user, profileData(ctx, { error })), 400);
+  const errors = {};
   if (!name) {
-    return reject('Name is required.');
+    errors.name = 'Name is required.';
+  } else if (get('SELECT 1 FROM users WHERE name = ? AND id != ?', name, ctx.user.id)) {
+    errors.name = 'That name is already taken.';
   }
-  const nameTaken = get('SELECT 1 FROM users WHERE name = ? AND id != ?', name, ctx.user.id);
-  if (nameTaken) {
-    return reject('That name is already taken.');
+  if (birthday && !isValidDate(birthday)) {
+    errors.birthday = 'Invalid date.';
+  } else if (birthday > today()) {
+    errors.birthday = 'Your birthday cannot be in the future.';
   }
-  if (birthday && !(isValidDate(birthday) && birthday <= today())) {
-    return ctx.fail(400, 'Invalid birthday.');
+  if (!isValidColor(color)) {
+    errors.color = 'Invalid color.';
   }
-  if (!Number.isInteger(color) || color < 0 || color >= COLORS) {
-    return ctx.fail(400, 'Invalid color.');
+  if (hasErrors(errors)) {
+    // An invalid color cannot be drawn, so the slider goes back to the saved one.
+    const about = { name, birthday, color: errors.color ? ctx.user.color : color };
+    return showProfile(ctx, { status: 400, errors, about });
   }
   run('UPDATE users SET name = ?, birthday = ?, color = ? WHERE id = ?', name, birthday || null, color, ctx.user.id);
   // Logged under the old name, so the log links the two.
@@ -514,12 +570,15 @@ on('POST', '/profile/about', ctx => {
 
 on('POST', '/profile/password', async ctx => {
   const newPassword = ctx.body.get('password') || '';
-  const reject = error => ctx.html(views.profilePage(ctx.user, profileData(ctx, { error })), 400);
+  const errors = {};
   if (!(await auth.verifyPassword(ctx.body.get('current') || '', ctx.user.password_hash))) {
-    return reject('Current password is wrong.');
+    errors.current = 'Current password is wrong.';
   }
   if (newPassword.length < MIN_PASSWORD) {
-    return reject(`New password must be at least ${MIN_PASSWORD} characters.`);
+    errors.password = `New password must be at least ${MIN_PASSWORD} characters.`;
+  }
+  if (hasErrors(errors)) {
+    return showProfile(ctx, { status: 400, errors });
   }
 
   run('UPDATE users SET password_hash = ? WHERE id = ?', await auth.hashPassword(newPassword), ctx.user.id);
@@ -572,13 +631,17 @@ on('POST', '/profile/passkeys/delete', ctx => {
 
 const requireAdmin = ctx => ctx.user.is_admin || ctx.fail(403, 'Admins only.');
 
-on('GET', '/admin', ctx => requireAdmin(ctx) && ctx.html(views.adminPage(ctx.user, {
+/** The administration page. errors.members goes under the Members title (a rejected member action). */
+const showAdmin = (ctx, { status = 200, errors = {} } = {}) => ctx.html(views.adminPage(ctx.user, {
   base: BASE_URL,
   msg: ctx.url.searchParams.get('msg'),
   invites: auth.openInvites(),
   members: all('SELECT id, name, is_admin FROM users ORDER BY name'),
   log: tailLog(200),
-})));
+  errors,
+}), status);
+
+on('GET', '/admin', ctx => requireAdmin(ctx) && showAdmin(ctx));
 
 // The whole connection log as a file. Streamed, since it only ever grows.
 on('GET', '/admin/log', ctx => {
@@ -603,7 +666,7 @@ on('POST', '/admin/invite', ctx => {
   const userId = ctx.body.get('user_id') ? Number(ctx.body.get('user_id')) : null;
   const target = userId && get('SELECT name FROM users WHERE id = ?', userId);
   if (userId && !target) {
-    return ctx.fail(400, 'Unknown user.');
+    return showAdmin(ctx, { status: 400, errors: { members: 'That member no longer exists.' } });
   }
   auth.createInvite({ createdBy: ctx.user.id, userId }); // userId set => password-reset link
   logUser(ctx, target ? `admin: reset link created for ${JSON.stringify(target.name)}` : 'admin: invite link created');
@@ -618,11 +681,11 @@ on('POST', '/admin/members/(?<id>\\d+)/delete', ctx => {
   }
   const memberId = Number(ctx.params.id);
   if (memberId === ctx.user.id) {
-    return ctx.fail(400, 'You cannot remove yourself.');
+    return showAdmin(ctx, { status: 400, errors: { members: 'You cannot remove yourself.' } });
   }
   const member = get('SELECT name FROM users WHERE id = ?', memberId);
   if (!member) {
-    return ctx.fail(404, 'Unknown member.');
+    return showAdmin(ctx, { status: 404, errors: { members: 'That member no longer exists.' } });
   }
   tx(() => {
     run('UPDATE events SET created_by = ? WHERE created_by = ?', ctx.user.id, memberId);

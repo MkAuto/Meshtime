@@ -49,8 +49,8 @@ const MESSAGES = {
   removed: 'Member removed. Their sessions, passkeys and feed links no longer work.',
 };
 
-/** The values the notices partial shows: a confirmation for ?msg=, and an error line. */
-const notices = (msg, error) => ({ notice: MESSAGES[msg], error });
+/** The value the notices partial shows for ?msg=. Form errors are shown under their fields instead. */
+const notices = msg => ({ notice: MESSAGES[msg] });
 
 /** Wraps a page's own HTML in the shell (head, header, nav). `user` is null on logged-out pages. */
 export function layout(title, user, body) {
@@ -70,14 +70,18 @@ export const errorPage = (status, message, user) => page(`Error ${status}`, user
 export const loginPage = error => page('Log in', null, 'login', { error });
 
 // One page for both invite kinds: resetName is set only for a password-reset link.
-export const invitePage = (token, resetName, error) => page(resetName ? 'Reset password' : 'Join', null, 'invite', {
-  token,
-  error,
-  isReset: Boolean(resetName),
-  heading: resetName ? `Reset password for ${resetName}` : 'Create your account',
-  button: resetName ? 'Set password' : 'Create account',
-  minPassword: MIN_PASSWORD,
-});
+// After a rejected form, `errors` ({ name, password }) shows under each field and `name` is kept.
+export function invitePage(token, resetName, { errors = {}, name = '' } = {}) {
+  return page(resetName ? 'Reset password' : 'Join', null, 'invite', {
+    token,
+    errors,
+    name,
+    isReset: Boolean(resetName),
+    heading: resetName ? `Reset password for ${resetName}` : 'Create your account',
+    button: resetName ? 'Set password' : 'Create account',
+    minPassword: MIN_PASSWORD,
+  });
+}
 
 // ---- calendar ----
 
@@ -91,7 +95,8 @@ const eventColor = event => event.color == null ? '' : ` colored c${event.color}
 
 const MS_PER_DAY = 864e5;
 
-export function calendarPage(user, yearMonth, { free, mine, events, birthdays, today, members }) {
+// `error` is set when a /free post was rejected: it shows under the month title.
+export function calendarPage(user, yearMonth, { free, mine, events, birthdays, today, members, error }) {
   const month = monthInfo(yearMonth, user.week_start);
   const lanes = eventLanes(events);
   const eventTooltip = event => `${event.title}, ${formatEventWhen(event, user.date_format)} (by ${event.creator})`;
@@ -163,6 +168,7 @@ export function calendarPage(user, yearMonth, { free, mine, events, birthdays, t
   }
 
   return page(month.label, user, 'calendar', {
+    error,
     month,
     yearMonth,
     weekdays: weekdayNames(user.week_start),
@@ -187,8 +193,9 @@ export function calendarPage(user, yearMonth, { free, mine, events, birthdays, t
 // ---- events ----
 
 // One page for both: event.id set means editing that event, otherwise adding one.
-// `event` is an events row, or what was posted when the form is shown again with an error.
-export function eventPage(user, { event, error }) {
+// `event` is an events row, or what was posted when the form is shown again with `errors`
+// ({ title, start, end, color }: each shows under that part of the form).
+export function eventPage(user, { event, errors = {} }) {
   const editing = Boolean(event.id);
   const heading = editing ? 'Edit event' : 'New event';
   const savedColor = String(event.color ?? '');
@@ -201,13 +208,15 @@ export function eventPage(user, { event, error }) {
 
   return page(heading, user, 'event', {
     heading,
-    error,
+    errors,
     editing,
     id: event.id,
     action: editing ? `/events/${event.id}` : '/events',
     button: editing ? 'Save' : 'Add event',
     title: event.title ?? '',
     date: event.date ?? '',
+    // A saved event is all day when it has no start time; a rejected form keeps the box as posted.
+    allDay: event.allDay ?? !event.start_time,
     startTime: event.start_time ?? '',
     // A one-day event shows no end date, so moving its start date does not leave the end behind.
     endDate: event.end_date && event.end_date !== event.date ? event.end_date : '',
@@ -231,9 +240,12 @@ export function pollsPage(user, polls) {
   });
 }
 
-export const newPollPage = (user, error) => page('New poll', user, 'new-poll', { error, maxDates: MAX_DATES });
+// After a rejected form, `errors` ({ title, dates }) shows under each field and `title` is kept.
+export const newPollPage = (user, { errors = {}, title = '' } = {}) =>
+  page('New poll', user, 'new-poll', { errors, title, maxDates: MAX_DATES });
 
-export function pollPage(user, { poll, dates, members, votes, missing, complete, best, event }) {
+// `errors` after a rejected form: `answers` shows under the title, `result` in the result section.
+export function pollPage(user, { poll, dates, members, votes, missing, complete, best, event, errors = {} }) {
   const answers = {}; // user_id -> { date: answer }
   for (const vote of votes) {
     (answers[vote.user_id] ??= {})[vote.date] = vote.answer;
@@ -281,6 +293,7 @@ export function pollPage(user, { poll, dates, members, votes, missing, complete,
   };
 
   return page(poll.title, user, 'poll', {
+    errors,
     id: poll.id,
     title: poll.title,
     status,
@@ -302,12 +315,16 @@ export function pollPage(user, { poll, dates, members, votes, missing, complete,
 // webcal:// makes desktop calendar apps subscribe instead of downloading the file once.
 const webcal = url => url.replace(/^https?:\/\//, 'webcal://');
 
-export function settingsPage(user, { base, msg }) {
+// `errors` after a rejected Customisation form ({ weekStart, dateFormat }): shown under each field.
+export function settingsPage(user, { base, msg, errors = {} }) {
   const eventsFeed = `${base}/feed/${user.feed_token}/events.ics`;
   const birthdaysFeed = `${base}/feed/${user.feed_token}/birthdays.ics`;
 
   return page('Settings', user, 'settings', {
     ...notices(msg),
+    errors,
+    // A panel holding an error starts open, or the message would be hidden in a folded panel.
+    customisationOpen: Boolean(errors.weekStart || errors.dateFormat),
     eventsFeed,
     eventsWebcal: webcal(eventsFeed),
     birthdaysFeed,
@@ -321,15 +338,20 @@ export function settingsPage(user, { base, msg }) {
 
 // ---- profile ----
 
-export function profilePage(user, { passkeys, msg, error }) {
+// After a rejected form, `errors` shows under each field ({ name, birthday, color } in About me,
+// { current, password } in Security), and `about` holds the About me values as they were typed.
+export function profilePage(user, { passkeys, msg, errors = {}, about = user }) {
   return page('Profile', user, 'profile', {
-    ...notices(msg, error),
-    name: user.name,
-    birthday: user.birthday ?? '',
+    ...notices(msg),
+    errors,
+    // A panel holding an error starts open, or the message would be hidden in a folded panel.
+    securityOpen: Boolean(errors.current || errors.password),
+    name: about.name,
+    birthday: about.birthday ?? '',
     today: today(),
-    color: user.color,
+    color: about.color,
     maxColor: COLORS - 1,
-    initials: initials(user.name),
+    initials: initials(about.name || user.name),
     minPassword: MIN_PASSWORD,
     passkeys: passkeys.map(passkey => ({
       id: passkey.id,
@@ -341,9 +363,11 @@ export function profilePage(user, { passkeys, msg, error }) {
 
 // ---- administration (admin only; the route enforces it, this only draws it) ----
 
-export function adminPage(user, { base, invites, members, log, msg, error }) {
+// `errors.members` after a rejected member action: shown under the Members title.
+export function adminPage(user, { base, invites, members, log, msg, errors = {} }) {
   return page('Administration', user, 'admin', {
-    ...notices(msg, error),
+    ...notices(msg),
+    errors,
     members: members.map(member => ({ ...member, isMe: member.id === user.id })),
     invites: invites.map(invite => ({
       label: invite.user_name ? `Reset for ${invite.user_name}` : 'Invite',

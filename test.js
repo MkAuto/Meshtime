@@ -6,7 +6,7 @@ import {
   formatDate, isValidDateFormat, bestDates, fold, buildIcs, dayClass, monthInfo, weekdayNames, MAX_DATES,
   verifyWebAuthn, RP_ID, ORIGIN,
 } from './src/lib.js';
-import { newPollPage, pollPage, eventPage } from './src/views.js';
+import { newPollPage, pollPage, eventPage, profilePage } from './src/views.js';
 
 const thisYear = new Date().getUTCFullYear();
 
@@ -193,15 +193,24 @@ test('eventPage: a new event starts blank on the default color, with nothing to 
   assert.match(page, /<form method="post" action="\/events" class="stack">/);
   assert.match(page, /name="date" required value="2026-10-03"/);
   assert.match(page, /value="" aria-label="Default" checked>/);
-  assert.equal((page.match(/ checked>/g) || []).length, 1);
+  assert.match(page, /name="all_day" value="1" id="all-day" checked>/, 'a new event starts all day');
+  assert.equal((page.match(/ checked>/g) || []).length, 2, 'only the default color and All day');
   assert.doesNotMatch(page, /delete/);
+});
+
+test('eventPage: All day is ticked for an event without a start time, or as a rejected form posted it', () => {
+  const timed = { id: 7, title: 'Dinner', date: '2026-10-03', end_date: '2026-10-03', start_time: '19:00' };
+  assert.match(eventPage({ id: 1 }, { event: timed }), /id="all-day">/, 'a timed event is not all day');
+  assert.match(eventPage({ id: 1 }, { event: { ...timed, start_time: null } }), /id="all-day" checked>/);
+  assert.match(eventPage({ id: 1 }, { event: { ...timed, start_time: null, allDay: false } }), /id="all-day">/,
+    'unticked and sent back without a time: stays unticked so the time error shows');
 });
 
 test('eventPage: editing shows the saved values and color, and offers delete', () => {
   const event = {
     id: 7, title: 'Trip', date: '2026-10-03', end_date: '2026-10-05', start_time: '18:00', end_time: '14:00', color: 4,
   };
-  const page = eventPage({ id: 1, name: 'a' }, { event, error: 'Oops' });
+  const page = eventPage({ id: 1, name: 'a' }, { event, errors: { end: 'Oops' } });
   assert.match(page, /action="\/events\/7" class="stack"/);
   assert.match(page, /value="Trip"/);
   assert.match(page, /name="end_date" aria-label="End date" value="2026-10-05"/);
@@ -209,7 +218,9 @@ test('eventPage: editing shows the saved values and color, and offers delete', (
   assert.match(page, /value="4" aria-label="Color 5" checked>/);
   assert.equal((page.match(/ checked>/g) || []).length, 1);
   assert.match(page, /action="\/events\/7\/delete"/);
-  assert.match(page, /<p class="err">Oops<\/p>/);
+  // a form error sits right under the field it is about, not on a page of its own
+  assert.match(page, /value="14:00">\s*<\/span>\s*<\/label>\s*<p class="err">Oops<\/p>/);
+  assert.equal((page.match(/class="err"/g) || []).length, 1, 'only the field in error');
   // a one-day event shows no end date, so moving its start does not strand the end
   assert.match(eventPage({ id: 1 }, { event: { ...event, end_date: event.date } }),
     /name="end_date" aria-label="End date" value=""/);
@@ -378,4 +389,18 @@ test('pages escape what members typed', () => {
   assert.doesNotMatch(page, /<script>alert/);
   assert.match(page, /&lt;script&gt;alert\(1\)&lt;/);
   assert.match(page, /<h1>A &amp; &quot;B&quot;<\/h1>/);
+});
+
+test('profilePage: a rejected form keeps what was typed and opens the panel holding the error', () => {
+  const user = { id: 1, name: 'Ada', color: 2, birthday: null, date_format: undefined };
+  const page = profilePage(user, {
+    passkeys: [],
+    errors: { birthday: 'Invalid date.', password: 'Too short.' },
+    about: { name: 'Ada L', birthday: '2999-01-01', color: 5 },
+  });
+  assert.match(page, /value="Ada L"/);
+  assert.match(page, /aria-label="Birthday">\s*<p class="err">Invalid date\.<\/p>/);
+  assert.match(page, /value="5" aria-label="Color"/);
+  assert.match(page, /<details class="panel panel-security" open>/);
+  assert.match(page, /autocomplete="new-password">\s*<\/label>\s*<p class="err">Too short\.<\/p>/);
 });

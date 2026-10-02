@@ -1,6 +1,7 @@
 {{! A grid of members × proposed dates: my row holds selects, everyone else's is read-only. }}
 <h1>{{title}}</h1>
 <p class="hint">{{status}}</p>
+{{#errors.answers}}<p class="err">{{errors.answers}}</p>{{/errors.answers}}
 <form method="post" action="/polls/{{id}}">
   <table class="poll">
     <thead>
@@ -20,8 +21,7 @@
           <select name="v_{{date}}">
             {{^current}}<option value="" selected>—</option>{{/current}}
             {{#options}}
-            {{#selected}}<option value="{{value}}" selected>{{value}}</option>{{/selected}}
-            {{^selected}}<option value="{{value}}">{{value}}</option>{{/selected}}
+            <option value="{{value}}"{{#selected}} selected{{/selected}}>{{value}}</option>
             {{/options}}
           </select>
           {{/editable}}
@@ -46,6 +46,7 @@
 {{#result}}
 <section class="result">
   <h2>{{heading}}</h2>
+  {{#errors.result}}<p class="err">{{errors.result}}</p>{{/errors.result}}
   {{#tied}}
   <p class="hint">Tied on yes and no — pick the one you want.</p>
   {{/tied}}
