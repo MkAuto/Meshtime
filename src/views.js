@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import Mustache from 'mustache';
+import packageJson from '../package.json' with { type: 'json' };
 import {
   monthInfo, formatDate, formatEventWhen, eventLanes, dayClass, weekdayNames, today,
   DATE_FORMATS, WEEKDAYS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD,
@@ -90,6 +91,9 @@ const PART_LABELS = { all: 'all day', am: 'morning', pm: 'afternoon', eve: 'even
 // The long-press / double-click menu: each button posts its value as `part` to /free.
 const PART_CHOICES = { all: 'All day', am: 'Morning (AM)', pm: 'Afternoon (PM)', eve: 'Evening', none: 'Not free' };
 
+/** ['am', 'eve'] -> 'morning and evening' */
+const partsLabel = parts => parts.map(part => PART_LABELS[part]).join(' and ');
+
 /** ' colored cN' for an event with a bar color (events.color), '' for the default look. */
 const eventColor = event => event.color == null ? '' : ` colored c${event.color}`;
 
@@ -105,7 +109,7 @@ export function calendarPage(user, yearMonth, { free, mine, events, birthdays, t
   for (let day = 1; day <= month.days; day++) {
     const date = `${yearMonth}-${String(day).padStart(2, '0')}`;
     const whoIsFree = free.get(date) || [];
-    const myPart = mine.get(date); // undefined when I have not marked this day
+    const myParts = mine.get(date); // undefined when I have not marked this day
     const dayEvents = events.filter(event => event.date <= date && date <= event.end_date);
 
     // A bar is labelled where it starts, and again on day 1 and at the start of each week row.
@@ -143,19 +147,20 @@ export function calendarPage(user, yearMonth, { free, mine, events, birthdays, t
       };
     });
 
-    const dayStates = dayClass({ who: whoIsFree, members, mine: Boolean(myPart) });
+    const dayStates = dayClass({ who: whoIsFree, members, mine: Boolean(myParts) });
     days.push({
       day,
       date,
       classes: `day ${dayStates}${date === today ? ' today' : ''}`,
-      tooltip: myPart ? `You: ${PART_LABELS[myPart]}. Click to clear` : 'Click: I am free all day',
+      tooltip: myParts ? `You: ${partsLabel(myParts)}. Click to clear` : 'Click: I am free all day',
       dateLabel: formatDate(date, user.date_format),
-      part: myPart || 'none',
+      parts: myParts ? myParts.join(' ') : 'none',
       free: whoIsFree.map(member => ({
         color: member.color,
-        tooltip: `${member.name}, ${PART_LABELS[member.part]}`,
+        tooltip: `${member.name}, ${partsLabel(member.parts)}`,
         initials: initials(member.name),
-        sup: member.part === 'all' ? null : member.part,
+        // the small am / pm / eve next to the initials, a second one stacked under the first
+        slots: member.parts.includes('all') ? [] : member.parts,
       })),
       bars: barValues,
       birthdays: birthdays.filter(member => member.date === date),
@@ -323,6 +328,7 @@ export function settingsPage(user, { base, msg, errors = {} }) {
   return page('Settings', user, 'settings', {
     ...notices(msg),
     errors,
+    version: packageJson.version, // shown under the title; bump it in package.json
     // A panel holding an error starts open, or the message would be hidden in a folded panel.
     customisationOpen: Boolean(errors.weekStart || errors.dateFormat),
     eventsFeed,

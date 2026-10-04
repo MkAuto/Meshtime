@@ -4,6 +4,7 @@ import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import {
   isValidDate, birthdayIn, birthdayRrule, isValidTime, eventError, formatEventWhen, eventLanes, isValidWeekStart,
   formatDate, isValidDateFormat, bestDates, fold, buildIcs, dayClass, monthInfo, weekdayNames, MAX_DATES,
+  toggleSlot,
   verifyWebAuthn, RP_ID, ORIGIN,
 } from './src/lib.js';
 import { newPollPage, pollPage, eventPage, profilePage } from './src/views.js';
@@ -176,7 +177,8 @@ test('isValidWeekStart: only Saturday, Sunday and Monday', () => {
 });
 
 test('dayClass: all = every member free at the same time, mine = I am free', () => {
-  const free = (...parts) => parts.map(part => ({ part }));
+  // each argument is one member: 'am', or 'am pm' for two free times that day
+  const free = (...members) => members.map(parts => ({ parts: parts.split(' ') }));
   assert.equal(dayClass({ who: free('all', 'all'), members: 2, mine: true }), 'all mine');
   assert.equal(dayClass({ who: free('all'), members: 2, mine: false }), '');
   assert.equal(dayClass({ who: [], members: 0, mine: false }), '');
@@ -186,6 +188,17 @@ test('dayClass: all = every member free at the same time, mine = I am free', () 
   assert.equal(dayClass({ who: free('am', 'pm'), members: 2, mine: false }), '', 'morning + afternoon never overlap');
   assert.equal(dayClass({ who: free('eve', 'all'), members: 2, mine: false }), 'all', 'all-day counts for the evening');
   assert.equal(dayClass({ who: free('eve', 'pm'), members: 2, mine: false }), '');
+  assert.equal(dayClass({ who: free('am eve', 'eve'), members: 2, mine: false }), 'all', 'second slot counts');
+  assert.equal(dayClass({ who: free('am eve', 'pm'), members: 2, mine: false }), '');
+});
+
+test('toggleSlot: adds a second slot, takes a picked one off, refuses a third', () => {
+  assert.deepEqual(toggleSlot([], 'pm'), ['pm']);
+  assert.deepEqual(toggleSlot(['all'], 'pm'), ['pm'], 'a slot replaces all day');
+  assert.deepEqual(toggleSlot(['eve'], 'am'), ['am', 'eve'], 'kept in day order');
+  assert.deepEqual(toggleSlot(['am', 'eve'], 'am'), ['eve']);
+  assert.deepEqual(toggleSlot(['pm'], 'pm'), []);
+  assert.equal(toggleSlot(['am', 'pm'], 'eve'), null);
 });
 
 test('eventPage: a new event starts blank on the default color, with nothing to delete', () => {

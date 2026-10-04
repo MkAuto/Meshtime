@@ -160,11 +160,25 @@ export function monthInfo(yearMonth, weekStart = DEFAULT_WEEK_START) {
 // Which part of a day a member is free (free_days.part). 'all' is what a plain click sets and covers
 // the three others. Changing this list rebuilds free_days on the next start (see src/db.js).
 export const DAY_PARTS = ['all', 'am', 'pm', 'eve'];
-export const isValidDayPart = value => DAY_PARTS.includes(value);
-const SLOTS = DAY_PARTS.filter(part => part !== 'all'); // morning, afternoon, evening
+export const SLOTS = DAY_PARTS.filter(part => part !== 'all'); // morning, afternoon, evening
+export const MAX_SLOTS_PER_DAY = 2;
+
+export function toggleSlot(parts, slot) {
+  const slots = parts.filter(part => part !== 'all');
+  let newSlots;
+  if (slots.includes(slot)) {
+    newSlots = slots.filter(part => part !== slot);
+  } else if (slots.length < MAX_SLOTS_PER_DAY) {
+    newSlots = [...slots, slot];
+  } else {
+    return null;
+  }
+  return newSlots.sort((a, b) => DAY_PARTS.indexOf(a) - DAY_PARTS.indexOf(b));
+}
 
 /** How many of `who` are free during one slot of the day: all-day members count for every slot. */
-const freeDuring = (who, slot) => who.filter(member => member.part === 'all' || member.part === slot).length;
+const freeDuring = (who, slot) =>
+  who.filter(member => member.parts.includes('all') || member.parts.includes(slot)).length;
 
 export const DAY_STATES = {
   // everyone free at the same time: green + check. Someone AM-only and someone PM-only never overlap.

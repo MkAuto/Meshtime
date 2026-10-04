@@ -4,9 +4,9 @@ import * as views from './views.js';
 import { logEvent, tailLog, LOG_PATH } from './log.js';
 import { createReadStream, existsSync } from 'node:fs';
 import {
-  isValidDate, isValidMonth, isValidWeekStart, isValidDateFormat, isValidDayPart, isValidColor, eventError,
+  isValidDate, isValidMonth, isValidWeekStart, isValidDateFormat, isValidColor, eventError,
   bestDates, buildIcs, birthdayIn, birthdayRrule, today, randomColor, ANSWERS, MAX_DATES, MIN_PASSWORD, BASE_URL,
-  RP_ID,
+  RP_ID, SLOTS, MAX_SLOTS_PER_DAY, toggleSlot,
 } from './lib.js';
 
 export const routes = [];
@@ -178,24 +178,30 @@ on('POST', '/invite/(?<token>[\\w-]+)', async ctx => {
 
 // ---- calendar ----
 
+/** A free_days row's part and part2 as one list: ['all'], ['am'], ['am', 'eve']... */
+const freeParts = row => (row.part2 ? [row.part, row.part2] : [row.part]);
+
 /** Draws one month of the calendar. `error` goes under the month title (a rejected /free). */
 function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
   const inMonth = yearMonth + '-%'; // dates are 'YYYY-MM-DD' strings, so LIKE is enough
 
-  // date -> everyone who marked themselves free that day, for the initials in each cell
+  // date -> everyone who marked themselves free that day, for the initials in each cell,
+  // and date -> which parts of it I am free (['all'], or one or two of 'am' | 'pm' | 'eve')
   const free = new Map();
-  for (const row of all(`SELECT f.date, f.part, u.name, u.color FROM free_days f
+  const mine = new Map();
+  for (const row of all(`SELECT f.date, f.part, f.part2, f.user_id, u.name, u.color FROM free_days f
                          JOIN users u ON u.id = f.user_id
                          WHERE f.date LIKE ? ORDER BY u.name`, inMonth)) {
+    const parts = freeParts(row);
     if (!free.has(row.date)) {
       free.set(row.date, []);
     }
-    free.get(row.date).push({ name: row.name, color: row.color, part: row.part });
+    free.get(row.date).push({ name: row.name, color: row.color, parts });
+    if (row.user_id === ctx.user.id) {
+      mine.set(row.date, parts);
+    }
   }
 
-  // date -> which part of it I am free ('all' | 'am' | 'pm')
-  const mine = new Map(all('SELECT date, part FROM free_days WHERE user_id = ? AND date LIKE ?', ctx.user.id, inMonth)
-    .map(row => [row.date, row.part]));
   // Every event that touches this month, including ones that started before or end after it.
   // ISO dates compare as strings, and '-31' is past the last day of any month. All-day ones first.
   const events = all(`SELECT e.*, u.name AS creator FROM events e
@@ -220,7 +226,8 @@ on('GET', '/', ctx => {
 
 // Two ways in. A plain click on a day sends no `part` and toggles it: try the delete first, insert
 // "all day" only if there was nothing to delete. The long-press / double-click menu sends `part`:
-// 'all', 'am', 'pm' or 'eve' sets exactly that, 'none' clears the day.
+// 'all' sets the whole day, 'none' clears it, and 'am', 'pm' or 'eve' toggles that slot (see toggleSlot),
+// so opening the menu again is how a second slot gets added to the same day.
 on('POST', '/free', ctx => {
   const date = ctx.body.get('date');
   const part = ctx.body.get('part');
@@ -228,16 +235,30 @@ on('POST', '/free', ctx => {
     return showCalendar(ctx, postedMonth(ctx), { status: 400, error: 'Invalid date.' });
   }
 
+  const clearDay = () => run('DELETE FROM free_days WHERE user_id = ? AND date = ?', ctx.user.id, date).changes;
+  const setDay = (first, second = null) => run(`INSERT INTO free_days(user_id, date, part, part2) VALUES (?,?,?,?)
+    ON CONFLICT DO UPDATE SET part = excluded.part, part2 = excluded.part2`, ctx.user.id, date, first, second);
+
   if (part === null) {
-    const removed = run('DELETE FROM free_days WHERE user_id = ? AND date = ?', ctx.user.id, date).changes;
-    if (removed === 0) {
-      run('INSERT INTO free_days(user_id, date) VALUES (?,?)', ctx.user.id, date);
+    if (clearDay() === 0) {
+      setDay('all');
     }
   } else if (part === 'none') {
-    run('DELETE FROM free_days WHERE user_id = ? AND date = ?', ctx.user.id, date);
-  } else if (isValidDayPart(part)) {
-    run(`INSERT INTO free_days(user_id, date, part) VALUES (?,?,?)
-         ON CONFLICT DO UPDATE SET part = excluded.part`, ctx.user.id, date, part);
+    clearDay();
+  } else if (part === 'all') {
+    setDay('all');
+  } else if (SLOTS.includes(part)) {
+    const current = get('SELECT part, part2 FROM free_days WHERE user_id = ? AND date = ?', ctx.user.id, date);
+    const parts = toggleSlot(current ? freeParts(current) : [], part);
+    if (parts === null) {
+      const error = `You can be free at most ${MAX_SLOTS_PER_DAY} times in a day. Take one off first.`;
+      return showCalendar(ctx, postedMonth(ctx), { status: 400, error });
+    }
+    if (parts.length === 0) {
+      clearDay();
+    } else {
+      setDay(...parts);
+    }
   } else {
     return showCalendar(ctx, postedMonth(ctx), { status: 400, error: 'Invalid part of the day.' });
   }

@@ -67,6 +67,8 @@ h1 { font-size: 1.4rem; display: flex; align-items: center; gap: .6rem; }
 h1 a { color: var(--accent); text-decoration: none; padding: 0 .4rem; }
 h2 { font-size: 1.1rem; margin: 1.5rem 0 .5rem; }
 .hint { color: var(--muted); font-size: .9rem; }
+/* a subtitle right under a page title, like the version on Settings */
+h1 + .hint { margin-top: -.6rem; }
 .err { color: var(--err); }
 /* A form error sits right under its field: tight above, a little room below. */
 p.err { margin: .3rem 0 .6rem; }
@@ -203,8 +205,10 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
   -webkit-touch-callout: none;
   touch-action: manipulation;
 }
-/* "am" / "pm" after the initials of a half-day member */
-.who sup { font-size: .7em; font-weight: 600; margin-left: 1px; }
+/* "am" / "pm" after the initials of a half-day member. A second free time stacks right under the first:
+   inline-grid puts each <i> on its own row, and its baseline is the first row's, so one slot looks as before. */
+.who sup { display: inline-grid; font-size: .7em; font-weight: 600; margin-left: 1px; line-height: 1; }
+.who sup i { font-style: normal; }
 
 /* the morning / afternoon / all day menu */
 #day-part {
@@ -220,6 +224,8 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 #day-part .stack button { width: 100%; }
 /* what the day is set to now */
 #day-part .stack button.current { outline: 3px solid var(--fg); outline-offset: 2px; }
+/* already free twice that day: a third time cannot be picked until one is taken off */
+#day-part .stack button:disabled { opacity: .4; }
 #day-part form[method=dialog] { margin-top: .8rem; text-align: center; }
 /* day states: one class per DAY_STATES key in src/lib.js */
 .day.mine { outline: 2px solid var(--accent); outline-offset: -2px; }

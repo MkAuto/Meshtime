@@ -1,7 +1,9 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { COLORS, DEFAULT_WEEK_START, WEEK_START_CHOICES, DATE_FORMATS, DEFAULT_DATE_FORMAT, DAY_PARTS } from './lib.js';
+import {
+  COLORS, DEFAULT_WEEK_START, WEEK_START_CHOICES, DATE_FORMATS, DEFAULT_DATE_FORMAT, DAY_PARTS, SLOTS,
+} from './lib.js';
 
 const dbPath = process.env.DB_PATH || './data/app.db';
 /** Where everything persistent lives: the DB and meshtime.log. A volume in Docker. */
@@ -12,11 +14,14 @@ export const db = new DatabaseSync(dbPath, { timeout: 5000 });
 
 // free_days is written from here twice (the CREATE below, and the rebuild when DAY_PARTS changes),
 // so its definition lives in one place. DAY_PARTS are constants, safe to inline.
-const PART_CHECK = `CHECK(part IN (${DAY_PARTS.map(part => `'${part}'`).join(',')}))`;
+const sqlList = values => values.map(value => `'${value}'`).join(',');
+const PART_CHECK = `CHECK(part IN (${sqlList(DAY_PARTS)}))`;
+const PART2_CHECK = `CHECK(part2 IN (${sqlList(SLOTS)}))`;
 const freeDaysTable = name => `CREATE TABLE IF NOT EXISTS ${name}(
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   date TEXT NOT NULL,
   part TEXT NOT NULL DEFAULT 'all' ${PART_CHECK},
+  part2 TEXT ${PART2_CHECK},
   PRIMARY KEY(user_id, date))`;
 
 // Schema. CREATE IF NOT EXISTS, so this runs on every start and is a no-op once created.
@@ -57,6 +62,7 @@ CREATE TABLE IF NOT EXISTS sessions(
 
 -- "I am free that day". One row per user per day; its absence means nothing was said.
 -- part: free all day, or only the morning (am) / afternoon (pm) / evening (eve). DAY_PARTS in src/lib.js.
+-- part2: a second slot that same day (always after part in DAY_PARTS order), NULL when there is one.
 ${freeDaysTable('free_days')};
 
 -- date polls. chosen_date is set when the winning date becomes an event.
@@ -129,15 +135,22 @@ if (!freeDayColumns.includes('part')) {
   db.exec(`ALTER TABLE free_days ADD COLUMN part TEXT NOT NULL DEFAULT 'all' ${PART_CHECK}`);
 }
 
+// DBs created before a second slot per day existed: nobody has one yet.
+if (!freeDayColumns.includes('part2')) {
+  db.exec(`ALTER TABLE free_days ADD COLUMN part2 TEXT ${PART2_CHECK}`);
+}
+
 // DAY_PARTS changed (evening was added after am/pm): SQLite cannot alter a CHECK, so the table is
-// rebuilt with the current one. A part that is no longer offered becomes a whole day.
+// rebuilt with the current one. A part that is no longer offered becomes a whole day, a second one is dropped.
 const freeDaysSql = db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'free_days'`).get().sql;
-if (!freeDaysSql.includes(PART_CHECK)) {
+if (!freeDaysSql.includes(PART_CHECK) || !freeDaysSql.includes(PART2_CHECK)) {
   db.exec(`BEGIN;
     DROP TABLE IF EXISTS free_days_new;
     ${freeDaysTable('free_days_new')};
-    INSERT INTO free_days_new(user_id, date, part)
-      SELECT user_id, date, CASE WHEN part IN (${DAY_PARTS.map(part => `'${part}'`).join(',')}) THEN part ELSE 'all' END
+    INSERT INTO free_days_new(user_id, date, part, part2)
+      SELECT user_id, date,
+        CASE WHEN part IN (${sqlList(DAY_PARTS)}) THEN part ELSE 'all' END,
+        CASE WHEN part IN (${sqlList(SLOTS)}) AND part2 IN (${sqlList(SLOTS)}) THEN part2 END
       FROM free_days;
     DROP TABLE free_days;
     ALTER TABLE free_days_new RENAME TO free_days;
