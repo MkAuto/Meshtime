@@ -10,7 +10,9 @@
     {{#members}}
     <li>
       {{name}}{{#is_admin}} (admin){{/is_admin}} —
-      <form method="post" action="/admin/invite" class="inline">
+      {{! data-copy-link (here and on Create invite link): app.js copies the new link as it is created
+          (see Open links below without JS). }}
+      <form method="post" action="/admin/invite" class="inline" data-copy-link>
         <input type="hidden" name="user_id" value="{{id}}"><button class="link">create reset-password link</button>
       </form>
       {{^isMe}}
@@ -23,7 +25,7 @@
     {{/members}}
   </ul>
   <h3>Invite someone new</h3>
-  <form method="post" action="/admin/invite"><button>Create invite link</button></form>
+  <form method="post" action="/admin/invite" data-copy-link><button>Create invite link</button></form>
   {{#invites.length}}
   <h3>Open links (valid 7 days, single use)</h3>
   <ul>
@@ -32,6 +34,18 @@
     {{/invites}}
   </ul>
   {{/invites.length}}
+</section>
+
+<section class="panel panel-admin">
+  <h2>Options</h2>
+  <form method="post" action="/admin/options">
+    <label>
+      <input type="checkbox" name="member_invites" value="1"{{#memberInvites}} checked{{/memberInvites}}>
+      Members can create invite links (in their Settings)
+    </label>
+    <p class="hint">Turning it off also cancels the links members made that nobody has used yet.</p>
+    <p><button>Save</button></p>
+  </form>
 </section>
 
 <section class="panel panel-admin">

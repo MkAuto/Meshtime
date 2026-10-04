@@ -8,7 +8,7 @@ import {
   verifyWebAuthn, RP_ID, ORIGIN,
 } from './src/lib.js';
 import {
-  newPollPage, pollPage, eventPage, profilePage, groupsPage, settingsPage, calendarPage,
+  newPollPage, pollPage, eventPage, profilePage, groupsPage, settingsPage, calendarPage, adminPage,
 } from './src/views.js';
 
 const thisYear = new Date().getUTCFullYear();
@@ -507,6 +507,14 @@ test('groupsPage: managers get Rename / remove / Delete, only admins get Add dir
   const member = render({ id: 2, is_admin: 0 }, false);
   assert.doesNotMatch(member, /rename|remove"|cancel"|\/delete"/);
   assert.match(member, /action="\/groups\/7\/invite"/, 'every member can invite');
+  assert.match(member, /list="invitable-7"[\s\S]*<datalist id="invitable-7">\s*<option value="Di">/,
+    'the invite box suggests who can be invited');
+  const admin = render({ id: 1, is_admin: 1 }, true);
+  assert.match(admin, /<select name="user_id"[\s\S]*<option value="4">Di<\/option>/, 'admins keep the full list');
+  assert.match(admin, /Add directly/);
+  assert.doesNotMatch(admin, /<datalist/);
+  const sent = groupsPage({ id: 1 }, { groups: [], invites: [], msg: 'invited', invitedName: '<Di>' });
+  assert.match(sent, /Invite sent to &lt;Di&gt;\./, 'names who the invite went to, escaped');
   assert.match(member, /action="\/groups\/7\/leave"/);
 
   assert.match(render({ id: 1, is_admin: 1 }, true), /formaction="\/groups\/7\/add">Add directly/);
@@ -553,6 +561,22 @@ test('settingsPage: one feed per group I am in, with Copy and webcal, and the bi
   assert.ok(page.indexOf('birthdays.ics') < page.indexOf('groups/7.ics'), 'birthdays first');
   assert.doesNotMatch(page, /events\.ics/, 'no all-events feed any more');
   assert.match(settingsPage(user, { base: 'https://x.test' }), /each <a href="\/groups">group<\/a> you are in/);
+});
+
+test('invite links for members: Settings panel only while Options allow it, Admin box shows the setting', () => {
+  const user = { id: 1, feed_token: 'tok', week_start: 0, show_birthdays: 1 };
+  assert.doesNotMatch(settingsPage(user, { base: '' }), /settings\/invite/, 'off by default');
+  const allowed = settingsPage({ ...user, member_invites: 1 }, { base: 'https://x.test', invites: [{ token: 'abc' }] });
+  assert.match(allowed, /action="\/settings\/invite" data-copy-link/);
+  assert.match(allowed, /<code>https:\/\/x\.test\/invite\/abc<\/code>/, 'my open links');
+
+  const admin = { id: 1, is_admin: 1, date_format: undefined };
+  const render = (memberInvites, invites = []) =>
+    adminPage({ ...admin, member_invites: memberInvites }, { base: '', invites, members: [], log: [] });
+  const box = /name="member_invites" value="1"( checked)?>/;
+  assert.equal(render(0).match(box)[1], undefined);
+  assert.equal(render(1).match(box)[1], ' checked');
+  assert.match(render(1, [{ token: 't', created_by: 2, creator: 'Bob' }]), /Invite from Bob:/);
 });
 
 // Security review: an empty name must not share one counter that blocks everyone's passkey login.

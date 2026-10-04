@@ -28,7 +28,7 @@
     <li class="hint">Group events: each <a href="/groups">group</a> you are in gets its own feed here.</li>
     {{/groupFeeds}}
   </ul>
-  <details data-remember="settings-subscribe-help">
+  <details id="subscribe-help" data-remember="settings-subscribe-help">
     <summary>How to subscribe</summary>
     <ul>
       <li>
@@ -48,6 +48,24 @@
   {{! Rotating changes the token in every feed link: birthdays and each group's. }}
   <form method="post" action="/settings/rotate-feed"><button class="danger">Rotate all feed links</button></form>
 </details>
+
+{{! Only while an admin allows it (Administration → Options); /settings/invite refuses otherwise.
+    data-copy-link: app.js copies the new link as it is created (it is listed below without JS). }}
+{{#memberInvites}}
+<details class="panel panel-custom" open data-remember="settings-invite">
+  <summary><h2>Invite someone</h2></summary>
+  <p class="hint">A link to create an account: valid 7 days, single use. Send it only to who you mean to invite.</p>
+  <form method="post" action="/settings/invite" data-copy-link><button>Create invite link</button></form>
+  {{#invites.length}}
+  <h3>My open links</h3>
+  <ul>
+    {{#invites}}
+    <li><code>{{url}}</code></li>
+    {{/invites}}
+  </ul>
+  {{/invites.length}}
+</details>
+{{/memberInvites}}
 
 <details class="panel panel-custom" open data-remember="settings-customisation">
   <summary><h2>Customisation</h2></summary>

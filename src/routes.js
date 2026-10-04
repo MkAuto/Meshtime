@@ -780,11 +780,12 @@ function showGroups(ctx, { status = 200, errors = {} } = {}) {
     headlineEvent: groupHeadlineEvent(group.id),
     invited: all(`SELECT u.id, u.name FROM group_invites i JOIN users u ON u.id = i.user_id
                   WHERE i.group_id = ? ORDER BY u.name`, group.id),
-    // who can still be invited: not in it, and no invite waiting
-    invitable: all(`SELECT id, name FROM users WHERE
-                      id NOT IN (SELECT user_id FROM group_members WHERE group_id = ?)
-                      AND id NOT IN (SELECT user_id FROM group_invites WHERE group_id = ?)
-                    ORDER BY name`, group.id, group.id),
+    // who can still be invited: not in it, no invite waiting. An admin's list has everyone; anyone else's only the
+    // people they know (public, or in one of their groups), as suggestions: they can still type any other name.
+    invitable: all(`SELECT u.id, u.name FROM users u WHERE (? OR ${VISIBLE_TO_ME})
+                      AND u.id NOT IN (SELECT user_id FROM group_members WHERE group_id = ?)
+                      AND u.id NOT IN (SELECT user_id FROM group_invites WHERE group_id = ?)
+                    ORDER BY u.name`, ctx.user.is_admin ? 1 : 0, ctx.user.id, ctx.user.id, group.id, group.id),
     canManage: managesGroup(ctx.user, group),
   }));
   const invites = all(`SELECT g.id, g.name, u.name AS invited_by FROM group_invites i
@@ -792,7 +793,8 @@ function showGroups(ctx, { status = 200, errors = {} } = {}) {
                        LEFT JOIN users u ON u.id = i.invited_by
                        WHERE i.user_id = ? ORDER BY i.created_at`, ctx.user.id);
   ctx.html(views.groupsPage(ctx.user, {
-    groups, invites, base: BASE_URL, msg: ctx.url.searchParams.get('msg'), errors,
+    groups, invites, base: BASE_URL, msg: ctx.url.searchParams.get('msg'), invitedName: ctx.url.searchParams.get('to'),
+    errors,
   }), status);
 }
 
@@ -817,11 +819,26 @@ function groupForManager(ctx) {
   return group;
 }
 
-/** The member picked in a group's Invite form, or an error message for the group. */
+/**
+ * The member picked in a group's Invite form, or an error message for the group. Admins pick from a list
+ * (user_id); everyone else types a name, which may be anyone's, known to them or not.
+ */
 function invitee(ctx, group) {
-  const target = get('SELECT id, name FROM users WHERE id = ?', Number(ctx.body.get('user_id')));
-  if (!target) {
-    return { error: 'Pick someone to invite.' };
+  let target;
+  if (ctx.body.has('user_id')) {
+    target = get('SELECT id, name FROM users WHERE id = ?', Number(ctx.body.get('user_id')));
+    if (!target) {
+      return { error: 'Pick someone to invite.' };
+    }
+  } else {
+    const name = (ctx.body.get('name') || '').trim();
+    if (!name) {
+      return { error: 'Type the name of who to invite.' };
+    }
+    target = get('SELECT id, name FROM users WHERE name = ?', name); // names are unique, ignoring case
+    if (!target) {
+      return { error: `No member called ${name}.` };
+    }
   }
   if (get('SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?', group.id, target.id)) {
     return { error: `${target.name} is already in this group.` };
@@ -863,7 +880,7 @@ on('POST', '/groups/(?<id>\\d+)/invite', ctx => {
   run(`INSERT INTO group_invites(group_id, user_id, invited_by, created_at) VALUES (?,?,?,?)
        ON CONFLICT DO NOTHING`, group.id, target.id, ctx.user.id, now());
   logUser(ctx, `invited ${JSON.stringify(target.name)} to group ${JSON.stringify(group.name)}`);
-  ctx.redirect('/groups?msg=invited');
+  ctx.redirect(`/groups?msg=invited&to=${encodeURIComponent(target.name)}`);
 });
 
 // Admins skip the invite: the member is in at once (and any invite waiting for them is spent).
@@ -983,6 +1000,7 @@ on('POST', '/groups/(?<id>\\d+)/delete', ctx => {
 const showSettings = (ctx, { status = 200, errors = {} } = {}) => ctx.html(views.settingsPage(ctx.user, {
   base: BASE_URL,
   groups: myGroups(ctx.user.id),
+  invites: auth.openInvites(ctx.user.id),
   msg: ctx.url.searchParams.get('msg'),
   errors,
 }), status);
@@ -993,6 +1011,21 @@ on('POST', '/settings/rotate-feed', ctx => {
   run('UPDATE users SET feed_token = ? WHERE id = ?', auth.token(), ctx.user.id);
   logUser(ctx, 'feed links rotated');
   ctx.redirect('/settings?msg=rotated');
+});
+
+// A new-account link from any member, while an admin allows it (Administration → Options). The page hides the
+// button when it is off; this check is what actually stops a forged post. Never an admin or reset link.
+on('POST', '/settings/invite', ctx => {
+  if (!ctx.user.member_invites) {
+    return ctx.fail(403, 'An admin has turned off invite links for members.');
+  }
+  const inviteToken = auth.createInvite({ createdBy: ctx.user.id });
+  logUser(ctx, 'invite link created');
+  // app.js (data-copy-link forms) asks for JSON: it copies the link itself, then reloads the page.
+  if (ctx.req.headers.accept === 'application/json') {
+    return ctx.json({ url: `${BASE_URL}/invite/${inviteToken}` });
+  }
+  ctx.redirect('/settings?msg=invite');
 });
 
 // The whole Customisation panel is one form: every value is checked before any is saved.
@@ -1172,9 +1205,31 @@ on('POST', '/admin/invite', ctx => {
   if (userId && !target) {
     return showAdmin(ctx, { status: 400, errors: { members: 'That member no longer exists.' } });
   }
-  auth.createInvite({ createdBy: ctx.user.id, userId }); // userId set => password-reset link
+  const inviteToken = auth.createInvite({ createdBy: ctx.user.id, userId }); // userId set => password-reset link
   logUser(ctx, target ? `admin: reset link created for ${JSON.stringify(target.name)}` : 'admin: invite link created');
+  // app.js (data-copy-link forms) asks for JSON: it copies the link itself, then reloads the page.
+  if (ctx.req.headers.accept === 'application/json') {
+    return ctx.json({ url: `${BASE_URL}/invite/${inviteToken}` });
+  }
   ctx.redirect('/admin?msg=invite');
+});
+
+// The Options panel is one form. An unchecked checkbox posts nothing: off.
+on('POST', '/admin/options', ctx => {
+  if (!requireAdmin(ctx)) {
+    return;
+  }
+  const memberInvites = ctx.body.get('member_invites') === '1' ? 1 : 0;
+  tx(() => {
+    run('UPDATE app_settings SET member_invites = ?', memberInvites);
+    if (!memberInvites) {
+      // Turning it off takes effect now: the links members made and nobody used yet stop working too.
+      run(`DELETE FROM invites WHERE used_at IS NULL AND user_id IS NULL
+             AND created_by IN (SELECT id FROM users WHERE is_admin = 0)`);
+    }
+  });
+  logUser(ctx, `admin: member invite links turned ${memberInvites ? 'on' : 'off'}`);
+  ctx.redirect('/admin?msg=options');
 });
 
 // Offboarding. ON DELETE CASCADE takes sessions, passkeys, votes, free days, reset links, group

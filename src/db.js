@@ -153,6 +153,12 @@ CREATE TABLE IF NOT EXISTS credentials(
   label TEXT NOT NULL,
   created_at TEXT NOT NULL);
 
+-- app-wide options set in Administration → Options. One row; each default lives in its column.
+CREATE TABLE IF NOT EXISTS app_settings(
+  id INTEGER PRIMARY KEY CHECK(id = 1),
+  member_invites INTEGER NOT NULL DEFAULT 0); -- 1: every member can create invite links in Settings
+INSERT OR IGNORE INTO app_settings(id) VALUES (1);
+
 -- outstanding WebAuthn challenges. Single-use and short-lived, so a captured login cannot be replayed.
 CREATE TABLE IF NOT EXISTS challenges(
   challenge TEXT PRIMARY KEY,
