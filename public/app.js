@@ -13,6 +13,43 @@ if (hue && swatch) {
   hue.addEventListener('input', () => { swatch.className = `c${hue.value} swatch`; });
 }
 
+// Folding panels with data-remember (settings, profile, groups) reopen the way you
+// last left them: open or closed, per panel, in this browser (localStorage). Until you touch one, the
+// page's own default stands. A panel showing an error message is never folded from memory, or the message
+// would be hidden. Storage can be blocked (private windows): then every page just uses its defaults.
+const PANEL_STATE_KEY = 'panelState'; // { [data-remember]: true when open }
+const rememberedPanels = document.querySelectorAll('details[data-remember]');
+if (rememberedPanels.length) {
+  let panelState;
+  try {
+    panelState = JSON.parse(localStorage.getItem(PANEL_STATE_KEY)) || {};
+  } catch {
+    panelState = {};
+  }
+  for (const panel of rememberedPanels) {
+    const key = panel.dataset.remember;
+    const showsError = [...panel.querySelectorAll('.err')].some(error => error.textContent.trim());
+    if (key in panelState && !showsError) {
+      panel.open = panelState[key];
+    }
+    panel.addEventListener('toggle', () => {
+      panelState[key] = panel.open;
+      try {
+        localStorage.setItem(PANEL_STATE_KEY, JSON.stringify(panelState));
+      } catch {
+        // storage blocked or full: the panel still folds, it just will not be remembered
+      }
+    });
+  }
+}
+
+// Forms with data-autosubmit (the calendar's group picker) apply a new choice at once; their button is
+// only there for when JS is off.
+for (const form of document.querySelectorAll('form[data-autosubmit]')) {
+  form.querySelector('button').hidden = true;
+  form.addEventListener('change', () => form.submit());
+}
+
 // Calendar. A tap or a single click submits the day's form as-is: free all day, or clear it.
 // Holding the day (touch) or double-clicking it (mouse) opens the #day-part menu instead, to pick
 // morning / afternoon / evening / all day / not free. Right-click and the keyboard's menu key open it too.

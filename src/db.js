@@ -43,7 +43,10 @@ CREATE TABLE IF NOT EXISTS users(
   week_start INTEGER NOT NULL DEFAULT 0, -- first day of the week in the calendar grid, 0 = Sunday
   date_format TEXT NOT NULL DEFAULT '${DEFAULT_DATE_FORMAT}', -- a DATE_FORMATS key in src/lib.js
   birthday TEXT, -- 'YYYY-MM-DD', NULL = not given
-  show_birthdays INTEGER NOT NULL DEFAULT 1); -- 0 hides everyone's birthdays from this member's calendar
+  show_birthdays INTEGER NOT NULL DEFAULT 1, -- 0 hides everyone's birthdays from this member's calendar
+  is_private INTEGER NOT NULL DEFAULT 1, -- 1: only people sharing a group see my free days, 0: everyone does
+  -- the group the calendar opens on; NULL = everyone I can see. Ignored while I am not in that group.
+  default_group_id INTEGER REFERENCES member_groups(id) ON DELETE SET NULL);
 
 -- single-use links. user_id set => password reset for that user, otherwise a new-account invite.
 CREATE TABLE IF NOT EXISTS invites(
@@ -64,6 +67,31 @@ CREATE TABLE IF NOT EXISTS sessions(
 -- part: free all day, or only the morning (am) / afternoon (pm) / evening (eve). DAY_PARTS in src/lib.js.
 -- part2: a second slot that same day (always after part in DAY_PARTS order), NULL when there is one.
 ${freeDaysTable('free_days')};
+
+-- groups of members: sharing one is what lets a private member's free days be seen.
+-- Not called "groups": GROUPS is an SQL keyword (window frames). created_by goes NULL when that account
+-- is removed; admins in the group can still manage it.
+CREATE TABLE IF NOT EXISTS member_groups(
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  color INTEGER NOT NULL DEFAULT 0); -- a .cN palette index like users.color, picked at random on creation
+
+CREATE TABLE IF NOT EXISTS group_members(
+  group_id INTEGER NOT NULL REFERENCES member_groups(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  joined_at TEXT NOT NULL,
+  PRIMARY KEY(group_id, user_id));
+
+-- pending invitations to join a group: the invited member accepts (becomes a group_members row) or declines.
+-- The primary key keeps it to one pending invite per person per group.
+CREATE TABLE IF NOT EXISTS group_invites(
+  group_id INTEGER NOT NULL REFERENCES member_groups(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  invited_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(group_id, user_id));
 
 -- date polls. chosen_date is set when the winning date becomes an event.
 CREATE TABLE IF NOT EXISTS polls(
@@ -170,6 +198,15 @@ if (!userColumns.includes('show_birthdays')) {
   db.exec('ALTER TABLE users ADD COLUMN show_birthdays INTEGER NOT NULL DEFAULT 1');
 }
 
+// DBs created before groups existed: everyone starts private, so free days are only shared through groups.
+if (!userColumns.includes('is_private')) {
+  db.exec('ALTER TABLE users ADD COLUMN is_private INTEGER NOT NULL DEFAULT 1');
+}
+// DBs created before the calendar's default group existed: everyone opens on "everyone I can see".
+if (!userColumns.includes('default_group_id')) {
+  db.exec('ALTER TABLE users ADD COLUMN default_group_id INTEGER REFERENCES member_groups(id) ON DELETE SET NULL');
+}
+
 // DBs created before times and multi-day events existed: every event was one whole day.
 const eventColumns = db.prepare('PRAGMA table_info(events)').all().map(column => column.name);
 for (const column of ['end_date', 'start_time', 'end_time']) {
@@ -191,8 +228,16 @@ db.prepare(`UPDATE users SET date_format = ? WHERE date_format NOT IN (${Object.
 // Members who picked a first day that is no longer offered go back to the Sunday default.
 db.exec(`UPDATE users SET week_start = ${DEFAULT_WEEK_START} WHERE week_start NOT IN (${WEEK_START_CHOICES})`);
 
+// DBs created before group colors existed: hand out random ones, as for users.
+const groupColumns = db.prepare('PRAGMA table_info(member_groups)').all().map(column => column.name);
+if (!groupColumns.includes('color')) {
+  db.exec(`ALTER TABLE member_groups ADD COLUMN color INTEGER NOT NULL DEFAULT 0;
+           UPDATE member_groups SET color = abs(random()) % ${COLORS}`);
+}
+
 // Pull colors back into range in case the palette shrank.
 db.exec(`UPDATE users SET color = color % ${COLORS} WHERE color >= ${COLORS}`);
+db.exec(`UPDATE member_groups SET color = color % ${COLORS} WHERE color >= ${COLORS}`);
 db.exec(`UPDATE events SET color = NULL WHERE color >= ${COLORS}`);
 
 // ---- query helpers. Always pass values as parameters, never interpolate them into the SQL. ----

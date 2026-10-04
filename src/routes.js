@@ -29,7 +29,14 @@ const postedMonth = ctx => {
   const month = ctx.body.get('m');
   return isValidMonth(month) ? month : today().slice(0, 7);
 };
-const backToMonth = ctx => '/?m=' + postedMonth(ctx);
+/**
+ * Back to the month, in the view the form was posted from. g is always in the URL, empty for "everyone
+ * I can see", because a calendar URL without g opens on the member's default group.
+ */
+const backToMonth = ctx => {
+  const group = calendarGroup(ctx);
+  return '/?m=' + postedMonth(ctx) + '&g=' + (group ? group.id : '');
+};
 
 const TOO_MANY = 'Too many attempts. Try again in 15 minutes.';
 const BANNED = 'banned (too many attempts)'; // the log's name for a login the rate limit refused
@@ -178,20 +185,61 @@ on('POST', '/invite/(?<token>[\\w-]+)', async ctx => {
 
 // ---- calendar ----
 
+// Whose free days I may see: myself, public accounts, and anyone sharing a group with me.
+// For a users table aliased `u`; takes my user id twice. The group pages use the same rule.
+const VISIBLE_TO_ME = `(u.id = ? OR u.is_private = 0 OR EXISTS (
+  SELECT 1 FROM group_members theirs JOIN group_members mine ON mine.group_id = theirs.group_id
+  WHERE theirs.user_id = u.id AND mine.user_id = ?))`;
+// The one-group view: only that group's members, public or not. Takes the group id.
+const IN_GROUP = 'EXISTS (SELECT 1 FROM group_members m WHERE m.group_id = ? AND m.user_id = u.id)';
+
+/** The groups I am in, by name: the calendar's group selector and the groups page. */
+const myGroups = userId => all(`SELECT g.* FROM member_groups g
+                                JOIN group_members m ON m.group_id = g.id
+                                WHERE m.user_id = ? ORDER BY g.name COLLATE NOCASE, g.id`, userId);
+
+/**
+ * The group the calendar shows on its own (?g= on a page, a posted g from its forms), or null for
+ * "everyone I can see". A page opened with no g at all shows my default group (users.default_group_id);
+ * an empty g is an explicit "everyone". A group I am not in is ignored, so a stale or guessed id shows
+ * nothing extra, and a default group I have since left falls back to everyone.
+ */
+function calendarGroup(ctx) {
+  let requested;
+  if (ctx.body) {
+    requested = ctx.body.get('g');
+  } else if (ctx.url.searchParams.has('g')) {
+    requested = ctx.url.searchParams.get('g');
+  } else {
+    requested = ctx.user.default_group_id;
+  }
+  const groupId = Number(requested);
+  if (!groupId) {
+    return null;
+  }
+  return get(`SELECT g.* FROM member_groups g JOIN group_members m ON m.group_id = g.id
+              WHERE g.id = ? AND m.user_id = ?`, groupId, ctx.user.id) ?? null;
+}
+
 /** A free_days row's part and part2 as one list: ['all'], ['am'], ['am', 'eve']... */
 const freeParts = row => (row.part2 ? [row.part, row.part2] : [row.part]);
 
 /** Draws one month of the calendar. `error` goes under the month title (a rejected /free). */
 function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
   const inMonth = yearMonth + '-%'; // dates are 'YYYY-MM-DD' strings, so LIKE is enough
+  // Whose free days are drawn, and who "everyone" is for the green days: one group, or everyone I can see.
+  const group = calendarGroup(ctx);
+  const audience = group
+    ? { sql: IN_GROUP, params: [group.id] }
+    : { sql: VISIBLE_TO_ME, params: [ctx.user.id, ctx.user.id] };
 
-  // date -> everyone who marked themselves free that day, for the initials in each cell,
+  // date -> everyone shown who marked themselves free that day, for the initials in each cell,
   // and date -> which parts of it I am free (['all'], or one or two of 'am' | 'pm' | 'eve')
   const free = new Map();
   const mine = new Map();
   for (const row of all(`SELECT f.date, f.part, f.part2, f.user_id, u.name, u.color FROM free_days f
                          JOIN users u ON u.id = f.user_id
-                         WHERE f.date LIKE ? ORDER BY u.name`, inMonth)) {
+                         WHERE f.date LIKE ? AND ${audience.sql} ORDER BY u.name`, inMonth, ...audience.params)) {
     const parts = freeParts(row);
     if (!free.has(row.date)) {
       free.set(row.date, []);
@@ -209,19 +257,29 @@ function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
                       WHERE e.date <= ? AND e.end_date >= ?
                       ORDER BY e.date, e.start_time IS NOT NULL, e.start_time, e.id`,
                       yearMonth + '-31', yearMonth + '-01');
-  const members = get('SELECT COUNT(*) AS n FROM users').n; // a day is "everyone free" at this count
+  // a day is "everyone free" at this count
+  const members = get(`SELECT COUNT(*) AS n FROM users u WHERE ${audience.sql}`, ...audience.params).n;
   // Birthdays are not events rows: each one is worked out from users.birthday for the month shown.
   const birthdays = ctx.user.show_birthdays ? all('SELECT name, color, birthday FROM users WHERE birthday IS NOT NULL')
     .map(member => ({ name: member.name, color: member.color, date: birthdayIn(yearMonth, member.birthday) }))
     .filter(member => member.date) : [];
 
-  ctx.html(views.calendarPage(ctx.user, yearMonth, { free, mine, events, birthdays, today: today(), members, error }),
-    status);
+  ctx.html(views.calendarPage(ctx.user, yearMonth, {
+    free, mine, events, birthdays, today: today(), members, error, group, groups: myGroups(ctx.user.id),
+  }), status);
 }
 
 on('GET', '/', ctx => {
   const requestedMonth = ctx.url.searchParams.get('m');
   showCalendar(ctx, isValidMonth(requestedMonth) ? requestedMonth : today().slice(0, 7));
+});
+
+// "Make default": the view on screen (a group, or everyone when g is empty) becomes the one the calendar
+// opens on. calendarGroup has already checked I am in the group, so a forged id saves "everyone".
+on('POST', '/calendar/default', ctx => {
+  const group = calendarGroup(ctx);
+  run('UPDATE users SET default_group_id = ? WHERE id = ?', group ? group.id : null, ctx.user.id);
+  ctx.redirect(backToMonth(ctx));
 });
 
 // Two ways in. A plain click on a day sends no `part` and toggles it: try the delete first, insert
@@ -505,6 +563,209 @@ on('POST', '/polls/(?<id>\\d+)/confirm', ctx => {
   ctx.redirect('/polls/' + pollId);
 });
 
+// ---- groups: sharing one lets private members see each other's free days ----
+// Any member can invite; the invited member accepts or declines. Its creator and admins in it manage it
+// (rename, remove members, cancel invites, delete). Admins can also add a member directly, no invite.
+
+/** Can this user rename, prune or delete the group? Its creator, or an admin who is in it. */
+const managesGroup = (user, group) => group.created_by === user.id || Boolean(user.is_admin);
+
+/** The groups page. errors[groupId] goes under that group's title, errors.create under New group. */
+function showGroups(ctx, { status = 200, errors = {} } = {}) {
+  const groups = myGroups(ctx.user.id).map(group => ({
+    ...group,
+    creator: get('SELECT name FROM users WHERE id = ?', group.created_by)?.name,
+    members: all(`SELECT u.id, u.name, u.color FROM group_members m JOIN users u ON u.id = m.user_id
+                  WHERE m.group_id = ? ORDER BY u.name`, group.id),
+    invited: all(`SELECT u.id, u.name FROM group_invites i JOIN users u ON u.id = i.user_id
+                  WHERE i.group_id = ? ORDER BY u.name`, group.id),
+    // who can still be invited: not in it, and no invite waiting
+    invitable: all(`SELECT id, name FROM users WHERE
+                      id NOT IN (SELECT user_id FROM group_members WHERE group_id = ?)
+                      AND id NOT IN (SELECT user_id FROM group_invites WHERE group_id = ?)
+                    ORDER BY name`, group.id, group.id),
+    canManage: managesGroup(ctx.user, group),
+  }));
+  const invites = all(`SELECT g.id, g.name, u.name AS invited_by FROM group_invites i
+                       JOIN member_groups g ON g.id = i.group_id
+                       LEFT JOIN users u ON u.id = i.invited_by
+                       WHERE i.user_id = ? ORDER BY i.created_at`, ctx.user.id);
+  ctx.html(views.groupsPage(ctx.user, { groups, invites, msg: ctx.url.searchParams.get('msg'), errors }), status);
+}
+
+/** The group in the URL, if I am in it; otherwise answers 404 / 403 and returns nothing. */
+function groupForMember(ctx) {
+  const group = get('SELECT * FROM member_groups WHERE id = ?', Number(ctx.params.id));
+  if (!group) {
+    return ctx.fail(404, 'Group not found.');
+  }
+  if (!get('SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?', group.id, ctx.user.id)) {
+    return ctx.fail(403, 'You are not in this group.');
+  }
+  return group;
+}
+
+/** Like groupForMember, but only for its creator or an admin in it. */
+function groupForManager(ctx) {
+  const group = groupForMember(ctx);
+  if (group && !managesGroup(ctx.user, group)) {
+    return ctx.fail(403, 'Only its creator or an admin can change this group.');
+  }
+  return group;
+}
+
+/** The member picked in a group's Invite form, or an error message for the group. */
+function invitee(ctx, group) {
+  const target = get('SELECT id, name FROM users WHERE id = ?', Number(ctx.body.get('user_id')));
+  if (!target) {
+    return { error: 'Pick someone to invite.' };
+  }
+  if (get('SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?', group.id, target.id)) {
+    return { error: `${target.name} is already in this group.` };
+  }
+  return { target };
+}
+
+const GROUP_NAME_MAX = 40;
+
+on('GET', '/groups', ctx => showGroups(ctx));
+
+on('POST', '/groups', ctx => {
+  const name = cleanText(ctx.body.get('name'), GROUP_NAME_MAX);
+  if (!name) {
+    return showGroups(ctx, { status: 400, errors: { create: 'A group needs a name.' } });
+  }
+  tx(() => {
+    const groupId = run('INSERT INTO member_groups(name, created_by, created_at, color) VALUES (?,?,?,?)',
+      name, ctx.user.id, now(), randomColor()).lastInsertRowid;
+    run('INSERT INTO group_members(group_id, user_id, joined_at) VALUES (?,?,?)', groupId, ctx.user.id, now());
+  });
+  logUser(ctx, `group created ${JSON.stringify(name)}`);
+  ctx.redirect('/groups?msg=group_created');
+});
+
+on('POST', '/groups/(?<id>\\d+)/invite', ctx => {
+  const group = groupForMember(ctx);
+  if (!group) {
+    return;
+  }
+  const { target, error } = invitee(ctx, group);
+  if (error) {
+    return showGroups(ctx, { status: 400, errors: { [group.id]: error } });
+  }
+  // A second invite for the same person is a no-op, not an error: the first one is still waiting.
+  run(`INSERT INTO group_invites(group_id, user_id, invited_by, created_at) VALUES (?,?,?,?)
+       ON CONFLICT DO NOTHING`, group.id, target.id, ctx.user.id, now());
+  logUser(ctx, `invited ${JSON.stringify(target.name)} to group ${JSON.stringify(group.name)}`);
+  ctx.redirect('/groups?msg=invited');
+});
+
+// Admins skip the invite: the member is in at once (and any invite waiting for them is spent).
+on('POST', '/groups/(?<id>\\d+)/add', ctx => {
+  const group = groupForMember(ctx);
+  if (!group) {
+    return;
+  }
+  if (!ctx.user.is_admin) {
+    return ctx.fail(403, 'Only admins can add members directly.');
+  }
+  const { target, error } = invitee(ctx, group);
+  if (error) {
+    return showGroups(ctx, { status: 400, errors: { [group.id]: error } });
+  }
+  tx(() => {
+    run('INSERT INTO group_members(group_id, user_id, joined_at) VALUES (?,?,?)', group.id, target.id, now());
+    run('DELETE FROM group_invites WHERE group_id = ? AND user_id = ?', group.id, target.id);
+  });
+  logUser(ctx, `admin: added ${JSON.stringify(target.name)} to group ${JSON.stringify(group.name)}`);
+  ctx.redirect('/groups?msg=added');
+});
+
+// Answering an invite: only the invited member can, so the lookup is by my id, not a membership.
+on('POST', '/groups/(?<id>\\d+)/(?<answer>accept|decline)', ctx => {
+  const groupId = Number(ctx.params.id);
+  const group = get(`SELECT g.* FROM group_invites i JOIN member_groups g ON g.id = i.group_id
+                     WHERE i.group_id = ? AND i.user_id = ?`, groupId, ctx.user.id);
+  if (!group) {
+    return ctx.fail(404, 'That invite is no longer waiting.');
+  }
+  const accepted = ctx.params.answer === 'accept';
+  tx(() => {
+    run('DELETE FROM group_invites WHERE group_id = ? AND user_id = ?', groupId, ctx.user.id);
+    if (accepted) {
+      run('INSERT INTO group_members(group_id, user_id, joined_at) VALUES (?,?,?)', groupId, ctx.user.id, now());
+    }
+  });
+  logUser(ctx, `${accepted ? 'joined' : 'declined'} group ${JSON.stringify(group.name)}`);
+  ctx.redirect('/groups?msg=' + (accepted ? 'joined' : 'declined'));
+});
+
+// The last one out deletes the group: nobody would be left to see it or manage it.
+on('POST', '/groups/(?<id>\\d+)/leave', ctx => {
+  const group = groupForMember(ctx);
+  if (!group) {
+    return;
+  }
+  tx(() => {
+    run('DELETE FROM group_members WHERE group_id = ? AND user_id = ?', group.id, ctx.user.id);
+    if (!get('SELECT 1 FROM group_members WHERE group_id = ?', group.id)) {
+      run('DELETE FROM member_groups WHERE id = ?', group.id);
+    }
+  });
+  logUser(ctx, `left group ${JSON.stringify(group.name)}`);
+  ctx.redirect('/groups?msg=left');
+});
+
+on('POST', '/groups/(?<id>\\d+)/rename', ctx => {
+  const group = groupForManager(ctx);
+  if (!group) {
+    return;
+  }
+  const name = cleanText(ctx.body.get('name'), GROUP_NAME_MAX);
+  if (!name) {
+    return showGroups(ctx, { status: 400, errors: { [group.id]: 'A group needs a name.' } });
+  }
+  run('UPDATE member_groups SET name = ? WHERE id = ?', name, group.id);
+  ctx.redirect('/groups?msg=renamed');
+});
+
+// Removing yourself is what Leave is for, so a manager can only remove the others.
+on('POST', '/groups/(?<id>\\d+)/members/(?<userId>\\d+)/remove', ctx => {
+  const group = groupForManager(ctx);
+  if (!group) {
+    return;
+  }
+  const memberId = Number(ctx.params.userId);
+  if (memberId === ctx.user.id) {
+    return showGroups(ctx, { status: 400, errors: { [group.id]: 'Use Leave to leave the group yourself.' } });
+  }
+  if (run('DELETE FROM group_members WHERE group_id = ? AND user_id = ?', group.id, memberId).changes) {
+    const name = get('SELECT name FROM users WHERE id = ?', memberId)?.name;
+    logUser(ctx, `removed ${JSON.stringify(name)} from group ${JSON.stringify(group.name)}`);
+  }
+  ctx.redirect('/groups?msg=member_removed');
+});
+
+on('POST', '/groups/(?<id>\\d+)/invites/(?<userId>\\d+)/cancel', ctx => {
+  const group = groupForManager(ctx);
+  if (!group) {
+    return;
+  }
+  run('DELETE FROM group_invites WHERE group_id = ? AND user_id = ?', group.id, Number(ctx.params.userId));
+  ctx.redirect('/groups?msg=invite_cancelled');
+});
+
+// ON DELETE CASCADE takes its members and pending invites with it.
+on('POST', '/groups/(?<id>\\d+)/delete', ctx => {
+  const group = groupForManager(ctx);
+  if (!group) {
+    return;
+  }
+  run('DELETE FROM member_groups WHERE id = ?', group.id);
+  logUser(ctx, `group deleted ${JSON.stringify(group.name)}`);
+  ctx.redirect('/groups?msg=group_deleted');
+});
+
 // ---- settings ----
 
 /** The settings page; after a rejected form, `errors` shows under its fields and opens its panel. */
@@ -562,6 +823,7 @@ on('POST', '/profile/about', ctx => {
   const name = cleanText(ctx.body.get('name'), 40);
   const birthday = ctx.body.get('birthday') || '';
   const color = Number(ctx.body.get('color'));
+  const privacy = ctx.body.get('privacy'); // 'private' | 'public'
   const errors = {};
   if (!name) {
     errors.name = 'Name is required.';
@@ -576,12 +838,17 @@ on('POST', '/profile/about', ctx => {
   if (!isValidColor(color)) {
     errors.color = 'Invalid color.';
   }
+  if (privacy !== 'private' && privacy !== 'public') {
+    errors.privacy = 'Pick private or public.';
+  }
+  const isPrivate = privacy === 'public' ? 0 : 1;
   if (hasErrors(errors)) {
     // An invalid color cannot be drawn, so the slider goes back to the saved one.
-    const about = { name, birthday, color: errors.color ? ctx.user.color : color };
+    const about = { name, birthday, color: errors.color ? ctx.user.color : color, is_private: isPrivate };
     return showProfile(ctx, { status: 400, errors, about });
   }
-  run('UPDATE users SET name = ?, birthday = ?, color = ? WHERE id = ?', name, birthday || null, color, ctx.user.id);
+  run('UPDATE users SET name = ?, birthday = ?, color = ?, is_private = ? WHERE id = ?',
+    name, birthday || null, color, isPrivate, ctx.user.id);
   // Logged under the old name, so the log links the two.
   if (name !== ctx.user.name) {
     logUser(ctx, `name changed to ${JSON.stringify(name)}`);

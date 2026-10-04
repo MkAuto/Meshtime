@@ -1,7 +1,8 @@
-{{! "About me" starts open: it is why you came here. Security stays folded like the settings panels. }}
+{{! Both panels start open. data-remember: app.js reopens each the way you last left it (in this browser),
+    except a panel showing an error, which always stays open. }}
 <h1>Profile</h1>
 {{> notices}}
-<details class="panel panel-profile" open>
+<details class="panel panel-profile" open data-remember="profile-about">
   <summary><h2>About me</h2></summary>
   <form method="post" action="/profile/about">
     <h3>Name</h3>
@@ -16,11 +17,18 @@
       <input type="range" name="color" class="hue" min="0" max="{{maxColor}}" value="{{color}}" aria-label="Color">
     </div>
     {{#errors.color}}<p class="err">{{errors.color}}</p>{{/errors.color}}
+    <h3>Account</h3>
+    <div class="row">
+      <label><input type="radio" name="privacy" value="private" {{#isPrivate}}checked{{/isPrivate}}> Private</label>
+      <label><input type="radio" name="privacy" value="public" {{^isPrivate}}checked{{/isPrivate}}> Public</label>
+    </div>
+    <p class="hint">In private mode, only group members can see your free time slots.</p>
+    {{#errors.privacy}}<p class="err">{{errors.privacy}}</p>{{/errors.privacy}}
     <p><button>Save</button></p>
   </form>
 </details>
 
-<details class="panel panel-security" {{#securityOpen}}open{{/securityOpen}}>
+<details class="panel panel-security" open data-remember="profile-security">
   <summary><h2>Security</h2></summary>
   <h3>Change password</h3>
   <form method="post" action="/profile/password" class="stack">

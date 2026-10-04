@@ -48,6 +48,16 @@ const MESSAGES = {
   passkey: 'Passkey added.',
   passkey_removed: 'Passkey removed.',
   removed: 'Member removed. Their sessions, passkeys and feed links no longer work.',
+  group_created: 'Group created. Invite people below.',
+  invited: 'Invite sent. They join once they accept it.',
+  added: 'Member added to the group.',
+  joined: 'You joined the group.',
+  declined: 'Invite declined.',
+  left: 'You left the group.',
+  renamed: 'Group renamed.',
+  member_removed: 'Member removed from the group.',
+  invite_cancelled: 'Invite cancelled.',
+  group_deleted: 'Group deleted.',
 };
 
 /** The value the notices partial shows for ?msg=. Form errors are shown under their fields instead. */
@@ -100,7 +110,10 @@ const eventColor = event => event.color == null ? '' : ` colored c${event.color}
 const MS_PER_DAY = 864e5;
 
 // `error` is set when a /free post was rejected: it shows under the month title.
-export function calendarPage(user, yearMonth, { free, mine, events, birthdays, today, members, error }) {
+// `group` is the one group shown on its own (null: everyone I can see); `groups` fills the selector.
+export function calendarPage(user, yearMonth, {
+  free, mine, events, birthdays, today, members, error, group = null, groups = [],
+}) {
   const month = monthInfo(yearMonth, user.week_start);
   const lanes = eventLanes(events);
   const eventTooltip = event => `${event.title}, ${formatEventWhen(event, user.date_format)} (by ${event.creator})`;
@@ -176,6 +189,14 @@ export function calendarPage(user, yearMonth, { free, mine, events, birthdays, t
     error,
     month,
     yearMonth,
+    // carried by the month links and the day forms, so the one-group view stays put
+    groupId: group ? group.id : '',
+    myColor: user.color,
+    // always set, empty for everyone: a link without g would open the default group instead
+    groupQuery: `&g=${group ? group.id : ''}`,
+    // "Make default" is offered only when the view on screen is not already the default
+    isDefaultView: (group ? group.id : null) === (user.default_group_id ?? null),
+    groupChoices: groups.map(choice => ({ value: choice.id, label: choice.name, selected: choice.id === group?.id })),
     weekdays: weekdayNames(user.week_start),
     padding: Array.from({ length: month.pad }, () => ({})),
     days,
@@ -191,6 +212,38 @@ export function calendarPage(user, yearMonth, { free, mine, events, birthdays, t
       when: formatEventWhen(event, user.date_format),
       classes: event.end_date < today ? 'past' : '', // its last day is before today
       canEdit: event.created_by === user.id || Boolean(user.is_admin),
+    })),
+  });
+}
+
+// ---- groups ----
+
+// `groups` are mine, each with members / invited / invitable / canManage (see showGroups in routes.js);
+// `invites` are the ones waiting for my answer. errors[groupId] shows in that group, errors.create in New group.
+export function groupsPage(user, { groups, invites, msg, errors = {} }) {
+  return page('Groups', user, 'groups', {
+    ...notices(msg),
+    invites,
+    createError: errors.create,
+    isAdmin: Boolean(user.is_admin),
+    groups: groups.map(group => ({
+      id: group.id,
+      name: group.name,
+      color: group.color,
+      creator: group.creator ?? 'a removed member',
+      error: errors[group.id],
+      canManage: group.canManage,
+      members: group.members.map(member => ({
+        groupId: group.id,
+        id: member.id,
+        name: member.name,
+        color: member.color,
+        initials: initials(member.name),
+        // managers remove the others; they leave with Leave like everyone else
+        removable: group.canManage && member.id !== user.id,
+      })),
+      invited: group.invited.map(person => ({ ...person, groupId: group.id })),
+      invitable: group.invitable,
     })),
   });
 }
@@ -329,8 +382,6 @@ export function settingsPage(user, { base, msg, errors = {} }) {
     ...notices(msg),
     errors,
     version: packageJson.version, // shown under the title; bump it in package.json
-    // A panel holding an error starts open, or the message would be hidden in a folded panel.
-    customisationOpen: Boolean(errors.weekStart || errors.dateFormat),
     eventsFeed,
     eventsWebcal: webcal(eventsFeed),
     birthdaysFeed,
@@ -350,12 +401,11 @@ export function profilePage(user, { passkeys, msg, errors = {}, about = user }) 
   return page('Profile', user, 'profile', {
     ...notices(msg),
     errors,
-    // A panel holding an error starts open, or the message would be hidden in a folded panel.
-    securityOpen: Boolean(errors.current || errors.password),
     name: about.name,
     birthday: about.birthday ?? '',
     today: today(),
     color: about.color,
+    isPrivate: Boolean(about.is_private ?? user.is_private),
     maxColor: COLORS - 1,
     initials: initials(about.name || user.name),
     minPassword: MIN_PASSWORD,

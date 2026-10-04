@@ -1,9 +1,10 @@
 {{! Each panel is a details element: collapsing is native, needs no JS and works with JS off.
-    ponytail: all closed on load; remembering which you opened would need localStorage. }}
+    All open on load; data-remember: app.js reopens each the way you last left it (in this browser),
+    except a panel showing an error, which always stays open. }}
 <h1>Settings</h1>
 <p class="hint">Version {{version}}</p>
 {{> notices}}
-<details class="panel panel-feeds">
+<details class="panel panel-feeds" open data-remember="settings-feeds">
   <summary><h2>Calendar feeds</h2></summary>
   <p class="hint">Private link: anyone who has it can read it. Rotating it requires re-subscribing.</p>
   <ul class="feeds">
@@ -18,7 +19,7 @@
       <a href="{{birthdaysWebcal}}">webcal link (Apple / Outlook desktop)</a>
     </li>
   </ul>
-  <details>
+  <details data-remember="settings-subscribe-help">
     <summary>How to subscribe</summary>
     <ul>
       <li>
@@ -38,7 +39,7 @@
   <form method="post" action="/settings/rotate-feed"><button class="danger">Rotate feed links</button></form>
 </details>
 
-<details class="panel panel-custom" {{#customisationOpen}}open{{/customisationOpen}}>
+<details class="panel panel-custom" open data-remember="settings-customisation">
   <summary><h2>Customisation</h2></summary>
   <form method="post" action="/settings/customisation">
     <h3>First day of the week</h3>

@@ -1,8 +1,32 @@
 <h1>
-  <a href="/?m={{month.prev}}" title="Previous month">&lsaquo;</a>
+  <a href="/?m={{month.prev}}{{groupQuery}}" title="Previous month">&lsaquo;</a>
   {{month.label}}
-  <a href="/?m={{month.next}}" title="Next month">&rsaquo;</a>
+  <a href="/?m={{month.next}}{{groupQuery}}" title="Next month">&rsaquo;</a>
 </h1>
+{{! Whose free time is shown: everyone I can see, or one of my groups. A plain GET form, so it works
+    without JS; app.js submits it as soon as the choice changes and hides the Show button. }}
+{{#groupChoices.length}}
+<div class="row group-pick">
+<form method="get" action="/" class="row" data-autosubmit>
+  <input type="hidden" name="m" value="{{yearMonth}}">
+  <select name="g" aria-label="Whose free time to show">
+    <option value="">Everyone I can see</option>
+    {{#groupChoices}}
+    <option value="{{value}}" {{#selected}}selected{{/selected}}>{{label}}</option>
+    {{/groupChoices}}
+  </select>
+  <button>Show</button>
+</form>
+{{! Changes what the calendar opens on, so it posts; styled as a link. }}
+{{^isDefaultView}}
+<form method="post" action="/calendar/default" class="inline">
+  <input type="hidden" name="m" value="{{yearMonth}}">
+  <input type="hidden" name="g" value="{{groupId}}">
+  <button class="link">Make default</button>
+</form>
+{{/isDefaultView}}
+</div>
+{{/groupChoices.length}}
 {{#error}}
 <p class="err">{{error}}</p>
 {{/error}}
@@ -12,10 +36,13 @@
   hold the day on a phone or double-click (or right-click) it on a computer. Do it again to add a second
   free time that day, e.g. morning and evening. Initials show who is free
   (<sup>am</sup> / <sup>pm</sup> / <sup>eve</sup> for part of the day);
-  green means everyone is free at the same time.
+  green means everyone shown is free at the same time.
+  You see the free time of people who share a <a href="/groups">group</a> with you, and of public accounts;
+  pick one group above the calendar to see only theirs.
 </details>
 
-<div class="grid">
+{{! cN: my color, so .day.mine outlines my own free days in it (style.css "day states"). }}
+<div class="grid c{{myColor}}">
   {{#weekdays}}
   <div class="dow">{{.}}</div>
   {{/weekdays}}
@@ -33,6 +60,7 @@
     <form method="post" action="/free">
       <input type="hidden" name="date" value="{{date}}">
       <input type="hidden" name="m" value="{{yearMonth}}">
+      <input type="hidden" name="g" value="{{groupId}}">
       <button title="{{tooltip}}" data-date-label="{{dateLabel}}" data-parts="{{parts}}">
         <span class="head">
           <span class="num">{{day}}</span>
@@ -82,6 +110,7 @@
     <h2 id="day-part-title"></h2>
     <input type="hidden" name="date">
     <input type="hidden" name="m" value="{{yearMonth}}">
+    <input type="hidden" name="g" value="{{groupId}}">
     <div class="stack">
       {{#partChoices}}
       <button name="part" value="{{value}}" class="{{classes}}">{{label}}</button>

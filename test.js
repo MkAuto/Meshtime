@@ -7,7 +7,7 @@ import {
   toggleSlot,
   verifyWebAuthn, RP_ID, ORIGIN,
 } from './src/lib.js';
-import { newPollPage, pollPage, eventPage, profilePage } from './src/views.js';
+import { newPollPage, pollPage, eventPage, profilePage, groupsPage } from './src/views.js';
 
 const thisYear = new Date().getUTCFullYear();
 
@@ -414,8 +414,44 @@ test('profilePage: a rejected form keeps what was typed and opens the panel hold
   assert.match(page, /value="Ada L"/);
   assert.match(page, /aria-label="Birthday">\s*<p class="err">Invalid date\.<\/p>/);
   assert.match(page, /value="5" aria-label="Color"/);
-  assert.match(page, /<details class="panel panel-security" open>/);
+  assert.match(page, /<details class="panel panel-security" open data-remember="profile-security">/);
   assert.match(page, /autocomplete="new-password">\s*<\/label>\s*<p class="err">Too short\.<\/p>/);
+});
+
+test('profilePage: the privacy radio matches the account, private by default', () => {
+  const user = { id: 1, name: 'Ada', color: 2, birthday: null };
+  assert.match(profilePage({ ...user, is_private: 1 }, { passkeys: [] }), /value="private" checked>/);
+  assert.match(profilePage({ ...user, is_private: 0 }, { passkeys: [] }), /value="public" checked>/);
+});
+
+test('groupsPage: managers get Rename / remove / Delete, only admins get Add directly', () => {
+  const group = canManage => ({
+    id: 7, name: 'Climbers', creator: 'Ada', canManage, color: 4,
+    members: [{ id: 1, name: 'Ada', color: 0 }, { id: 2, name: 'Bob', color: 1 }],
+    invited: [{ id: 3, name: 'Cy' }],
+    invitable: [{ id: 4, name: 'Di' }],
+  });
+  const render = (user, canManage) => groupsPage(user, { groups: [group(canManage)], invites: [] });
+
+  const manager = render({ id: 1, is_admin: 0 }, true);
+  assert.match(manager, /<details class="panel panel-group c4" open data-remember="group-7">/,
+    'own color, open, remembered');
+  const rejected = groupsPage({ id: 1 }, { groups: [group(true)], invites: [], errors: { 7: 'Nope.' } });
+  // app.js never folds a panel showing an error from memory, so the error text is what matters here
+  assert.match(rejected, /data-remember="group-7">[\s\S]*<p class="err">Nope\.<\/p>/, 'the error shows in its group');
+  assert.match(manager, /action="\/groups\/7\/rename"/);
+  assert.match(manager, /action="\/groups\/7\/members\/2\/remove"/, 'the group id, then the member id');
+  assert.doesNotMatch(manager, /members\/1\/remove/, 'a manager leaves, they do not remove themselves');
+  assert.match(manager, /action="\/groups\/7\/invites\/3\/cancel"/);
+  assert.match(manager, /action="\/groups\/7\/delete"/);
+  assert.doesNotMatch(manager, /Add directly/);
+
+  const member = render({ id: 2, is_admin: 0 }, false);
+  assert.doesNotMatch(member, /rename|remove"|cancel"|\/delete"/);
+  assert.match(member, /action="\/groups\/7\/invite"/, 'every member can invite');
+  assert.match(member, /action="\/groups\/7\/leave"/);
+
+  assert.match(render({ id: 1, is_admin: 1 }, true), /formaction="\/groups\/7\/add">Add directly/);
 });
 
 // Security review: an empty name must not share one counter that blocks everyone's passkey login.
