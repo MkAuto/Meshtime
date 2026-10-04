@@ -43,6 +43,16 @@ if (rememberedPanels.length) {
   }
 }
 
+// A link to a folded panel (e.g. Groups → /settings#subscribe-help) unfolds it and every panel around it, whatever
+// was remembered, then scrolls to it: the browser already tried to scroll while it was still folded.
+const linkedPanel = location.hash && document.getElementById(location.hash.slice(1));
+if (linkedPanel?.matches('details')) {
+  for (let panel = linkedPanel; panel; panel = panel.parentElement.closest('details')) {
+    panel.open = true;
+  }
+  linkedPanel.scrollIntoView();
+}
+
 // Copy buttons (data-copy: the text to copy) start hidden, since they need JS and a secure page (https or
 // localhost) for the clipboard. Without either, the link next to them can still be selected and copied.
 if (navigator.clipboard) {
@@ -169,7 +179,9 @@ const fromBase64url = value =>
 
 /** Posts a form-encoded body and returns the parsed JSON, throwing the server's message on failure. */
 async function postJson(url, fields = {}) {
-  const response = await fetch(url, { method: 'POST', body: new URLSearchParams(fields) });
+  const response = await fetch(url, {
+    method: 'POST', body: new URLSearchParams(fields), headers: { Accept: 'application/json' },
+  });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(data.error || 'Something went wrong.');
@@ -204,7 +216,31 @@ function onPasskeyButton(id, action) {
   });
 }
 
-onPasskeyButton('passkey-add', async () => {
+// Forms with data-copy-link (invite and reset-password links, in Administration and Settings) copy the link they create. Browsers only allow the
+// clipboard during the click, so the write starts right away with the link still on its way (a ClipboardItem
+// takes a promise). Without JS or that API the form posts as usual and the page lists the link.
+if (navigator.clipboard && window.ClipboardItem) {
+  for (const form of document.querySelectorAll('form[data-copy-link]')) {
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const link = postJson(form.action, Object.fromEntries(new FormData(form)));
+      const linkText = link.then(data => new Blob([data.url], { type: 'text/plain' }));
+      try {
+        await navigator.clipboard.write([new ClipboardItem({ 'text/plain': linkText })]);
+        location.href = `${location.pathname}?msg=invite_copied`;
+      } catch {
+        try {
+          await link;
+          location.href = `${location.pathname}?msg=invite`; // created, not copied: the page still lists it
+        } catch {
+          form.submit(); // not created (the member is gone...): post it plainly so the page shows why
+        }
+      }
+    });
+  }
+}
+
+onPasskeyButton('passkey-add',async () => {
   const options = await postJson('/profile/passkeys/options');
   const label = prompt('Name this passkey', 'My device');
   if (label === null) {
