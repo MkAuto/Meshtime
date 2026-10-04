@@ -7,7 +7,7 @@ import {
   toggleSlot,
   verifyWebAuthn, RP_ID, ORIGIN,
 } from './src/lib.js';
-import { newPollPage, pollPage, eventPage, profilePage, groupsPage } from './src/views.js';
+import { newPollPage, pollPage, eventPage, profilePage, groupsPage, settingsPage } from './src/views.js';
 
 const thisYear = new Date().getUTCFullYear();
 
@@ -207,7 +207,7 @@ test('eventPage: a new event starts blank on the default color, with nothing to 
   assert.match(page, /name="date" required value="2026-10-03"/);
   assert.match(page, /value="" aria-label="Default" checked>/);
   assert.match(page, /name="all_day" value="1" id="all-day" checked>/, 'a new event starts all day');
-  assert.equal((page.match(/ checked>/g) || []).length, 2, 'only the default color and All day');
+  assert.equal((page.match(/ checked>/g) || []).length, 3, 'only the default color, All day and Public');
   assert.doesNotMatch(page, /delete/);
 });
 
@@ -217,6 +217,19 @@ test('eventPage: All day is ticked for an event without a start time, or as a re
   assert.match(eventPage({ id: 1 }, { event: { ...timed, start_time: null } }), /id="all-day" checked>/);
   assert.match(eventPage({ id: 1 }, { event: { ...timed, start_time: null, allDay: false } }), /id="all-day">/,
     'unticked and sent back without a time: stays unticked so the time error shows');
+});
+
+test('eventPage: public by default; a private event ticks the groups it is shared with', () => {
+  const groups = [{ id: 1, name: 'Climbers', color: 3 }, { id: 2, name: 'Board games', color: 5 }];
+  const fresh = eventPage({ id: 1 }, { event: { date: '2026-10-03' }, groups });
+  assert.match(fresh, /value="public" checked>/);
+  assert.match(fresh, /name="group_ids" value="1">/, 'every group offered, none ticked');
+  assert.match(fresh, /name="group_ids" value="2">/);
+  const shared = eventPage({ id: 1 }, { event: { date: '2026-10-03', is_private: 1, groupIds: [2] }, groups });
+  assert.match(shared, /value="private" id="visibility-private" checked>/);
+  assert.match(shared, /name="group_ids" value="1">/);
+  assert.match(shared, /name="group_ids" value="2" checked>/);
+  assert.match(eventPage({ id: 1 }, { event: { date: '2026-10-03' } }), /Not in any <a href="\/groups">group<\/a>/);
 });
 
 test('eventPage: editing shows the saved values and color, and offers delete', () => {
@@ -229,7 +242,7 @@ test('eventPage: editing shows the saved values and color, and offers delete', (
   assert.match(page, /name="end_date" aria-label="End date" value="2026-10-05"/);
   assert.match(page, /name="end_time" aria-label="End time" value="14:00"/);
   assert.match(page, /value="4" aria-label="Color 5" checked>/);
-  assert.equal((page.match(/ checked>/g) || []).length, 1);
+  assert.equal((page.match(/ checked>/g) || []).length, 2, 'its color, and Public');
   assert.match(page, /action="\/events\/7\/delete"/);
   // a form error sits right under the field it is about, not on a page of its own
   assert.match(page, /value="14:00">\s*<\/span>\s*<\/label>\s*<p class="err">Oops<\/p>/);
@@ -431,9 +444,12 @@ test('groupsPage: managers get Rename / remove / Delete, only admins get Add dir
     invited: [{ id: 3, name: 'Cy' }],
     invitable: [{ id: 4, name: 'Di' }],
   });
-  const render = (user, canManage) => groupsPage(user, { groups: [group(canManage)], invites: [] });
+  const render = (user, canManage) =>
+    groupsPage(user, { groups: [group(canManage)], invites: [], base: 'https://x.test' });
 
-  const manager = render({ id: 1, is_admin: 0 }, true);
+  const manager = render({ id: 1, is_admin: 0, feed_token: 'tok' }, true);
+  assert.match(manager, /value="https:\/\/x\.test\/feed\/tok\/groups\/7\.ics" readonly/, 'my own feed link');
+  assert.match(manager, /data-copy="https:\/\/x\.test\/feed\/tok\/groups\/7\.ics" hidden>Copy/);
   assert.match(manager, /<details class="panel panel-group c4" open data-remember="group-7">/,
     'own color, open, remembered');
   const rejected = groupsPage({ id: 1 }, { groups: [group(true)], invites: [], errors: { 7: 'Nope.' } });
@@ -452,6 +468,37 @@ test('groupsPage: managers get Rename / remove / Delete, only admins get Add dir
   assert.match(member, /action="\/groups\/7\/leave"/);
 
   assert.match(render({ id: 1, is_admin: 1 }, true), /formaction="\/groups\/7\/add">Add directly/);
+});
+
+test('groupsPage: Next event, Last event when none is coming, and a placeholder when there never was one', () => {
+  const group = headlineEvent => ({
+    id: 7, name: 'Climbers', creator: 'Ada', canManage: false, color: 1,
+    members: [], invited: [], invitable: [], headlineEvent,
+  });
+  const render = headlineEvent => groupsPage({ id: 1 }, { groups: [group(headlineEvent)], invites: [], base: '' });
+  const event = { title: 'Crag day', date: '2026-11-14', end_date: '2026-11-14', start_time: null, creator: 'Bob' };
+
+  const next = render(event);
+  assert.match(next, /<h3>Next event<\/h3>\s*<p>\s*<b>Crag day<\/b> — /);
+  assert.match(next, /by Bob/);
+  assert.match(next, /href="\/\?m=2026-11&amp;g=7">see it on the calendar/, "the group's own view, that month");
+
+  assert.match(render({ ...event, isLast: true }), /<h3>Last event<\/h3>\s*<p>\s*<b>Crag day<\/b>/);
+
+  const none = render(undefined);
+  assert.match(none, /<h3>Next event<\/h3>\s*<p class="hint">No event yet<\/p>/);
+});
+
+test('settingsPage: one feed per group I am in, with Copy and webcal, and the birthdays feed', () => {
+  const user = { id: 1, feed_token: 'tok', week_start: 0, date_format: undefined, show_birthdays: 1 };
+  const page = settingsPage(user, { base: 'https://x.test', groups: [{ id: 7, name: 'Climbers' }] });
+  assert.match(page, /<b>Climbers<\/b> \(group events\)/);
+  assert.match(page, /data-copy="https:\/\/x\.test\/feed\/tok\/groups\/7\.ics" hidden>Copy/);
+  assert.match(page, /href="webcal:\/\/x\.test\/feed\/tok\/groups\/7\.ics"/);
+  assert.match(page, /data-copy="https:\/\/x\.test\/feed\/tok\/birthdays\.ics" hidden>Copy/, 'same box and button');
+  assert.ok(page.indexOf('birthdays.ics') < page.indexOf('groups/7.ics'), 'birthdays first');
+  assert.doesNotMatch(page, /events\.ics/, 'no all-events feed any more');
+  assert.match(settingsPage(user, { base: 'https://x.test' }), /each <a href="\/groups">group<\/a> you are in/);
 });
 
 // Security review: an empty name must not share one counter that blocks everyone's passkey login.

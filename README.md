@@ -45,7 +45,7 @@ Environment variables: `BASE_URL` (public https URL, required behind a proxy), `
 
 ## Subscribing to the feeds
 
-Settings shows two links per member: **Group events**, and **Birthdays** (each member's birthday from their Profile, repeating every year).
+Settings → *Calendar feeds* lists one events feed per group you are in (the events created by that group's members, with a *Copy* button; each group's panel on the **Groups** page shows its own too), and the **Birthdays** feed (each member's birthday from their Profile, repeating every year).
 
 | App | How | Refresh |
 |---|---|---|
@@ -53,7 +53,7 @@ Settings shows two links per member: **Group events**, and **Birthdays** (each m
 | Apple Calendar | click the *webcal* link, or File → *New Calendar Subscription* | pick the interval when subscribing |
 | Outlook (web) | Add calendar → *Subscribe from web* → paste the https link | every few hours |
 
-Anyone with the link can read the feed. **Rotate feed links** in Settings invalidates the old one (you then re-subscribe).
+Anyone with the link can read the feed. **Rotate all feed links** in Settings invalidates every one of your feed links at once (you then re-subscribe). A group's feed also stops working when you leave that group.
 
 ## Forgot password
 
@@ -61,7 +61,7 @@ An admin opens **Administration** → Members → *create reset-password link* a
 
 ## Removing a member
 
-**Administration** → Members → *remove*. Their sessions, passkeys, votes, free days and feed links stop working at once. Events and polls they created are kept and re-owned by the admin who removed them.
+**Administration** → Members → *remove*. Their sessions, passkeys, votes, free days and feed links stop working at once. Events they created are deleted (so they never reach a wider audience); polls they created are re-owned by the admin who removed them. A group they created passes to its longest-standing remaining member, and a group left empty is deleted.
 
 ## Security notes
 

@@ -22,7 +22,7 @@
       <label><input type="radio" name="privacy" value="private" {{#isPrivate}}checked{{/isPrivate}}> Private</label>
       <label><input type="radio" name="privacy" value="public" {{^isPrivate}}checked{{/isPrivate}}> Public</label>
     </div>
-    <p class="hint">In private mode, only group members can see your free time slots.</p>
+    <p class="hint">In private mode, only group members can see your free time slots and events.</p>
     {{#errors.privacy}}<p class="err">{{errors.privacy}}</p>{{/errors.privacy}}
     <p><button>Save</button></p>
   </form>

@@ -8,16 +8,25 @@
   <summary><h2>Calendar feeds</h2></summary>
   <p class="hint">Private link: anyone who has it can read it. Rotating it requires re-subscribing.</p>
   <ul class="feeds">
-    <li>
-      <b>Group events</b><br>
-      <code>{{eventsFeed}}</code><br>
-      <a href="{{eventsWebcal}}">webcal link (Apple / Outlook desktop)</a>
-    </li>
+    {{! A section, so feed-link finds this feed's feed and name the same way it does for each group's. }}
+    {{#birthdays}}
     <li>
       <b>Birthdays</b> (repeat every year)<br>
-      <code>{{birthdaysFeed}}</code><br>
-      <a href="{{birthdaysWebcal}}">webcal link (Apple / Outlook desktop)</a>
+      {{> feed-link}}
+      <a href="{{webcal}}">webcal link (Apple / Outlook desktop)</a>
     </li>
+    {{/birthdays}}
+    {{! One feed per group I am in: that group's events only (members' events, no outsiders). }}
+    {{#groupFeeds}}
+    <li>
+      <b>{{name}}</b> (group events)<br>
+      {{> feed-link}}
+      <a href="{{webcal}}">webcal link (Apple / Outlook desktop)</a>
+    </li>
+    {{/groupFeeds}}
+    {{^groupFeeds}}
+    <li class="hint">Group events: each <a href="/groups">group</a> you are in gets its own feed here.</li>
+    {{/groupFeeds}}
   </ul>
   <details data-remember="settings-subscribe-help">
     <summary>How to subscribe</summary>
@@ -36,7 +45,8 @@
       </li>
     </ul>
   </details>
-  <form method="post" action="/settings/rotate-feed"><button class="danger">Rotate feed links</button></form>
+  {{! Rotating changes the token in every feed link: birthdays and each group's. }}
+  <form method="post" action="/settings/rotate-feed"><button class="danger">Rotate all feed links</button></form>
 </details>
 
 <details class="panel panel-custom" open data-remember="settings-customisation">

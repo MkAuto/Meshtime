@@ -126,7 +126,15 @@ CREATE TABLE IF NOT EXISTS events(
   color INTEGER, -- bar color, a .cN palette index like users.color; NULL = the default event look
   created_by INTEGER NOT NULL REFERENCES users(id),
   poll_id INTEGER UNIQUE REFERENCES polls(id) ON DELETE SET NULL,
-  created_at TEXT NOT NULL);
+  created_at TEXT NOT NULL,
+  -- 0: public, 1: private
+  is_private INTEGER NOT NULL DEFAULT 0);
+
+-- the groups a private event is shared with (none for a public event). Groups its creator is in.
+CREATE TABLE IF NOT EXISTS event_groups(
+  event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  group_id INTEGER NOT NULL REFERENCES member_groups(id) ON DELETE CASCADE,
+  PRIMARY KEY(event_id, group_id));
 
 -- passkeys. public_key is SPKI DER (base64url), exactly as the browser's getPublicKey() gave it.
 CREATE TABLE IF NOT EXISTS credentials(
@@ -221,6 +229,11 @@ if (!eventColumns.includes('color')) {
   db.exec('ALTER TABLE events ADD COLUMN color INTEGER');
 }
 
+// DBs created before private events existed: every event stays public.
+if (!eventColumns.includes('is_private')) {
+  db.exec('ALTER TABLE events ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0');
+}
+
 // A format that is no longer offered goes back to the default.
 db.prepare(`UPDATE users SET date_format = ? WHERE date_format NOT IN (${Object.keys(DATE_FORMATS).map(() => '?')})`)
   .run(DEFAULT_DATE_FORMAT, ...Object.keys(DATE_FORMATS));
@@ -234,6 +247,18 @@ if (!groupColumns.includes('color')) {
   db.exec(`ALTER TABLE member_groups ADD COLUMN color INTEGER NOT NULL DEFAULT 0;
            UPDATE member_groups SET color = abs(random()) % ${COLORS}`);
 }
+
+// Group rules the routes keep (afterLeavingGroup in src/routes.js), applied to data from before they existed:
+// a private event is only shared with groups its creator is in; a group is owned by one of its members
+// (the longest-standing one takes over); a group nobody is in is gone.
+db.exec(`DELETE FROM event_groups WHERE NOT EXISTS (
+           SELECT 1 FROM events e JOIN group_members m ON m.user_id = e.created_by
+           WHERE e.id = event_groups.event_id AND m.group_id = event_groups.group_id)`);
+db.exec(`UPDATE member_groups SET created_by = (
+           SELECT user_id FROM group_members WHERE group_id = member_groups.id ORDER BY joined_at, user_id LIMIT 1)
+         WHERE created_by IS NULL
+            OR created_by NOT IN (SELECT user_id FROM group_members WHERE group_id = member_groups.id)`);
+db.exec('DELETE FROM member_groups WHERE id NOT IN (SELECT group_id FROM group_members)');
 
 // Pull colors back into range in case the palette shrank.
 db.exec(`UPDATE users SET color = color % ${COLORS} WHERE color >= ${COLORS}`);

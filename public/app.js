@@ -43,6 +43,24 @@ if (rememberedPanels.length) {
   }
 }
 
+// Copy buttons (data-copy: the text to copy) start hidden, since they need JS and a secure page (https or
+// localhost) for the clipboard. Without either, the link next to them can still be selected and copied.
+if (navigator.clipboard) {
+  for (const button of document.querySelectorAll('button[data-copy]')) {
+    button.hidden = false;
+    button.addEventListener('click', async () => {
+      const label = button.textContent;
+      try {
+        await navigator.clipboard.writeText(button.dataset.copy);
+        button.textContent = 'Copied';
+      } catch {
+        button.textContent = 'Copy failed';
+      }
+      setTimeout(() => { button.textContent = label; }, 1500);
+    });
+  }
+}
+
 // Forms with data-autosubmit (the calendar's group picker) apply a new choice at once; their button is
 // only there for when JS is off.
 for (const form of document.querySelectorAll('form[data-autosubmit]')) {

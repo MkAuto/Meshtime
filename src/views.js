@@ -5,7 +5,7 @@ import Mustache from 'mustache';
 import packageJson from '../package.json' with { type: 'json' };
 import {
   monthInfo, formatDate, formatEventWhen, eventLanes, dayClass, weekdayNames, today,
-  DATE_FORMATS, WEEKDAYS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD,
+  DATE_FORMATS, WEEKDAYS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD, randomColor,
 } from './lib.js';
 
 // Each page is a Mustache template in src/templates/ (https://mustache.github.io/mustache.5.html).
@@ -220,16 +220,19 @@ export function calendarPage(user, yearMonth, {
 
 // `groups` are mine, each with members / invited / invitable / canManage (see showGroups in routes.js);
 // `invites` are the ones waiting for my answer. errors[groupId] shows in that group, errors.create in New group.
-export function groupsPage(user, { groups, invites, msg, errors = {} }) {
+// `base` is BASE_URL, for each group's private calendar feed link.
+export function groupsPage(user, { groups, invites, base, msg, errors = {} }) {
   return page('Groups', user, 'groups', {
     ...notices(msg),
     invites,
     createError: errors.create,
+    newGroupColor: randomColor(),
     isAdmin: Boolean(user.is_admin),
     groups: groups.map(group => ({
       id: group.id,
       name: group.name,
       color: group.color,
+      feed: groupFeedUrl(base, user, group.id),
       creator: group.creator ?? 'a removed member',
       error: errors[group.id],
       canManage: group.canManage,
@@ -243,6 +246,15 @@ export function groupsPage(user, { groups, invites, msg, errors = {} }) {
         removable: group.canManage && member.id !== user.id,
       })),
       invited: group.invited.map(person => ({ ...person, groupId: group.id })),
+      // "Next event", or "Last event" when none is coming; still "Next event" (with a placeholder) for none at all
+      eventHeading: group.headlineEvent?.isLast ? 'Last event' : 'Next event',
+      headlineEvent: group.headlineEvent && {
+        title: group.headlineEvent.title,
+        when: formatEventWhen(group.headlineEvent, user.date_format),
+        creator: group.headlineEvent.creator,
+        // the group's own calendar view, on the event's month
+        calendarUrl: `/?m=${group.headlineEvent.date.slice(0, 7)}&g=${group.id}`,
+      },
       invitable: group.invitable,
     })),
   });
@@ -253,7 +265,8 @@ export function groupsPage(user, { groups, invites, msg, errors = {} }) {
 // One page for both: event.id set means editing that event, otherwise adding one.
 // `event` is an events row, or what was posted when the form is shown again with `errors`
 // ({ title, start, end, color }: each shows under that part of the form).
-export function eventPage(user, { event, errors = {} }) {
+// `groups` are the event creator's groups: the ones a private event can be shared with.
+export function eventPage(user, { event, errors = {}, groups = [] }) {
   const editing = Boolean(event.id);
   const heading = editing ? 'Edit event' : 'New event';
   const savedColor = String(event.color ?? '');
@@ -280,6 +293,13 @@ export function eventPage(user, { event, errors = {} }) {
     endDate: event.end_date && event.end_date !== event.date ? event.end_date : '',
     endTime: event.end_time ?? '',
     colors: [colorChoice('', 'Default'), ...Array.from({ length: COLORS }, (_, i) => colorChoice(i, `Color ${i + 1}`))],
+    isPrivate: Boolean(event.is_private),
+    groupChoices: groups.map(group => ({
+      id: group.id,
+      name: group.name,
+      color: group.color,
+      checked: (event.groupIds ?? []).includes(group.id),
+    })),
     month: (event.date || today()).slice(0, 7),
   });
 }
@@ -373,19 +393,23 @@ export function pollPage(user, { poll, dates, members, votes, missing, complete,
 // webcal:// makes desktop calendar apps subscribe instead of downloading the file once.
 const webcal = url => url.replace(/^https?:\/\//, 'webcal://');
 
+/** My own link to one group's events feed (routes.js, "ICS feeds"); Rotate in Settings replaces it. */
+const groupFeedUrl = (base, user, groupId) => `${base}/feed/${user.feed_token}/groups/${groupId}.ics`;
+
 // `errors` after a rejected Customisation form ({ weekStart, dateFormat }): shown under each field.
-export function settingsPage(user, { base, msg, errors = {} }) {
-  const eventsFeed = `${base}/feed/${user.feed_token}/events.ics`;
+// `groups` are the ones I am in: each gets its events feed in the Calendar feeds panel.
+export function settingsPage(user, { base, groups = [], msg, errors = {} }) {
   const birthdaysFeed = `${base}/feed/${user.feed_token}/birthdays.ics`;
 
   return page('Settings', user, 'settings', {
     ...notices(msg),
     errors,
     version: packageJson.version, // shown under the title; bump it in package.json
-    eventsFeed,
-    eventsWebcal: webcal(eventsFeed),
-    birthdaysFeed,
-    birthdaysWebcal: webcal(birthdaysFeed),
+    birthdays: { name: 'Birthdays', feed: birthdaysFeed, webcal: webcal(birthdaysFeed) },
+    groupFeeds: groups.map(group => {
+      const feed = groupFeedUrl(base, user, group.id);
+      return { name: group.name, feed, webcal: webcal(feed) };
+    }),
     weekStarts: options(WEEK_START_CHOICES.map(day => [day, WEEKDAYS[day]]), user.week_start),
     // Each format is shown as today's date written that way.
     dateFormats: options(Object.keys(DATE_FORMATS).map(key => [key, formatDate(today(), key)]), user.date_format),

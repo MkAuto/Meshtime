@@ -1,5 +1,6 @@
 {{! One page for adding and editing an event. Ticking "All day" hides the time inputs (style.css, no JS),
-    and the server ignores any times sent with it. }}
+    and the server ignores any times sent with it. Likewise the group list only shows for a private event,
+    and the server ignores the groups of a public one. }}
 <h1>{{heading}}</h1>
 <p class="hint">Leave the end date empty for a one-day event.</p>
 <form method="post" action="{{action}}" class="stack">
@@ -37,6 +38,29 @@
     {{/colors}}
   </fieldset>
   {{#errors.color}}<p class="err">{{errors.color}}</p>{{/errors.color}}
+  <fieldset class="visibility">
+    <legend>Who sees it</legend>
+    <label class="check">
+      <input type="radio" name="visibility" value="public"{{^isPrivate}} checked{{/isPrivate}}>
+      Public: everyone who sees your free time (all your groups)
+    </label>
+    <label class="check">
+      <input type="radio" name="visibility" value="private" id="visibility-private"{{#isPrivate}} checked{{/isPrivate}}>
+      Private: only the groups you pick
+    </label>
+    <div class="event-groups">
+      {{#groupChoices}}
+      <label class="check">
+        <input type="checkbox" name="group_ids" value="{{id}}"{{#checked}} checked{{/checked}}>
+        <span class="who"><span class="c{{color}}">{{name}}</span></span>
+      </label>
+      {{/groupChoices}}
+      {{^groupChoices}}
+      <p class="hint">Not in any <a href="/groups">group</a> yet: there is nobody to share a private event with.</p>
+      {{/groupChoices}}
+    </div>
+  </fieldset>
+  {{#errors.visibility}}<p class="err">{{errors.visibility}}</p>{{/errors.visibility}}
   <button>{{button}}</button>
 </form>
 {{#editing}}

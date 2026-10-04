@@ -1,0 +1,6 @@
+{{! Partial: a feed link to copy (Settings and the Groups page). Expects feed (the URL) and name.
+    Read-only input, so it can be selected by hand when JS, and so the Copy button (see app.js), is off. }}
+<div class="row">
+  <input class="feed-link" value="{{feed}}" readonly aria-label="Calendar feed link for {{name}}">
+  <button type="button" data-copy="{{feed}}" hidden>Copy</button>
+</div>

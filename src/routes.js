@@ -186,12 +186,23 @@ on('POST', '/invite/(?<token>[\\w-]+)', async ctx => {
 // ---- calendar ----
 
 // Whose free days I may see: myself, public accounts, and anyone sharing a group with me.
-// For a users table aliased `u`; takes my user id twice. The group pages use the same rule.
+// A public event goes with its creator the same way. For a users table aliased `u`; takes my user id twice.
 const VISIBLE_TO_ME = `(u.id = ? OR u.is_private = 0 OR EXISTS (
   SELECT 1 FROM group_members theirs JOIN group_members mine ON mine.group_id = theirs.group_id
   WHERE theirs.user_id = u.id AND mine.user_id = ?))`;
 // The one-group view: only that group's members, public or not. Takes the group id.
 const IN_GROUP = 'EXISTS (SELECT 1 FROM group_members m WHERE m.group_id = ? AND m.user_id = u.id)';
+
+// Events, for events `e` joined to their creator `u`. A public event (is_private = 0) is seen by everyone
+// who sees its creator; a private one only by its creator and the members of the groups it is shared with.
+// Takes my user id four times.
+const EVENT_VISIBLE_TO_ME = `(e.created_by = ? OR (e.is_private = 0 AND ${VISIBLE_TO_ME}) OR EXISTS (
+  SELECT 1 FROM event_groups shared JOIN group_members mine ON mine.group_id = shared.group_id
+  WHERE shared.event_id = e.id AND mine.user_id = ?))`;
+// One group's events (its view on the calendar, and its feed): its members' public events, and the private
+// ones shared with it. Takes the group id twice.
+const EVENT_IN_GROUP = `(${IN_GROUP} AND (e.is_private = 0 OR EXISTS (
+  SELECT 1 FROM event_groups shared WHERE shared.event_id = e.id AND shared.group_id = ?)))`;
 
 /** The groups I am in, by name: the calendar's group selector and the groups page. */
 const myGroups = userId => all(`SELECT g.* FROM member_groups g
@@ -227,11 +238,13 @@ const freeParts = row => (row.part2 ? [row.part, row.part2] : [row.part]);
 /** Draws one month of the calendar. `error` goes under the month title (a rejected /free). */
 function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
   const inMonth = yearMonth + '-%'; // dates are 'YYYY-MM-DD' strings, so LIKE is enough
-  // Whose free days are drawn, and who "everyone" is for the green days: one group, or everyone I can see.
+  // Whose free days and events are drawn, and who "everyone" is for the green days: one group, or
+  // everyone I can see. Events follow their creator too, unless they are private (see EVENT_VISIBLE_TO_ME).
   const group = calendarGroup(ctx);
+  const me = ctx.user.id;
   const audience = group
-    ? { sql: IN_GROUP, params: [group.id] }
-    : { sql: VISIBLE_TO_ME, params: [ctx.user.id, ctx.user.id] };
+    ? { sql: IN_GROUP, params: [group.id], eventSql: EVENT_IN_GROUP, eventParams: [group.id, group.id] }
+    : { sql: VISIBLE_TO_ME, params: [me, me], eventSql: EVENT_VISIBLE_TO_ME, eventParams: [me, me, me, me] };
 
   // date -> everyone shown who marked themselves free that day, for the initials in each cell,
   // and date -> which parts of it I am free (['all'], or one or two of 'am' | 'pm' | 'eve')
@@ -250,13 +263,13 @@ function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
     }
   }
 
-  // Every event that touches this month, including ones that started before or end after it.
+  // Every event shown that touches this month, including ones that started before or end after it.
   // ISO dates compare as strings, and '-31' is past the last day of any month. All-day ones first.
   const events = all(`SELECT e.*, u.name AS creator FROM events e
                       JOIN users u ON u.id = e.created_by
-                      WHERE e.date <= ? AND e.end_date >= ?
+                      WHERE e.date <= ? AND e.end_date >= ? AND ${audience.eventSql}
                       ORDER BY e.date, e.start_time IS NOT NULL, e.start_time, e.id`,
-                      yearMonth + '-31', yearMonth + '-01');
+                      yearMonth + '-31', yearMonth + '-01', ...audience.eventParams);
   // a day is "everyone free" at this count
   const members = get(`SELECT COUNT(*) AS n FROM users u WHERE ${audience.sql}`, ...audience.params).n;
   // Birthdays are not events rows: each one is worked out from users.birthday for the month shown.
@@ -328,8 +341,9 @@ on('POST', '/free', ctx => {
 /**
  * The event form, in the shape of an events row so a rejected form re-renders with what was typed.
  * The optional fields arrive as '' when left empty: those become NULL (end_date: the start date).
+ * `creatorGroups` are the groups of the event's creator: a private event can only be shared with those.
  */
-function readEventForm(ctx) {
+function readEventForm(ctx, creatorGroups) {
   const colorText = ctx.body.get('color') || '';
   // The time inputs are only hidden when "All day" is ticked, so the browser still sends them: drop them.
   const allDay = ctx.body.get('all_day') === '1';
@@ -340,7 +354,10 @@ function readEventForm(ctx) {
     start_time: allDay ? null : ctx.body.get('start_time') || null,
     end_time: allDay ? null : ctx.body.get('end_time') || null,
     color: colorText === '' ? null : Number(colorText),
-    allDay, // not a column: lets a rejected form show the box as it was posted
+    is_private: ctx.body.get('visibility') === 'private' ? 1 : 0,
+    // not columns: the box as it was posted, and the groups ticked (only kept for a private event)
+    allDay,
+    groupIds: ctx.body.getAll('group_ids').map(Number),
   };
   const errors = {};
   if (!event.title) {
@@ -358,8 +375,27 @@ function readEventForm(ctx) {
   if (event.color !== null && !isValidColor(event.color)) {
     errors.color = 'Invalid color.';
   }
+  if (!['public', 'private'].includes(ctx.body.get('visibility'))) {
+    errors.visibility = 'Pick public or private.';
+  } else if (event.is_private) {
+    const creatorGroupIds = new Set(creatorGroups.map(group => group.id));
+    event.groupIds = [...new Set(event.groupIds)].filter(groupId => creatorGroupIds.has(groupId));
+    if (event.groupIds.length === 0) {
+      errors.visibility = 'A private event needs at least one group to share it with.';
+    }
+  } else {
+    event.groupIds = [];
+  }
   event.end_date ||= event.date;
   return { event, errors };
+}
+
+/** Replaces the groups a private event is shared with (a public event has none). Run inside a tx. */
+function saveEventGroups(eventId, groupIds) {
+  run('DELETE FROM event_groups WHERE event_id = ?', eventId);
+  for (const groupId of groupIds) {
+    run('INSERT INTO event_groups(event_id, group_id) VALUES (?,?)', eventId, groupId);
+  }
 }
 
 /** The event with this id, if the member may change it: their own, or any event if they are an admin. */
@@ -377,24 +413,35 @@ const editableEvent = ctx => {
 // ?date= prefills the start date, e.g. for a link from a given day.
 on('GET', '/events/new', ctx => {
   const date = ctx.url.searchParams.get('date');
-  ctx.html(views.eventPage(ctx.user, { event: { date: isValidDate(date) ? date : '' } }));
+  ctx.html(views.eventPage(ctx.user, {
+    event: { date: isValidDate(date) ? date : '' },
+    groups: myGroups(ctx.user.id),
+  }));
 });
 
 on('POST', '/events', ctx => {
-  const { event, errors } = readEventForm(ctx);
+  const groups = myGroups(ctx.user.id);
+  const { event, errors } = readEventForm(ctx, groups);
   if (hasErrors(errors)) {
-    return ctx.html(views.eventPage(ctx.user, { event, errors }), 400);
+    return ctx.html(views.eventPage(ctx.user, { event, errors, groups }), 400);
   }
-  run(`INSERT INTO events(title, date, end_date, start_time, end_time, color, created_by, created_at)
-       VALUES (?,?,?,?,?,?,?,?)`,
-    event.title, event.date, event.end_date, event.start_time, event.end_time, event.color, ctx.user.id, now());
+  tx(() => {
+    const eventId = run(`INSERT INTO events(title, date, end_date, start_time, end_time, color, is_private,
+                                            created_by, created_at)
+                         VALUES (?,?,?,?,?,?,?,?,?)`,
+      event.title, event.date, event.end_date, event.start_time, event.end_time, event.color, event.is_private,
+      ctx.user.id, now()).lastInsertRowid;
+    saveEventGroups(eventId, event.groupIds);
+  });
   ctx.redirect('/?m=' + event.date.slice(0, 7));
 });
 
 on('GET', '/events/(?<id>\\d+)', ctx => {
   const event = editableEvent(ctx);
   if (event) {
-    ctx.html(views.eventPage(ctx.user, { event }));
+    event.groupIds = all('SELECT group_id FROM event_groups WHERE event_id = ?', event.id).map(row => row.group_id);
+    // An admin editing someone else's event shares it with the creator's groups, not their own.
+    ctx.html(views.eventPage(ctx.user, { event, groups: myGroups(event.created_by) }));
   }
 });
 
@@ -403,13 +450,19 @@ on('POST', '/events/(?<id>\\d+)', ctx => {
   if (!existing) {
     return;
   }
-  const { event, errors } = readEventForm(ctx);
+  const groups = myGroups(existing.created_by);
+  const { event, errors } = readEventForm(ctx, groups);
   event.id = existing.id;
   if (hasErrors(errors)) {
-    return ctx.html(views.eventPage(ctx.user, { event, errors }), 400);
+    return ctx.html(views.eventPage(ctx.user, { event, errors, groups }), 400);
   }
-  run(`UPDATE events SET title = ?, date = ?, end_date = ?, start_time = ?, end_time = ?, color = ? WHERE id = ?`,
-    event.title, event.date, event.end_date, event.start_time, event.end_time, event.color, existing.id);
+  tx(() => {
+    run(`UPDATE events SET title = ?, date = ?, end_date = ?, start_time = ?, end_time = ?, color = ?, is_private = ?
+         WHERE id = ?`,
+      event.title, event.date, event.end_date, event.start_time, event.end_time, event.color, event.is_private,
+      existing.id);
+    saveEventGroups(existing.id, event.groupIds);
+  });
   ctx.redirect('/?m=' + event.date.slice(0, 7));
 });
 
@@ -570,6 +623,48 @@ on('POST', '/polls/(?<id>\\d+)/confirm', ctx => {
 /** Can this user rename, prune or delete the group? Its creator, or an admin who is in it. */
 const managesGroup = (user, group) => group.created_by === user.id || Boolean(user.is_admin);
 
+/**
+ * Someone is out of a group (left, removed, or their account deleted). Run inside a tx, after their
+ * group_members row is gone:
+ * - their private events stop being shared with it: a private event is only ever shared with groups its
+ *   creator is in, or people joining later would see it without sharing any group with the creator;
+ * - if they created it, its longest-standing remaining member takes it over, so it stays manageable.
+ *   Nobody left: created_by goes NULL, and the caller deletes the empty group.
+ */
+function afterLeavingGroup(groupId, userId) {
+  run(`DELETE FROM event_groups
+       WHERE group_id = ? AND event_id IN (SELECT id FROM events WHERE created_by = ?)`, groupId, userId);
+  run(`UPDATE member_groups SET created_by = (
+         SELECT user_id FROM group_members WHERE group_id = ? ORDER BY joined_at, user_id LIMIT 1)
+       WHERE id = ? AND created_by = ?`, groupId, groupId, userId);
+}
+
+/** Deletes the group if nobody is left in it. Run inside a tx. */
+const deleteGroupIfEmpty = groupId =>
+  run('DELETE FROM member_groups WHERE id = ? AND NOT EXISTS (SELECT 1 FROM group_members WHERE group_id = ?)',
+    groupId, groupId);
+
+// A group's own events: the private ones shared with it (event_groups). Public events are left out: they
+// belong to everyone who sees their creator, not to this group. For a group id and today's date.
+const GROUP_EVENT_SQL = `SELECT e.*, u.name AS creator FROM events e
+                         JOIN event_groups shared ON shared.event_id = e.id AND shared.group_id = ?
+                         JOIN users u ON u.id = e.created_by`;
+
+/**
+ * The group's next event: the first one not over yet (one running today counts). With none coming,
+ * its most recent past one, flagged isLast. Undefined when the group never had an event.
+ */
+function groupHeadlineEvent(groupId) {
+  const next = get(`${GROUP_EVENT_SQL} WHERE e.end_date >= ?
+                    ORDER BY e.date, e.start_time IS NOT NULL, e.start_time, e.id LIMIT 1`, groupId, today());
+  if (next) {
+    return next;
+  }
+  const last = get(`${GROUP_EVENT_SQL} WHERE e.end_date < ?
+                    ORDER BY e.end_date DESC, e.date DESC, e.start_time DESC, e.id DESC LIMIT 1`, groupId, today());
+  return last && { ...last, isLast: true };
+}
+
 /** The groups page. errors[groupId] goes under that group's title, errors.create under New group. */
 function showGroups(ctx, { status = 200, errors = {} } = {}) {
   const groups = myGroups(ctx.user.id).map(group => ({
@@ -577,6 +672,7 @@ function showGroups(ctx, { status = 200, errors = {} } = {}) {
     creator: get('SELECT name FROM users WHERE id = ?', group.created_by)?.name,
     members: all(`SELECT u.id, u.name, u.color FROM group_members m JOIN users u ON u.id = m.user_id
                   WHERE m.group_id = ? ORDER BY u.name`, group.id),
+    headlineEvent: groupHeadlineEvent(group.id),
     invited: all(`SELECT u.id, u.name FROM group_invites i JOIN users u ON u.id = i.user_id
                   WHERE i.group_id = ? ORDER BY u.name`, group.id),
     // who can still be invited: not in it, and no invite waiting
@@ -590,7 +686,9 @@ function showGroups(ctx, { status = 200, errors = {} } = {}) {
                        JOIN member_groups g ON g.id = i.group_id
                        LEFT JOIN users u ON u.id = i.invited_by
                        WHERE i.user_id = ? ORDER BY i.created_at`, ctx.user.id);
-  ctx.html(views.groupsPage(ctx.user, { groups, invites, msg: ctx.url.searchParams.get('msg'), errors }), status);
+  ctx.html(views.groupsPage(ctx.user, {
+    groups, invites, base: BASE_URL, msg: ctx.url.searchParams.get('msg'), errors,
+  }), status);
 }
 
 /** The group in the URL, if I am in it; otherwise answers 404 / 403 and returns nothing. */
@@ -635,9 +733,12 @@ on('POST', '/groups', ctx => {
   if (!name) {
     return showGroups(ctx, { status: 400, errors: { create: 'A group needs a name.' } });
   }
+  // The color the New group panel was showing; a missing or bad one (an old page, a forged form) gets a fresh one.
+  const postedColor = Number(ctx.body.get('color') ?? NaN);
+  const color = isValidColor(postedColor) ? postedColor : randomColor();
   tx(() => {
     const groupId = run('INSERT INTO member_groups(name, created_by, created_at, color) VALUES (?,?,?,?)',
-      name, ctx.user.id, now(), randomColor()).lastInsertRowid;
+      name, ctx.user.id, now(), color).lastInsertRowid;
     run('INSERT INTO group_members(group_id, user_id, joined_at) VALUES (?,?,?)', groupId, ctx.user.id, now());
   });
   logUser(ctx, `group created ${JSON.stringify(name)}`);
@@ -708,9 +809,8 @@ on('POST', '/groups/(?<id>\\d+)/leave', ctx => {
   }
   tx(() => {
     run('DELETE FROM group_members WHERE group_id = ? AND user_id = ?', group.id, ctx.user.id);
-    if (!get('SELECT 1 FROM group_members WHERE group_id = ?', group.id)) {
-      run('DELETE FROM member_groups WHERE id = ?', group.id);
-    }
+    afterLeavingGroup(group.id, ctx.user.id);
+    deleteGroupIfEmpty(group.id);
   });
   logUser(ctx, `left group ${JSON.stringify(group.name)}`);
   ctx.redirect('/groups?msg=left');
@@ -739,7 +839,13 @@ on('POST', '/groups/(?<id>\\d+)/members/(?<userId>\\d+)/remove', ctx => {
   if (memberId === ctx.user.id) {
     return showGroups(ctx, { status: 400, errors: { [group.id]: 'Use Leave to leave the group yourself.' } });
   }
-  if (run('DELETE FROM group_members WHERE group_id = ? AND user_id = ?', group.id, memberId).changes) {
+  // A removed creator hands the group over like one who leaves (an admin can remove the creator).
+  const removed = tx(() => {
+    const changes = run('DELETE FROM group_members WHERE group_id = ? AND user_id = ?', group.id, memberId).changes;
+    afterLeavingGroup(group.id, memberId);
+    return changes;
+  });
+  if (removed) {
     const name = get('SELECT name FROM users WHERE id = ?', memberId)?.name;
     logUser(ctx, `removed ${JSON.stringify(name)} from group ${JSON.stringify(group.name)}`);
   }
@@ -769,8 +875,12 @@ on('POST', '/groups/(?<id>\\d+)/delete', ctx => {
 // ---- settings ----
 
 /** The settings page; after a rejected form, `errors` shows under its fields and opens its panel. */
-const showSettings = (ctx, { status = 200, errors = {} } = {}) =>
-  ctx.html(views.settingsPage(ctx.user, { base: BASE_URL, msg: ctx.url.searchParams.get('msg'), errors }), status);
+const showSettings = (ctx, { status = 200, errors = {} } = {}) => ctx.html(views.settingsPage(ctx.user, {
+  base: BASE_URL,
+  groups: myGroups(ctx.user.id),
+  msg: ctx.url.searchParams.get('msg'),
+  errors,
+}), status);
 
 on('GET', '/settings', ctx => showSettings(ctx));
 
@@ -961,8 +1071,10 @@ on('POST', '/admin/invite', ctx => {
   ctx.redirect('/admin?msg=invite');
 });
 
-// Offboarding. ON DELETE CASCADE takes sessions, passkeys, votes, free days and reset links with the
-// row, and the feed token dies with it. Events and polls they created stay, so they are re-owned first.
+// Offboarding. ON DELETE CASCADE takes sessions, passkeys, votes, free days, reset links, group
+// memberships and invites with the row, and the feed token dies with it. Their events are deleted too:
+// handing them to the admin would show them to whoever sees the admin, not the audience they were made for.
+// Groups they created go to another member (afterLeavingGroup); polls they created are re-owned.
 on('POST', '/admin/members/(?<id>\\d+)/delete', ctx => {
   if (!requireAdmin(ctx)) {
     return;
@@ -976,7 +1088,13 @@ on('POST', '/admin/members/(?<id>\\d+)/delete', ctx => {
     return showAdmin(ctx, { status: 404, errors: { members: 'That member no longer exists.' } });
   }
   tx(() => {
-    run('UPDATE events SET created_by = ? WHERE created_by = ?', ctx.user.id, memberId);
+    const groupIds = all('SELECT group_id FROM group_members WHERE user_id = ?', memberId).map(row => row.group_id);
+    run('DELETE FROM group_members WHERE user_id = ?', memberId);
+    for (const groupId of groupIds) {
+      afterLeavingGroup(groupId, memberId);
+      deleteGroupIfEmpty(groupId);
+    }
+    run('DELETE FROM events WHERE created_by = ?', memberId); // ON DELETE CASCADE drops their event_groups
     run('UPDATE polls SET created_by = ? WHERE created_by = ?', ctx.user.id, memberId);
     run('DELETE FROM users WHERE id = ?', memberId);
   });
@@ -987,13 +1105,21 @@ on('POST', '/admin/members/(?<id>\\d+)/delete', ctx => {
 // ---- ICS feeds: the only unauthenticated data routes; the token in the URL is the credential ----
 const ICS_HEADERS = { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'private, no-cache' };
 
-on('GET', '/feed/(?<token>[\\w-]+)/events\\.ics', ctx => {
-  if (!get('SELECT 1 FROM users WHERE feed_token = ?', ctx.params.token)) {
+// One feed per group: its members' public events and the private ones shared with it; nobody else's.
+// The token is the subscriber's own, so the link dies when they leave the group or rotate their links.
+on('GET', '/feed/(?<token>[\\w-]+)/groups/(?<id>\\d+)\\.ics', ctx => {
+  const group = get(`SELECT g.id, g.name FROM users u
+                     JOIN group_members m ON m.user_id = u.id
+                     JOIN member_groups g ON g.id = m.group_id
+                     WHERE u.feed_token = ? AND g.id = ?`, ctx.params.token, Number(ctx.params.id));
+  if (!group) {
     return ctx.fail(404, 'Not found.');
   }
   const host = new URL(BASE_URL).host;
 
-  const items = all('SELECT * FROM events').map(event => ({
+  const items = all(`SELECT e.* FROM events e JOIN users u ON u.id = e.created_by WHERE ${EVENT_IN_GROUP}`,
+    group.id, group.id)
+    .map(event => ({
     uid: 'event-' + event.id,
     date: event.date,
     endDate: event.end_date,
@@ -1003,7 +1129,7 @@ on('GET', '/feed/(?<token>[\\w-]+)/events\\.ics', ctx => {
     stamp: event.created_at,
   }));
 
-  ctx.text(buildIcs({ name: 'Meshtime · Events', host, items }), 200, ICS_HEADERS);
+  ctx.text(buildIcs({ name: `Meshtime · ${group.name}`, host, items }), 200, ICS_HEADERS);
 }, true);
 
 // One yearly recurring all-day event per member who gave a birthday, starting on the birthday itself.
