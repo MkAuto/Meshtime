@@ -1,0 +1,26 @@
+{{! Partial: "Who sees it" for an event or a poll (readSharing in routes.js reads it back). Expects isPrivate,
+    groupChoices (the creator's groups) and errors. The group list only shows for a private one (style.css,
+    no JS), and the server ignores the groups of a public one. }}
+<fieldset class="visibility">
+  <legend>Who sees it</legend>
+  <label class="check">
+    <input type="radio" name="visibility" value="public"{{^isPrivate}} checked{{/isPrivate}}>
+    Public: everyone who sees your free time (all your groups)
+  </label>
+  <label class="check">
+    <input type="radio" name="visibility" value="private" id="visibility-private"{{#isPrivate}} checked{{/isPrivate}}>
+    Private: only the groups you pick
+  </label>
+  <div class="share-groups">
+    {{#groupChoices}}
+    <label class="check">
+      <input type="checkbox" name="group_ids" value="{{id}}"{{#checked}} checked{{/checked}}>
+      <span class="who"><span class="c{{color}}">{{name}}</span></span>
+    </label>
+    {{/groupChoices}}
+    {{^groupChoices}}
+    <p class="hint">Not in any <a href="/groups">group</a> yet: there is nobody to share it with privately.</p>
+    {{/groupChoices}}
+  </div>
+</fieldset>
+{{#errors.visibility}}<p class="err">{{errors.visibility}}</p>{{/errors.visibility}}

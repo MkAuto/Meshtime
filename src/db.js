@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS users(
   date_format TEXT NOT NULL DEFAULT '${DEFAULT_DATE_FORMAT}', -- a DATE_FORMATS key in src/lib.js
   birthday TEXT, -- 'YYYY-MM-DD', NULL = not given
   show_birthdays INTEGER NOT NULL DEFAULT 1, -- 0 hides everyone's birthdays from this member's calendar
+  hide_free_border INTEGER NOT NULL DEFAULT 0, -- 1 drops the colored outline on my own free days
   is_private INTEGER NOT NULL DEFAULT 1, -- 1: only people sharing a group see my free days, 0: everyone does
   -- the group the calendar opens on; NULL = everyone I can see. Ignored while I am not in that group.
   default_group_id INTEGER REFERENCES member_groups(id) ON DELETE SET NULL);
@@ -100,7 +101,14 @@ CREATE TABLE IF NOT EXISTS polls(
   created_by INTEGER NOT NULL REFERENCES users(id),
   chosen_date TEXT,
   closed_at TEXT,
-  created_at TEXT NOT NULL);
+  created_at TEXT NOT NULL,
+  is_private INTEGER NOT NULL DEFAULT 0);
+
+-- the groups a private poll is shared with (none for a public poll). Groups its creator is in.
+CREATE TABLE IF NOT EXISTS poll_groups(
+  poll_id INTEGER NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+  group_id INTEGER NOT NULL REFERENCES member_groups(id) ON DELETE CASCADE,
+  PRIMARY KEY(poll_id, group_id));
 
 CREATE TABLE IF NOT EXISTS poll_dates(
   poll_id INTEGER NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
@@ -205,6 +213,10 @@ if (!userColumns.includes('birthday')) {
 if (!userColumns.includes('show_birthdays')) {
   db.exec('ALTER TABLE users ADD COLUMN show_birthdays INTEGER NOT NULL DEFAULT 1');
 }
+// DBs created before the free-day border setting existed: everyone keeps the border.
+if (!userColumns.includes('hide_free_border')) {
+  db.exec('ALTER TABLE users ADD COLUMN hide_free_border INTEGER NOT NULL DEFAULT 0');
+}
 
 // DBs created before groups existed: everyone starts private, so free days are only shared through groups.
 if (!userColumns.includes('is_private')) {
@@ -234,6 +246,12 @@ if (!eventColumns.includes('is_private')) {
   db.exec('ALTER TABLE events ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0');
 }
 
+// DBs created before private polls existed: every poll stays public.
+const pollColumns = db.prepare('PRAGMA table_info(polls)').all().map(column => column.name);
+if (!pollColumns.includes('is_private')) {
+  db.exec('ALTER TABLE polls ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0');
+}
+
 // A format that is no longer offered goes back to the default.
 db.prepare(`UPDATE users SET date_format = ? WHERE date_format NOT IN (${Object.keys(DATE_FORMATS).map(() => '?')})`)
   .run(DEFAULT_DATE_FORMAT, ...Object.keys(DATE_FORMATS));
@@ -249,11 +267,14 @@ if (!groupColumns.includes('color')) {
 }
 
 // Group rules the routes keep (afterLeavingGroup in src/routes.js), applied to data from before they existed:
-// a private event is only shared with groups its creator is in; a group is owned by one of its members
-// (the longest-standing one takes over); a group nobody is in is gone.
+// a private event or poll is only shared with groups its creator is in; a group is owned by one of its
+// members (the longest-standing one takes over); a group nobody is in is gone.
 db.exec(`DELETE FROM event_groups WHERE NOT EXISTS (
            SELECT 1 FROM events e JOIN group_members m ON m.user_id = e.created_by
            WHERE e.id = event_groups.event_id AND m.group_id = event_groups.group_id)`);
+db.exec(`DELETE FROM poll_groups WHERE NOT EXISTS (
+           SELECT 1 FROM polls p JOIN group_members m ON m.user_id = p.created_by
+           WHERE p.id = poll_groups.poll_id AND m.group_id = poll_groups.group_id)`);
 db.exec(`UPDATE member_groups SET created_by = (
            SELECT user_id FROM group_members WHERE group_id = member_groups.id ORDER BY joined_at, user_id LIMIT 1)
          WHERE created_by IS NULL

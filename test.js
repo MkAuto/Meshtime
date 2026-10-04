@@ -7,7 +7,9 @@ import {
   toggleSlot,
   verifyWebAuthn, RP_ID, ORIGIN,
 } from './src/lib.js';
-import { newPollPage, pollPage, eventPage, profilePage, groupsPage, settingsPage } from './src/views.js';
+import {
+  newPollPage, pollPage, eventPage, profilePage, groupsPage, settingsPage, calendarPage,
+} from './src/views.js';
 
 const thisYear = new Date().getUTCFullYear();
 
@@ -167,6 +169,38 @@ test('pollPage: you first, then everyone A to Z', () => {
   assert.match(page, /<th class="">29 Sept\. 2026<\/th>/);
 });
 
+test('pollPage: Who sees it shows to everyone, the form only to its creator or an admin', () => {
+  const groups = [{ id: 5, name: 'Climbers', color: 2 }, { id: 6, name: 'Board games', color: 4 }];
+  const data = {
+    poll: { id: 1, title: 't', created_by: 1, is_private: 1 }, dates: ['2026-09-29'], members: [{ id: 1, name: 'A' }],
+    votes: [], missing: [], complete: false, best: [], event: null, groupIds: [6], creatorGroups: groups,
+  };
+  const creator = pollPage({ id: 1, name: 'A' }, data);
+  assert.match(creator, /Who sees it: Private: only the groups it is shared with/);
+  assert.match(creator, /action="\/polls\/1\/visibility"/);
+  assert.match(creator, /value="private" id="visibility-private" checked>/);
+  assert.match(creator, /name="group_ids" value="5">/);
+  assert.match(creator, /name="group_ids" value="6" checked>/);
+
+  const member = pollPage({ id: 2, name: 'B' }, data);
+  assert.match(member, /Who sees it: Private/);
+  assert.doesNotMatch(member, /\/visibility"|group_ids/, 'no form, no group names for a plain member');
+  assert.match(pollPage({ id: 3, name: 'C', is_admin: 1 }, data), /action="\/polls\/1\/visibility"/, 'admins too');
+});
+
+test('pollPage: a confirmed poll whose event I may not see shows only its date', () => {
+  const data = {
+    poll: { id: 1, title: 't', created_by: 1, chosen_date: '2026-09-29', closed_at: '2026-09-01' },
+    dates: ['2026-09-29'], members: [], votes: [], missing: [], complete: true, best: ['2026-09-29'],
+  };
+  const hidden = pollPage({ id: 2 }, { ...data, event: null });
+  assert.match(hidden, /Confirmed for 29 Sept\. 2026\./);
+  assert.doesNotMatch(hidden, /Added to the calendar|\/confirm"/, 'no event title, and nothing left to confirm');
+  const shown = pollPage({ id: 2 }, { ...data, event: { title: 'Secret plan', date: '2026-12-24' } });
+  assert.match(shown, /Added to the calendar as <b>Secret plan<\/b> on 24 Dec\. 2026/);
+  assert.doesNotMatch(shown, /Confirmed for/);
+});
+
 test('isValidWeekStart: only Saturday, Sunday and Monday', () => {
   for (const day of [6, 0, 1]) {
     assert.equal(isValidWeekStart(day), true);
@@ -257,6 +291,14 @@ test('newPollPage renders 6 date rows inside .dates', () => {
   const page = newPollPage({ name: 'a', id: 1 });
   assert.equal(page.match(/<input type="date" name="dates">/g).length, 6);
   assert.match(page, new RegExp(`<fieldset class="stack dates" data-max="${MAX_DATES}">`));
+  assert.match(page, /value="public" checked>/, 'public by default, like events');
+  const rejected = newPollPage({ id: 1 }, {
+    groups: [{ id: 5, name: 'Climbers', color: 2 }], sharing: { isPrivate: 1, groupIds: [5] },
+    errors: { visibility: 'Oops.' },
+  });
+  assert.match(rejected, /id="visibility-private" checked>/, 'a rejected form keeps who sees it');
+  assert.match(rejected, /name="group_ids" value="5" checked>/);
+  assert.match(rejected, /<p class="err">Oops\.<\/p>/);
 });
 
 // ---- passkeys ----
@@ -487,6 +529,18 @@ test('groupsPage: Next event, Last event when none is coming, and a placeholder 
 
   const none = render(undefined);
   assert.match(none, /<h3>Next event<\/h3>\s*<p class="hint">No event yet<\/p>/);
+});
+
+test('Disable border of free days: off by default, ticked in Settings, and the calendar drops the outline', () => {
+  const user = { id: 1, feed_token: 'tok', week_start: 0, show_birthdays: 1, color: 3 };
+  const box = /<input type="checkbox" name="hide_free_border" value="1"( checked)?>/;
+  assert.equal(settingsPage(user, { base: '' }).match(box)[1], undefined, 'unticked by default');
+  assert.equal(settingsPage({ ...user, hide_free_border: 1 }, { base: '' }).match(box)[1], ' checked');
+
+  const month = { free: new Map(), mine: new Map(), events: [], birthdays: [], today: '2026-10-04', members: 1 };
+  assert.match(calendarPage(user, '2026-10', month), /<div class="grid c3">/);
+  assert.match(calendarPage({ ...user, hide_free_border: 1 }, '2026-10', month),
+    /<div class="grid c3 no-free-border">/);
 });
 
 test('settingsPage: one feed per group I am in, with Copy and webcal, and the birthdays feed', () => {

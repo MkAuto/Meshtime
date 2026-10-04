@@ -99,13 +99,13 @@ button.danger:not(.link) { background: var(--err); border-color: var(--err); col
 .stack label.check { display: flex; align-items: center; gap: .4rem; }
 /* Event form: an all-day event has no times, so its time inputs are hidden. */
 form:has(#all-day:checked) input[type=time] { display: none; }
-/* Who sees it: the group list only matters, and only shows, for a private event. */
-form:not(:has(#visibility-private:checked)) .event-groups { display: none; }
-.visibility, .event-groups { display: grid; gap: .3rem; }
+/* Who sees it (share-with.html): the group list only matters, and only shows, for a private event or poll. */
+form:not(:has(#visibility-private:checked)) .share-groups { display: none; }
+.visibility, .share-groups { display: grid; gap: .3rem; }
 /* a plain list under its legend, like .colors */
 .visibility { border: none; padding: 0; margin: 0; }
 .visibility legend { padding: 0; margin-bottom: .3rem; }
-.event-groups { padding-left: 1.6rem; }
+.share-groups { padding-left: 1.6rem; }
 .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
 .inline { display: inline; }
 form { margin: 0; }
@@ -250,6 +250,8 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 /* day states: one class per DAY_STATES key in src/lib.js */
 /* my free days, outlined in my own color: the grid carries my .cN class */
 .day.mine { outline: 2px solid var(--c, var(--accent)); outline-offset: -2px; }
+/* Settings → Customisation → "Disable border of free days" */
+.grid.no-free-border .day.mine { outline: none; }
 .day.all { background: var(--ok-bg); }
 .day.all .num::after { content: " ✓"; color: var(--ok); }
 .who { display: flex; flex-wrap: wrap; gap: 2px; }

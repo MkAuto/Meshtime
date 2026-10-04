@@ -41,8 +41,9 @@
   accounts; pick one group above the calendar to see only theirs.
 </details>
 
-{{! cN: my color, so .day.mine outlines my own free days in it (style.css "day states"). }}
-<div class="grid c{{myColor}}">
+{{! cN: my color, so .day.mine outlines my own free days in it (style.css "day states"); no-free-border
+    turns that outline off (Settings → Customisation). }}
+<div class="{{gridClasses}}">
   {{#weekdays}}
   <div class="dow">{{.}}</div>
   {{/weekdays}}

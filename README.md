@@ -61,7 +61,7 @@ An admin opens **Administration** → Members → *create reset-password link* a
 
 ## Removing a member
 
-**Administration** → Members → *remove*. Their sessions, passkeys, votes, free days and feed links stop working at once. Events they created are deleted (so they never reach a wider audience); polls they created are re-owned by the admin who removed them. A group they created passes to its longest-standing remaining member, and a group left empty is deleted.
+**Administration** → Members → *remove*. Their sessions, passkeys, votes, free days and feed links stop working at once. Events and polls they created are deleted (handing them to the admin would show them to a wider audience). A group they created passes to its longest-standing remaining member, and a group left empty is deleted.
 
 ## Security notes
 

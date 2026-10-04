@@ -191,7 +191,8 @@ export function calendarPage(user, yearMonth, {
     yearMonth,
     // carried by the month links and the day forms, so the one-group view stays put
     groupId: group ? group.id : '',
-    myColor: user.color,
+    // Settings → Customisation: no outline on my own free days
+    gridClasses: `grid c${user.color}${user.hide_free_border ? ' no-free-border' : ''}`,
     // always set, empty for everyone: a link without g would open the default group instead
     groupQuery: `&g=${group ? group.id : ''}`,
     // "Make default" is offered only when the view on screen is not already the default
@@ -262,6 +263,20 @@ export function groupsPage(user, { groups, invites, base, msg, errors = {} }) {
 
 // ---- events ----
 
+/**
+ * The "Who sees it" values of an event or poll form (templates/share-with.html): public or private, and
+ * `groups` (its creator's) each ticked when its id is in `groupIds`.
+ */
+const sharingValues = (isPrivate, groupIds = [], groups = []) => ({
+  isPrivate: Boolean(isPrivate),
+  groupChoices: groups.map(group => ({
+    id: group.id,
+    name: group.name,
+    color: group.color,
+    checked: groupIds.includes(group.id),
+  })),
+});
+
 // One page for both: event.id set means editing that event, otherwise adding one.
 // `event` is an events row, or what was posted when the form is shown again with `errors`
 // ({ title, start, end, color }: each shows under that part of the form).
@@ -293,13 +308,7 @@ export function eventPage(user, { event, errors = {}, groups = [] }) {
     endDate: event.end_date && event.end_date !== event.date ? event.end_date : '',
     endTime: event.end_time ?? '',
     colors: [colorChoice('', 'Default'), ...Array.from({ length: COLORS }, (_, i) => colorChoice(i, `Color ${i + 1}`))],
-    isPrivate: Boolean(event.is_private),
-    groupChoices: groups.map(group => ({
-      id: group.id,
-      name: group.name,
-      color: group.color,
-      checked: (event.groupIds ?? []).includes(group.id),
-    })),
+    ...sharingValues(event.is_private, event.groupIds, groups),
     month: (event.date || today()).slice(0, 7),
   });
 }
@@ -318,12 +327,22 @@ export function pollsPage(user, polls) {
   });
 }
 
-// After a rejected form, `errors` ({ title, dates }) shows under each field and `title` is kept.
-export const newPollPage = (user, { errors = {}, title = '' } = {}) =>
-  page('New poll', user, 'new-poll', { errors, title, maxDates: MAX_DATES });
+// After a rejected form, `errors` ({ title, dates, visibility }) shows under each field, and `title` and
+// `sharing` (who sees it, as posted) are kept. `groups` are mine: the ones a private poll can be shared with.
+export const newPollPage = (user, { errors = {}, title = '', groups = [], sharing = {} } = {}) =>
+  page('New poll', user, 'new-poll', {
+    errors,
+    title,
+    maxDates: MAX_DATES,
+    ...sharingValues(sharing.isPrivate, sharing.groupIds, groups),
+  });
 
-// `errors` after a rejected form: `answers` shows under the title, `result` in the result section.
-export function pollPage(user, { poll, dates, members, votes, missing, complete, best, event, errors = {} }) {
+// `errors` after a rejected form: `answers` shows under the title, `result` in the result section,
+// `visibility` in Who sees it. `event` is null until confirmed, and when I may not see it (it can be made
+// private later): then only the confirmed date shows. `creatorGroups` and `groupIds` fill Who sees it.
+export function pollPage(user, {
+  poll, dates, members, votes, missing, complete, best, event, groupIds = [], creatorGroups = [], errors = {},
+}) {
   const answers = {}; // user_id -> { date: answer }
   for (const vote of votes) {
     (answers[vote.user_id] ??= {})[vote.date] = vote.answer;
@@ -367,6 +386,7 @@ export function pollPage(user, { poll, dates, members, votes, missing, complete,
     heading: `Best date${best.length > 1 ? 's' : ''}: ${best.map(formatted).join(', ')}`,
     tied: best.length > 1,
     event: event && { title: event.title, date: formatted(event.date), month: event.date.slice(0, 7) },
+    confirmedDate: !event && poll.chosen_date ? formatted(poll.chosen_date) : null,
     choices: best.map(date => ({ pollId: poll.id, date, label: formatted(date) })),
   };
 
@@ -377,6 +397,9 @@ export function pollPage(user, { poll, dates, members, votes, missing, complete,
     status,
     isOpen,
     canClose: isOpen && canManage,
+    visibilityLabel: poll.is_private ? 'Private: only the groups it is shared with' : 'Public',
+    // the creator (or an admin) can change who sees it, as on the event page
+    sharing: canManage && sharingValues(poll.is_private, groupIds, creatorGroups),
     columns: dates.map(date => ({ label: formatted(date), classes: showResult && best.includes(date) ? 'best' : '' })),
     rows,
     totals: dates.map(date => ({
@@ -414,6 +437,7 @@ export function settingsPage(user, { base, groups = [], msg, errors = {} }) {
     // Each format is shown as today's date written that way.
     dateFormats: options(Object.keys(DATE_FORMATS).map(key => [key, formatDate(today(), key)]), user.date_format),
     showBirthdays: Boolean(user.show_birthdays),
+    hideFreeBorder: Boolean(user.hide_free_border),
   });
 }
 
