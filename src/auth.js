@@ -43,9 +43,13 @@ export function createSession(userId) {
   return sessionId;
 }
 
-/** The logged-in user row for a session cookie, or undefined if it is missing, unknown or expired. */
+/**
+ * The logged-in user row for a session cookie, or undefined if it is missing, unknown or expired.
+ * pending_invites (group invites waiting for an answer) rides along so every page's nav can show it.
+ */
 export const userFromSession = sessionId => sessionId
-  ? get(`SELECT u.* FROM sessions s
+  ? get(`SELECT u.*, (SELECT COUNT(*) FROM group_invites i WHERE i.user_id = u.id) AS pending_invites
+         FROM sessions s
          JOIN users u ON u.id = s.user_id
          WHERE s.id_hash = ? AND s.expires_at > ?`, sha256(sessionId), now())
   : undefined;

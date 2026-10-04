@@ -2,9 +2,10 @@ import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import Mustache from 'mustache';
+import packageJson from '../package.json' with { type: 'json' };
 import {
   monthInfo, formatDate, formatEventWhen, eventLanes, dayClass, weekdayNames, today,
-  DATE_FORMATS, WEEKDAYS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD,
+  DATE_FORMATS, WEEKDAYS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD, randomColor,
 } from './lib.js';
 
 // Each page is a Mustache template in src/templates/ (https://mustache.github.io/mustache.5.html).
@@ -47,6 +48,16 @@ const MESSAGES = {
   passkey: 'Passkey added.',
   passkey_removed: 'Passkey removed.',
   removed: 'Member removed. Their sessions, passkeys and feed links no longer work.',
+  group_created: 'Group created. Invite people below.',
+  invited: 'Invite sent. They join once they accept it.',
+  added: 'Member added to the group.',
+  joined: 'You joined the group.',
+  declined: 'Invite declined.',
+  left: 'You left the group.',
+  renamed: 'Group renamed.',
+  member_removed: 'Member removed from the group.',
+  invite_cancelled: 'Invite cancelled.',
+  group_deleted: 'Group deleted.',
 };
 
 /** The value the notices partial shows for ?msg=. Form errors are shown under their fields instead. */
@@ -90,13 +101,19 @@ const PART_LABELS = { all: 'all day', am: 'morning', pm: 'afternoon', eve: 'even
 // The long-press / double-click menu: each button posts its value as `part` to /free.
 const PART_CHOICES = { all: 'All day', am: 'Morning (AM)', pm: 'Afternoon (PM)', eve: 'Evening', none: 'Not free' };
 
+/** ['am', 'eve'] -> 'morning and evening' */
+const partsLabel = parts => parts.map(part => PART_LABELS[part]).join(' and ');
+
 /** ' colored cN' for an event with a bar color (events.color), '' for the default look. */
 const eventColor = event => event.color == null ? '' : ` colored c${event.color}`;
 
 const MS_PER_DAY = 864e5;
 
 // `error` is set when a /free post was rejected: it shows under the month title.
-export function calendarPage(user, yearMonth, { free, mine, events, birthdays, today, members, error }) {
+// `group` is the one group shown on its own (null: everyone I can see); `groups` fills the selector.
+export function calendarPage(user, yearMonth, {
+  free, mine, events, birthdays, today, members, error, group = null, groups = [],
+}) {
   const month = monthInfo(yearMonth, user.week_start);
   const lanes = eventLanes(events);
   const eventTooltip = event => `${event.title}, ${formatEventWhen(event, user.date_format)} (by ${event.creator})`;
@@ -105,7 +122,7 @@ export function calendarPage(user, yearMonth, { free, mine, events, birthdays, t
   for (let day = 1; day <= month.days; day++) {
     const date = `${yearMonth}-${String(day).padStart(2, '0')}`;
     const whoIsFree = free.get(date) || [];
-    const myPart = mine.get(date); // undefined when I have not marked this day
+    const myParts = mine.get(date); // undefined when I have not marked this day
     const dayEvents = events.filter(event => event.date <= date && date <= event.end_date);
 
     // A bar is labelled where it starts, and again on day 1 and at the start of each week row.
@@ -143,19 +160,20 @@ export function calendarPage(user, yearMonth, { free, mine, events, birthdays, t
       };
     });
 
-    const dayStates = dayClass({ who: whoIsFree, members, mine: Boolean(myPart) });
+    const dayStates = dayClass({ who: whoIsFree, members, mine: Boolean(myParts) });
     days.push({
       day,
       date,
       classes: `day ${dayStates}${date === today ? ' today' : ''}`,
-      tooltip: myPart ? `You: ${PART_LABELS[myPart]}. Click to clear` : 'Click: I am free all day',
+      tooltip: myParts ? `You: ${partsLabel(myParts)}. Click to clear` : 'Click: I am free all day',
       dateLabel: formatDate(date, user.date_format),
-      part: myPart || 'none',
+      parts: myParts ? myParts.join(' ') : 'none',
       free: whoIsFree.map(member => ({
         color: member.color,
-        tooltip: `${member.name}, ${PART_LABELS[member.part]}`,
+        tooltip: `${member.name}, ${partsLabel(member.parts)}`,
         initials: initials(member.name),
-        sup: member.part === 'all' ? null : member.part,
+        // the small am / pm / eve next to the initials, a second one stacked under the first
+        slots: member.parts.includes('all') ? [] : member.parts,
       })),
       bars: barValues,
       birthdays: birthdays.filter(member => member.date === date),
@@ -171,6 +189,15 @@ export function calendarPage(user, yearMonth, { free, mine, events, birthdays, t
     error,
     month,
     yearMonth,
+    // carried by the month links and the day forms, so the one-group view stays put
+    groupId: group ? group.id : '',
+    // Settings → Customisation: no outline on my own free days
+    gridClasses: `grid c${user.color}${user.hide_free_border ? ' no-free-border' : ''}`,
+    // always set, empty for everyone: a link without g would open the default group instead
+    groupQuery: `&g=${group ? group.id : ''}`,
+    // "Make default" is offered only when the view on screen is not already the default
+    isDefaultView: (group ? group.id : null) === (user.default_group_id ?? null),
+    groupChoices: groups.map(choice => ({ value: choice.id, label: choice.name, selected: choice.id === group?.id })),
     weekdays: weekdayNames(user.week_start),
     padding: Array.from({ length: month.pad }, () => ({})),
     days,
@@ -190,12 +217,71 @@ export function calendarPage(user, yearMonth, { free, mine, events, birthdays, t
   });
 }
 
+// ---- groups ----
+
+// `groups` are mine, each with members / invited / invitable / canManage (see showGroups in routes.js);
+// `invites` are the ones waiting for my answer. errors[groupId] shows in that group, errors.create in New group.
+// `base` is BASE_URL, for each group's private calendar feed link.
+export function groupsPage(user, { groups, invites, base, msg, errors = {} }) {
+  return page('Groups', user, 'groups', {
+    ...notices(msg),
+    invites,
+    createError: errors.create,
+    newGroupColor: randomColor(),
+    isAdmin: Boolean(user.is_admin),
+    groups: groups.map(group => ({
+      id: group.id,
+      name: group.name,
+      color: group.color,
+      feed: groupFeedUrl(base, user, group.id),
+      creator: group.creator ?? 'a removed member',
+      error: errors[group.id],
+      canManage: group.canManage,
+      members: group.members.map(member => ({
+        groupId: group.id,
+        id: member.id,
+        name: member.name,
+        color: member.color,
+        initials: initials(member.name),
+        // managers remove the others; they leave with Leave like everyone else
+        removable: group.canManage && member.id !== user.id,
+      })),
+      invited: group.invited.map(person => ({ ...person, groupId: group.id })),
+      // "Next event", or "Last event" when none is coming; still "Next event" (with a placeholder) for none at all
+      eventHeading: group.headlineEvent?.isLast ? 'Last event' : 'Next event',
+      headlineEvent: group.headlineEvent && {
+        title: group.headlineEvent.title,
+        when: formatEventWhen(group.headlineEvent, user.date_format),
+        creator: group.headlineEvent.creator,
+        // the group's own calendar view, on the event's month
+        calendarUrl: `/?m=${group.headlineEvent.date.slice(0, 7)}&g=${group.id}`,
+      },
+      invitable: group.invitable,
+    })),
+  });
+}
+
 // ---- events ----
+
+/**
+ * The "Who sees it" values of an event or poll form (templates/share-with.html): public or private, and
+ * `groups` (its creator's) each ticked when its id is in `groupIds`.
+ */
+const sharingValues = (isPrivate, groupIds = [], groups = []) => ({
+  isPrivate: Boolean(isPrivate),
+  groupChoices: groups.map(group => ({
+    id: group.id,
+    name: group.name,
+    color: group.color,
+    checked: groupIds.includes(group.id),
+  })),
+});
 
 // One page for both: event.id set means editing that event, otherwise adding one.
 // `event` is an events row, or what was posted when the form is shown again with `errors`
 // ({ title, start, end, color }: each shows under that part of the form).
-export function eventPage(user, { event, errors = {} }) {
+// `groups` are the event creator's groups: the ones a private event can be shared with.
+export function eventPage(user, { event, errors = {}, groups = [] }) {
   const editing = Boolean(event.id);
   const heading = editing ? 'Edit event' : 'New event';
   const savedColor = String(event.color ?? '');
@@ -222,6 +308,7 @@ export function eventPage(user, { event, errors = {} }) {
     endDate: event.end_date && event.end_date !== event.date ? event.end_date : '',
     endTime: event.end_time ?? '',
     colors: [colorChoice('', 'Default'), ...Array.from({ length: COLORS }, (_, i) => colorChoice(i, `Color ${i + 1}`))],
+    ...sharingValues(event.is_private, event.groupIds, groups),
     month: (event.date || today()).slice(0, 7),
   });
 }
@@ -240,12 +327,22 @@ export function pollsPage(user, polls) {
   });
 }
 
-// After a rejected form, `errors` ({ title, dates }) shows under each field and `title` is kept.
-export const newPollPage = (user, { errors = {}, title = '' } = {}) =>
-  page('New poll', user, 'new-poll', { errors, title, maxDates: MAX_DATES });
+// After a rejected form, `errors` ({ title, dates, visibility }) shows under each field, and `title` and
+// `sharing` (who sees it, as posted) are kept. `groups` are mine: the ones a private poll can be shared with.
+export const newPollPage = (user, { errors = {}, title = '', groups = [], sharing = {} } = {}) =>
+  page('New poll', user, 'new-poll', {
+    errors,
+    title,
+    maxDates: MAX_DATES,
+    ...sharingValues(sharing.isPrivate, sharing.groupIds, groups),
+  });
 
-// `errors` after a rejected form: `answers` shows under the title, `result` in the result section.
-export function pollPage(user, { poll, dates, members, votes, missing, complete, best, event, errors = {} }) {
+// `errors` after a rejected form: `answers` shows under the title, `result` in the result section,
+// `visibility` in Who sees it. `event` is null until confirmed, and when I may not see it (it can be made
+// private later): then only the confirmed date shows. `creatorGroups` and `groupIds` fill Who sees it.
+export function pollPage(user, {
+  poll, dates, members, votes, missing, complete, best, event, groupIds = [], creatorGroups = [], errors = {},
+}) {
   const answers = {}; // user_id -> { date: answer }
   for (const vote of votes) {
     (answers[vote.user_id] ??= {})[vote.date] = vote.answer;
@@ -289,6 +386,7 @@ export function pollPage(user, { poll, dates, members, votes, missing, complete,
     heading: `Best date${best.length > 1 ? 's' : ''}: ${best.map(formatted).join(', ')}`,
     tied: best.length > 1,
     event: event && { title: event.title, date: formatted(event.date), month: event.date.slice(0, 7) },
+    confirmedDate: !event && poll.chosen_date ? formatted(poll.chosen_date) : null,
     choices: best.map(date => ({ pollId: poll.id, date, label: formatted(date) })),
   };
 
@@ -299,6 +397,9 @@ export function pollPage(user, { poll, dates, members, votes, missing, complete,
     status,
     isOpen,
     canClose: isOpen && canManage,
+    visibilityLabel: poll.is_private ? 'Private: only the groups it is shared with' : 'Public',
+    // the creator (or an admin) can change who sees it, as on the event page
+    sharing: canManage && sharingValues(poll.is_private, groupIds, creatorGroups),
     columns: dates.map(date => ({ label: formatted(date), classes: showResult && best.includes(date) ? 'best' : '' })),
     rows,
     totals: dates.map(date => ({
@@ -315,24 +416,28 @@ export function pollPage(user, { poll, dates, members, votes, missing, complete,
 // webcal:// makes desktop calendar apps subscribe instead of downloading the file once.
 const webcal = url => url.replace(/^https?:\/\//, 'webcal://');
 
+/** My own link to one group's events feed (routes.js, "ICS feeds"); Rotate in Settings replaces it. */
+const groupFeedUrl = (base, user, groupId) => `${base}/feed/${user.feed_token}/groups/${groupId}.ics`;
+
 // `errors` after a rejected Customisation form ({ weekStart, dateFormat }): shown under each field.
-export function settingsPage(user, { base, msg, errors = {} }) {
-  const eventsFeed = `${base}/feed/${user.feed_token}/events.ics`;
+// `groups` are the ones I am in: each gets its events feed in the Calendar feeds panel.
+export function settingsPage(user, { base, groups = [], msg, errors = {} }) {
   const birthdaysFeed = `${base}/feed/${user.feed_token}/birthdays.ics`;
 
   return page('Settings', user, 'settings', {
     ...notices(msg),
     errors,
-    // A panel holding an error starts open, or the message would be hidden in a folded panel.
-    customisationOpen: Boolean(errors.weekStart || errors.dateFormat),
-    eventsFeed,
-    eventsWebcal: webcal(eventsFeed),
-    birthdaysFeed,
-    birthdaysWebcal: webcal(birthdaysFeed),
+    version: packageJson.version, // shown under the title; bump it in package.json
+    birthdays: { name: 'Birthdays', feed: birthdaysFeed, webcal: webcal(birthdaysFeed) },
+    groupFeeds: groups.map(group => {
+      const feed = groupFeedUrl(base, user, group.id);
+      return { name: group.name, feed, webcal: webcal(feed) };
+    }),
     weekStarts: options(WEEK_START_CHOICES.map(day => [day, WEEKDAYS[day]]), user.week_start),
     // Each format is shown as today's date written that way.
     dateFormats: options(Object.keys(DATE_FORMATS).map(key => [key, formatDate(today(), key)]), user.date_format),
     showBirthdays: Boolean(user.show_birthdays),
+    hideFreeBorder: Boolean(user.hide_free_border),
   });
 }
 
@@ -344,12 +449,11 @@ export function profilePage(user, { passkeys, msg, errors = {}, about = user }) 
   return page('Profile', user, 'profile', {
     ...notices(msg),
     errors,
-    // A panel holding an error starts open, or the message would be hidden in a folded panel.
-    securityOpen: Boolean(errors.current || errors.password),
     name: about.name,
     birthday: about.birthday ?? '',
     today: today(),
     color: about.color,
+    isPrivate: Boolean(about.is_private ?? user.is_private),
     maxColor: COLORS - 1,
     initials: initials(about.name || user.name),
     minPassword: MIN_PASSWORD,

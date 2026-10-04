@@ -1,6 +1,7 @@
 {{! A grid of members × proposed dates: my row holds selects, everyone else's is read-only. }}
 <h1>{{title}}</h1>
 <p class="hint">{{status}}</p>
+<p class="hint">Who sees it: {{visibilityLabel}}</p>
 {{#errors.answers}}<p class="err">{{errors.answers}}</p>{{/errors.answers}}
 <form method="post" action="/polls/{{id}}">
   <table class="poll">
@@ -53,7 +54,11 @@
   {{#event}}
   <p>Added to the calendar as <b>{{title}}</b> on {{date}}. <a href="/?m={{month}}">View</a></p>
   {{/event}}
-  {{^event}}
+  {{! Confirmed, but its event was made private since and I am not in its groups: only the poll's own date. }}
+  {{#confirmedDate}}
+  <p>Confirmed for {{confirmedDate}}.</p>
+  {{/confirmedDate}}
+  {{^event}}{{^confirmedDate}}
   <div class="row">
     {{#choices}}
     <form method="post" action="/polls/{{pollId}}/confirm">
@@ -62,9 +67,17 @@
     </form>
     {{/choices}}
   </div>
-  {{/event}}
+  {{/confirmedDate}}{{/event}}
 </section>
 {{/result}}
+
+{{! Creator or admin only (the route checks it again). Inside, Who sees it reads this poll's sharing values. }}
+{{#sharing}}
+<form method="post" action="/polls/{{id}}/visibility" class="stack">
+  {{> share-with}}
+  <button>Save who sees it</button>
+</form>
+{{/sharing}}
 
 {{#canClose}}
 <form method="post" action="/polls/{{id}}/close">

@@ -67,6 +67,8 @@ h1 { font-size: 1.4rem; display: flex; align-items: center; gap: .6rem; }
 h1 a { color: var(--accent); text-decoration: none; padding: 0 .4rem; }
 h2 { font-size: 1.1rem; margin: 1.5rem 0 .5rem; }
 .hint { color: var(--muted); font-size: .9rem; }
+/* a subtitle right under a page title, like the version on Settings */
+h1 + .hint { margin-top: -.6rem; }
 .err { color: var(--err); }
 /* A form error sits right under its field: tight above, a little room below. */
 p.err { margin: .3rem 0 .6rem; }
@@ -97,6 +99,13 @@ button.danger:not(.link) { background: var(--err); border-color: var(--err); col
 .stack label.check { display: flex; align-items: center; gap: .4rem; }
 /* Event form: an all-day event has no times, so its time inputs are hidden. */
 form:has(#all-day:checked) input[type=time] { display: none; }
+/* Who sees it (share-with.html): the group list only matters, and only shows, for a private event or poll. */
+form:not(:has(#visibility-private:checked)) .share-groups { display: none; }
+.visibility, .share-groups { display: grid; gap: .3rem; }
+/* a plain list under its legend, like .colors */
+.visibility { border: none; padding: 0; margin: 0; }
+.visibility legend { padding: 0; margin-bottom: .3rem; }
+.share-groups { padding-left: 1.6rem; }
 .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
 .inline { display: inline; }
 form { margin: 0; }
@@ -127,7 +136,17 @@ code { word-break: break-all; font-size: .85rem; background: var(--code-bg); pad
 .panel[open] > summary::before { transform: rotate(90deg); }
 /* Only the section title is enlarged. Subtitles stay at body size and lean on weight, not size. */
 .panel h2 { font-size: 1.3rem; color: var(--panel-edge); margin: .6rem 0; }
-.panel > h3, .panel > form > h3 { font-size: 1rem; margin: 1.3rem 0 .3rem; }
+/* section headings inside a panel (Members, Next event, Name…): small spaced capitals in the panel's color,
+   so they read as labels and stand apart from the text under them. */
+.panel > h3, .panel > form > h3 {
+  font-size: .8rem;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  margin: 2.2rem 0 .45rem; /* room above, so each section starts clearly apart from the one before it */
+  color: var(--panel-edge);
+}
+/* the first section sits right under the panel title (or Owned by): no extra room needed there */
+.panel > h3:first-of-type, .panel > form > h3:first-of-type { margin-top: 1.3rem; }
 /* collapsed: drop the bottom padding so the closed panel is a tidy title bar.
    Scoped to details so the admin page's plain <section class=panel> keeps its padding. */
 details.panel:not([open]) { padding-bottom: .4rem; }
@@ -162,6 +181,9 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 .panel-profile  { --panel: #fdf2f8; --panel-edge: #db2777; }
 .panel-security { --panel: #fff7ed; --panel-edge: #c2410c; }
 .panel-admin    { --panel: #fef2f2; --panel-edge: #b91c1c; }
+.panel-invites  { --panel: #fefce8; --panel-edge: #a16207; }
+/* one group on the groups page: stripe and title in the group's own color (member_groups.color) */
+.panel-group    { --panel: color-mix(in srgb, var(--c) 8%, var(--card)); --panel-edge: var(--c); }
 
 /* calendar */
 /* minmax(0, …): a plain 1fr won't shrink below its content, so one long title would widen its column */
@@ -203,8 +225,10 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
   -webkit-touch-callout: none;
   touch-action: manipulation;
 }
-/* "am" / "pm" after the initials of a half-day member */
-.who sup { font-size: .7em; font-weight: 600; margin-left: 1px; }
+/* "am" / "pm" after the initials of a half-day member. A second free time stacks right under the first:
+   inline-grid puts each <i> on its own row, and its baseline is the first row's, so one slot looks as before. */
+.who sup { display: inline-grid; font-size: .7em; font-weight: 600; margin-left: 1px; line-height: 1; }
+.who sup i { font-style: normal; }
 
 /* the morning / afternoon / all day menu */
 #day-part {
@@ -220,12 +244,21 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 #day-part .stack button { width: 100%; }
 /* what the day is set to now */
 #day-part .stack button.current { outline: 3px solid var(--fg); outline-offset: 2px; }
+/* already free twice that day: a third time cannot be picked until one is taken off */
+#day-part .stack button:disabled { opacity: .4; }
 #day-part form[method=dialog] { margin-top: .8rem; text-align: center; }
 /* day states: one class per DAY_STATES key in src/lib.js */
-.day.mine { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* my free days, outlined in my own color: the grid carries my .cN class */
+.day.mine { outline: 2px solid var(--c, var(--accent)); outline-offset: -2px; }
+/* Settings → Customisation → "Disable border of free days" */
+.grid.no-free-border .day.mine { outline: none; }
 .day.all { background: var(--ok-bg); }
 .day.all .num::after { content: " ✓"; color: var(--ok); }
 .who { display: flex; flex-wrap: wrap; gap: 2px; }
+/* a group's feed link: as wide as the panel allows, so the whole URL is visible on a computer */
+.feed-link { flex: 1; min-width: 0; font-family: ui-monospace, monospace; font-size: .85rem; }
+/* the groups page puts initials in front of a name, on the same line */
+.group-members .who { display: inline-flex; }
 /* user colors: 13 distinct colors, index stored in users.color. --c is for light mode, --cd for dark.
    To add one: a .cN line here, a stop in the .hue gradient below, and bump COLORS in src/lib.js. */
 .c0  { --c: #dc2626; --cd: #f87171; }
@@ -372,6 +405,7 @@ details { margin: .8rem 0; }
     --ev-fg: #fcd34d;
   }
   .who span, .swatch { color: var(--cd, var(--accent)); }
+  .day.mine { outline-color: var(--cd, var(--accent)); }
   .ev.colored { background: color-mix(in srgb, var(--cd) 22%, var(--card)); color: var(--cd); }
   .swatch-pick { background: var(--cd, var(--ev-bg)); border-color: var(--cd, var(--ev-fg)); }
   /* same hues, pulled down to near-black so the panels tint rather than glow.
@@ -381,4 +415,6 @@ details { margin: .8rem 0; }
   .panel-profile  { --panel: #26091a; --panel-edge: #f472b6; }
   .panel-security { --panel: #211206; --panel-edge: #fb923c; }
   .panel-admin    { --panel: #240d0d; --panel-edge: #f87171; }
+  .panel-invites  { --panel: #1f1a06; --panel-edge: #facc15; }
+  .panel-group    { --panel: color-mix(in srgb, var(--cd) 10%, var(--card)); --panel-edge: var(--cd); }
 }

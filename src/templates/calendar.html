@@ -1,20 +1,49 @@
 <h1>
-  <a href="/?m={{month.prev}}" title="Previous month">&lsaquo;</a>
+  <a href="/?m={{month.prev}}{{groupQuery}}" title="Previous month">&lsaquo;</a>
   {{month.label}}
-  <a href="/?m={{month.next}}" title="Next month">&rsaquo;</a>
+  <a href="/?m={{month.next}}{{groupQuery}}" title="Next month">&rsaquo;</a>
 </h1>
+{{! Whose free time is shown: everyone I can see, or one of my groups. A plain GET form, so it works
+    without JS; app.js submits it as soon as the choice changes and hides the Show button. }}
+{{#groupChoices.length}}
+<div class="row group-pick">
+<form method="get" action="/" class="row" data-autosubmit>
+  <input type="hidden" name="m" value="{{yearMonth}}">
+  <select name="g" aria-label="Whose free time to show">
+    <option value="">Everyone I can see</option>
+    {{#groupChoices}}
+    <option value="{{value}}" {{#selected}}selected{{/selected}}>{{label}}</option>
+    {{/groupChoices}}
+  </select>
+  <button>Show</button>
+</form>
+{{! Changes what the calendar opens on, so it posts; styled as a link. }}
+{{^isDefaultView}}
+<form method="post" action="/calendar/default" class="inline">
+  <input type="hidden" name="m" value="{{yearMonth}}">
+  <input type="hidden" name="g" value="{{groupId}}">
+  <button class="link">Make default</button>
+</form>
+{{/isDefaultView}}
+</div>
+{{/groupChoices.length}}
 {{#error}}
 <p class="err">{{error}}</p>
 {{/error}}
 <details class="hint">
   <summary>How to use</summary>
   Click a day to mark yourself free all day (outlined). For only the morning, afternoon or evening,
-  hold the day on a phone or double-click it on a computer. Initials show who is free
+  hold the day on a phone or double-click (or right-click) it on a computer. Do it again to add a second
+  free time that day, e.g. morning and evening. Initials show who is free
   (<sup>am</sup> / <sup>pm</sup> / <sup>eve</sup> for part of the day);
-  green means everyone is free at the same time.
+  green means everyone shown is free at the same time.
+  You see the free time and events of people who share a <a href="/groups">group</a> with you, and of public
+  accounts; pick one group above the calendar to see only theirs.
 </details>
 
-<div class="grid">
+{{! cN: my color, so .day.mine outlines my own free days in it (style.css "day states"); no-free-border
+    turns that outline off (Settings → Customisation). }}
+<div class="{{gridClasses}}">
   {{#weekdays}}
   <div class="dow">{{.}}</div>
   {{/weekdays}}
@@ -24,7 +53,7 @@
   {{/padding}}
   {{! The whole cell is the toggle button: posting /free flips my own free-all-day / not-free.
       Initials and events live inside it as spans, so every pixel of the square is clickable while each
-      keeps its own tooltip. data-date-label and data-part feed the morning / afternoon menu in app.js.
+      keeps its own tooltip. data-date-label and data-parts feed the morning / afternoon menu in app.js.
       Two parts, each a row shared by the whole week (subgrid in style.css): number + initials, then the
       events, so the bars start level even when the initials differ. }}
   {{#days}}
@@ -32,13 +61,17 @@
     <form method="post" action="/free">
       <input type="hidden" name="date" value="{{date}}">
       <input type="hidden" name="m" value="{{yearMonth}}">
-      <button title="{{tooltip}}" data-date-label="{{dateLabel}}" data-part="{{part}}">
+      <input type="hidden" name="g" value="{{groupId}}">
+      <button title="{{tooltip}}" data-date-label="{{dateLabel}}" data-parts="{{parts}}">
         <span class="head">
           <span class="num">{{day}}</span>
           {{#free.length}}
           <span class="who">
             {{#free}}
-            <span class="c{{color}}" title="{{tooltip}}">{{initials}}{{#sup}}<sup>{{sup}}</sup>{{/sup}}</span>
+            {{! Whitespace inside the sup is fine (it is a grid), but none may come before it. }}
+            <span class="c{{color}}" title="{{tooltip}}">{{initials}}{{#slots.length}}<sup>
+              {{#slots}}<i>{{.}}</i>{{/slots}}
+            </sup>{{/slots.length}}</span>
             {{/free}}
           </span>
           {{/free.length}}
@@ -71,12 +104,14 @@
   {{/days}}
 </div>
 
-{{! The long-press / double-click menu: each button posts its value as `part` to /free. }}
+{{! The long-press / double-click menu: each button posts its value as `part` to /free.
+    Morning / afternoon / evening toggle, so a second one adds to the first. app.js marks the current ones. }}
 <dialog id="day-part" aria-labelledby="day-part-title">
   <form method="post" action="/free">
     <h2 id="day-part-title"></h2>
     <input type="hidden" name="date">
     <input type="hidden" name="m" value="{{yearMonth}}">
+    <input type="hidden" name="g" value="{{groupId}}">
     <div class="stack">
       {{#partChoices}}
       <button name="part" value="{{value}}" class="{{classes}}">{{label}}</button>

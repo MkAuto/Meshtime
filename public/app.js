@@ -13,21 +13,85 @@ if (hue && swatch) {
   hue.addEventListener('input', () => { swatch.className = `c${hue.value} swatch`; });
 }
 
+// Folding panels with data-remember (settings, profile, groups) reopen the way you
+// last left them: open or closed, per panel, in this browser (localStorage). Until you touch one, the
+// page's own default stands. A panel showing an error message is never folded from memory, or the message
+// would be hidden. Storage can be blocked (private windows): then every page just uses its defaults.
+const PANEL_STATE_KEY = 'panelState'; // { [data-remember]: true when open }
+const rememberedPanels = document.querySelectorAll('details[data-remember]');
+if (rememberedPanels.length) {
+  let panelState;
+  try {
+    panelState = JSON.parse(localStorage.getItem(PANEL_STATE_KEY)) || {};
+  } catch {
+    panelState = {};
+  }
+  for (const panel of rememberedPanels) {
+    const key = panel.dataset.remember;
+    const showsError = [...panel.querySelectorAll('.err')].some(error => error.textContent.trim());
+    if (key in panelState && !showsError) {
+      panel.open = panelState[key];
+    }
+    panel.addEventListener('toggle', () => {
+      panelState[key] = panel.open;
+      try {
+        localStorage.setItem(PANEL_STATE_KEY, JSON.stringify(panelState));
+      } catch {
+        // storage blocked or full: the panel still folds, it just will not be remembered
+      }
+    });
+  }
+}
+
+// Copy buttons (data-copy: the text to copy) start hidden, since they need JS and a secure page (https or
+// localhost) for the clipboard. Without either, the link next to them can still be selected and copied.
+if (navigator.clipboard) {
+  for (const button of document.querySelectorAll('button[data-copy]')) {
+    button.hidden = false;
+    button.addEventListener('click', async () => {
+      const label = button.textContent;
+      try {
+        await navigator.clipboard.writeText(button.dataset.copy);
+        button.textContent = 'Copied';
+      } catch {
+        button.textContent = 'Copy failed';
+      }
+      setTimeout(() => { button.textContent = label; }, 1500);
+    });
+  }
+}
+
+// Forms with data-autosubmit (the calendar's group picker) apply a new choice at once; their button is
+// only there for when JS is off.
+for (const form of document.querySelectorAll('form[data-autosubmit]')) {
+  form.querySelector('button').hidden = true;
+  form.addEventListener('change', () => form.submit());
+}
+
 // Calendar. A tap or a single click submits the day's form as-is: free all day, or clear it.
 // Holding the day (touch) or double-clicking it (mouse) opens the #day-part menu instead, to pick
-// morning / afternoon / all day / not free. Right-click and the keyboard's menu key open it too.
+// morning / afternoon / evening / all day / not free. Right-click and the keyboard's menu key open it too.
+// The slots toggle: opening the menu again on a day free in the morning adds the afternoon or evening
+// (up to MAX_SLOTS_PER_DAY, as in src/lib.js, which the server enforces too).
 // Without JS only the plain toggle exists.
 const partMenu = document.getElementById('day-part');
 if (partMenu) {
   const LONG_PRESS_MS = 500;
   const DOUBLE_CLICK_MS = 300;
+  const MAX_SLOTS_PER_DAY = 2;
+  const WHOLE_DAY_CHOICES = ['all', 'none'];
   const choiceForm = partMenu.querySelector('form');
 
   const openMenu = day => {
     choiceForm.elements.date.value = day.form.elements.date.value;
     partMenu.querySelector('h2').textContent = day.dataset.dateLabel;
+    const parts = day.dataset.parts.split(' ');
+    const slotsPicked = parts.filter(part => !WHOLE_DAY_CHOICES.includes(part)).length;
     for (const choice of choiceForm.querySelectorAll('button[name=part]')) {
-      choice.classList.toggle('current', choice.value === day.dataset.part);
+      const isCurrent = parts.includes(choice.value);
+      const isSlot = !WHOLE_DAY_CHOICES.includes(choice.value);
+      choice.classList.toggle('current', isCurrent);
+      choice.disabled = isSlot && !isCurrent && slotsPicked >= MAX_SLOTS_PER_DAY;
     }
     if (!partMenu.open) {
       partMenu.showModal();

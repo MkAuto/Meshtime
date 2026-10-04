@@ -1,0 +1,128 @@
+{{! Sharing a group is what lets private members see each other's free time on the calendar.
+    Buttons only show what you may do; every route checks it again (routes.js, "groups").
+    In the members and invited lists, id is that person's: the group's own id is groupId there. }}
+<h1>Groups</h1>
+<p class="hint">
+  Members of a group see each other's free time and events on the calendar, even with a private account.
+</p>
+{{> notices}}
+
+{{#invites.length}}
+<section class="panel panel-invites">
+  <h2>Invites for you</h2>
+  <ul>
+    {{#invites}}
+    <li>
+      <b>{{name}}</b>{{#invited_by}} <small class="hint">from {{invited_by}}</small>{{/invited_by}} —
+      <form method="post" action="/groups/{{id}}/accept" class="inline"><button class="link">accept</button></form>
+      · <form method="post" action="/groups/{{id}}/decline" class="inline">
+        <button class="link danger">decline</button>
+      </form>
+    </li>
+    {{/invites}}
+  </ul>
+</section>
+{{/invites.length}}
+
+{{#groups}}
+{{! A details element, so each group folds natively. Open on load; data-remember: app.js reopens it the
+    way you last left it (in this browser), except when it shows an error. }}
+<details class="panel panel-group c{{color}}" open data-remember="group-{{id}}">
+  <summary><h2>{{name}}</h2></summary>
+  <p class="hint">Owned by {{creator}}</p>
+  {{#error}}<p class="err">{{error}}</p>{{/error}}
+
+  {{! Only events shared with this group (private ones); its members' public events are not "for" it. }}
+  <h3>{{eventHeading}}</h3>
+  {{#headlineEvent}}
+  <p>
+    <b>{{title}}</b> — {{when}} <small class="hint">by {{creator}}</small>
+    · <a href="{{calendarUrl}}">see it on the calendar</a>
+  </p>
+  {{/headlineEvent}}
+  {{^headlineEvent}}
+  <p class="hint">No event yet</p>
+  {{/headlineEvent}}
+
+  <h3>Members</h3>
+  <ul class="group-members">
+    {{#members}}
+    <li>
+      <span class="who"><span class="c{{color}}">{{initials}}</span></span> {{name}}
+      {{#removable}}
+      · <form method="post" action="/groups/{{groupId}}/members/{{id}}/remove" class="inline"
+          data-confirm="Remove {{name}} from this group?">
+        <button class="link danger">remove</button>
+      </form>
+      {{/removable}}
+    </li>
+    {{/members}}
+  </ul>
+
+  {{#invited.length}}
+  <h3>Invited, waiting for an answer</h3>
+  <ul>
+    {{#invited}}
+    <li>
+      {{name}}
+      {{#canManage}}
+      · <form method="post" action="/groups/{{groupId}}/invites/{{id}}/cancel" class="inline">
+        <button class="link danger">cancel</button>
+      </form>
+      {{/canManage}}
+    </li>
+    {{/invited}}
+  </ul>
+  {{/invited.length}}
+
+  {{#invitable.length}}
+  <h3>Invite someone</h3>
+  {{! One form, two buttons: formaction sends an admin's "Add directly" to /add instead. }}
+  <form method="post" action="/groups/{{id}}/invite" class="row">
+    <select name="user_id" aria-label="Who to invite" required>
+      <option value="">Pick someone…</option>
+      {{#invitable}}
+      <option value="{{id}}">{{name}}</option>
+      {{/invitable}}
+    </select>
+    <button>Send invite</button>
+    {{#isAdmin}}<button formaction="/groups/{{id}}/add">Add directly</button>{{/isAdmin}}
+  </form>
+  {{/invitable.length}}
+
+  <h3>Calendar feed</h3>
+  <p class="hint">
+    This group's events only. For how to subscribe go to <a href="/settings">Settings</a>
+  </p>
+  {{> feed-link}}
+
+  {{#canManage}}
+  <h3>Manage</h3>
+  <form method="post" action="/groups/{{id}}/rename" class="row">
+    <input name="name" required maxlength="40" value="{{name}}" aria-label="Group name">
+    <button>Rename</button>
+  </form>
+  <form method="post" action="/groups/{{id}}/delete" data-confirm="Delete the group {{name}} for everyone in it?">
+    <p><button class="danger">Delete group</button></p>
+  </form>
+  {{/canManage}}
+
+  <form method="post" action="/groups/{{id}}/leave" data-confirm="Leave {{name}}?">
+    <p><button class="link danger">Leave this group</button></p>
+  </form>
+</details>
+{{/groups}}
+{{^groups}}
+<p class="hint">You are not in any group yet. Create one, or ask someone to invite you.</p>
+{{/groups}}
+
+{{! A new random color on every visit, and it is the one the group gets: the panel previews it. }}
+<section class="panel panel-group c{{newGroupColor}}">
+  <h2>New group</h2>
+  <form method="post" action="/groups" class="row">
+    <input type="hidden" name="color" value="{{newGroupColor}}">
+    <input name="name" required maxlength="40" placeholder="Group name" aria-label="Group name">
+    <button>Create</button>
+  </form>
+  {{#createError}}<p class="err">{{createError}}</p>{{/createError}}
+</section>

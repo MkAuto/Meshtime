@@ -1,5 +1,5 @@
 {{! One page for adding and editing an event. Ticking "All day" hides the time inputs (style.css, no JS),
-    and the server ignores any times sent with it. }}
+    and the server ignores any times sent with it. "Who sees it" is the share-with partial. }}
 <h1>{{heading}}</h1>
 <p class="hint">Leave the end date empty for a one-day event.</p>
 <form method="post" action="{{action}}" class="stack">
@@ -37,6 +37,7 @@
     {{/colors}}
   </fieldset>
   {{#errors.color}}<p class="err">{{errors.color}}</p>{{/errors.color}}
+  {{> share-with}}
   <button>{{button}}</button>
 </form>
 {{#editing}}
