@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS users(
   show_birthdays INTEGER NOT NULL DEFAULT 1, -- 0 hides everyone's birthdays from this member's calendar
   hide_free_border INTEGER NOT NULL DEFAULT 0, -- 1 drops the colored outline on my own free days
   hide_own_initials INTEGER NOT NULL DEFAULT 0, -- 1 leaves my own initials out of the calendar cells
+  -- 1: the first and last weeks show the days of the months around (like Google Calendar), 0: blank cells
+  continuous_calendar INTEGER NOT NULL DEFAULT 1,
   is_private INTEGER NOT NULL DEFAULT 1, -- 1: only people sharing a group see my free days, 0: everyone does
   -- the group the calendar opens on; NULL = everyone I can see. Ignored while I am not in that group.
   default_group_id INTEGER REFERENCES member_groups(id) ON DELETE SET NULL);
@@ -157,7 +159,8 @@ CREATE TABLE IF NOT EXISTS credentials(
 -- app-wide options set in Administration → Options. One row; each default lives in its column.
 CREATE TABLE IF NOT EXISTS app_settings(
   id INTEGER PRIMARY KEY CHECK(id = 1),
-  member_invites INTEGER NOT NULL DEFAULT 0); -- 1: every member can create invite links in Settings
+  member_invites INTEGER NOT NULL DEFAULT 0, -- 1: every member can create invite links in Settings
+  groups_enabled INTEGER NOT NULL DEFAULT 1); -- 0: no groups, everyone and everything public (POST /admin/options)
 INSERT OR IGNORE INTO app_settings(id) VALUES (1);
 
 -- outstanding WebAuthn challenges. Single-use and short-lived, so a captured login cannot be replayed.
@@ -232,6 +235,12 @@ if (!freeDaysSql.includes(PART_CHECK) || !freeDaysSql.includes(PART2_CHECK)) {
     COMMIT;`);
 }
 
+// DBs created before groups could be turned off: they stay on.
+const appSettingColumns = db.prepare('PRAGMA table_info(app_settings)').all().map(column => column.name);
+if (!appSettingColumns.includes('groups_enabled')) {
+  db.exec('ALTER TABLE app_settings ADD COLUMN groups_enabled INTEGER NOT NULL DEFAULT 1');
+}
+
 // DBs created before the date-format setting existed: everyone gets the default.
 if (!userColumns.includes('date_format')) {
   db.exec(`ALTER TABLE users ADD COLUMN date_format TEXT NOT NULL DEFAULT '${DEFAULT_DATE_FORMAT}'`);
@@ -251,6 +260,11 @@ if (!userColumns.includes('hide_free_border')) {
 // DBs created before the own-initials setting existed: everyone keeps seeing their initials.
 if (!userColumns.includes('hide_own_initials')) {
   db.exec('ALTER TABLE users ADD COLUMN hide_own_initials INTEGER NOT NULL DEFAULT 0');
+}
+
+// DBs created before the continuous calendar existed: everyone gets it, the default.
+if (!userColumns.includes('continuous_calendar')) {
+  db.exec('ALTER TABLE users ADD COLUMN continuous_calendar INTEGER NOT NULL DEFAULT 1');
 }
 
 // DBs created before groups existed: everyone starts private, so free days are only shared through groups.

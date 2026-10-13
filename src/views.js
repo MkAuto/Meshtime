@@ -4,8 +4,8 @@ import { basename, join } from 'node:path';
 import Mustache from 'mustache';
 import packageJson from '../package.json' with { type: 'json' };
 import {
-  monthInfo, formatDate, formatEventWhen, eventLanes, dayClass, weekdayNames, today, wallClock, BUSY_HOURS,
-  DATE_FORMATS, WEEKDAYS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD, randomColor,
+  monthInfo, addDays, SHORT_MONTHS, formatDate, formatEventWhen, eventLanes, dayClass, weekdayNames, today, wallClock,
+  BUSY_HOURS, DATE_FORMATS, WEEKDAYS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD, randomColor,
 } from './lib.js';
 
 // Each page is a Mustache template in src/templates/ (https://mustache.github.io/mustache.5.html).
@@ -69,13 +69,22 @@ const MESSAGES = {
 /** The value the notices partial shows for ?msg=. Form errors are shown under their fields instead. */
 const notices = msg => ({ notice: MESSAGES[msg] });
 
+/**
+ * Is the groups feature on (Administration → Options)? Off, pages show no groups and no public / private choice.
+ * A user without the field (a test's hand-made one) counts as on, the default.
+ */
+const groupsEnabled = user => user?.groups_enabled !== 0;
+
 /** Wraps a page's own HTML in the shell (head, header, nav). `user` is null on logged-out pages. */
 export function layout(title, user, body) {
-  return render('layout', { title, user, body, styleUrl: STYLE_URL, scriptUrl: SCRIPT_URL });
+  return render('layout', {
+    title, user, body, styleUrl: STYLE_URL, scriptUrl: SCRIPT_URL, groupsEnabled: groupsEnabled(user),
+  });
 }
 
-/** Renders template `name` with `values`, inside the shell. */
-const page = (title, user, name, values) => layout(title, user, render(name, values));
+/** Renders template `name` with `values`, inside the shell. Every template gets groupsEnabled. */
+const page = (title, user, name, values) =>
+  layout(title, user, render(name, { ...values, groupsEnabled: groupsEnabled(user) }));
 
 /** Options for a <select>: `selected` marks the current one. */
 const options = (entries, current) => entries.map(([value, label]) => ({ value, label, selected: value === current }));
@@ -124,21 +133,30 @@ export function calendarPage(user, yearMonth, {
   const lanes = eventLanes(events);
   const eventTooltip = event => `${event.title}, ${formatEventWhen(event, user.date_format)} (by ${event.creator})`;
 
+  // Continuous (Settings → Customisation, on unless turned off): the first and last weeks are filled with the
+  // days of the months around this one, like Google Calendar. Off: blank cells before day 1, nothing after.
+  const continuous = user.continuous_calendar !== 0;
+  const firstDate = continuous ? month.gridStart : `${yearMonth}-01`;
+  const cellCount = continuous ? month.pad + month.days + month.trail : month.days;
+  const leadingBlanks = continuous ? 0 : month.pad;
+
   const days = [];
-  for (let day = 1; day <= month.days; day++) {
-    const date = `${yearMonth}-${String(day).padStart(2, '0')}`;
+  for (let index = 0; index < cellCount; index++) {
+    const date = addDays(firstDate, index);
+    const day = Number(date.slice(8));
+    const inMonth = date.slice(0, 7) === yearMonth;
     const whoIsFree = free.get(date) || [];
     const myParts = mine.get(date); // undefined when I have not marked this day
     const dayEvents = events.filter(event => event.date <= date && date <= event.end_date);
 
-    // A bar is labelled where it starts, and again on day 1 and at the start of each week row.
-    const column = (month.pad + day - 1) % 7;
-    const startsRow = day === 1 || column === 0;
-    // How many cells the label may run over: to the end of the event, the week row or the month.
+    // A bar is labelled where it starts, and again in the first cell and at the start of each week row.
+    const column = (leadingBlanks + index) % 7;
+    const startsRow = index === 0 || column === 0;
+    // How many cells the label may run over: to the end of the event, the week row or the last cell.
     const labelRun = event => Math.min(
       (Date.parse(event.end_date) - Date.parse(date)) / MS_PER_DAY + 1,
       7 - column,
-      month.days - day + 1,
+      cellCount - index,
     );
     const label = event => (event.start_time && event.date === date ? event.start_time + ' ' : '') + event.title;
 
@@ -168,9 +186,11 @@ export function calendarPage(user, yearMonth, {
 
     const dayStates = dayClass({ who: whoIsFree, members, mine: Boolean(myParts) });
     days.push({
-      day,
+      // every day of the month before or after says which month it is ("Nov. 1"), so it is never mistaken
+      // for a day of this one
+      day: inMonth ? day : `${SHORT_MONTHS[Number(date.slice(5, 7)) - 1]} ${day}`,
       date,
-      classes: `day ${dayStates}${date === today ? ' today' : ''}`,
+      classes: `day ${dayStates}${date === today ? ' today' : ''}${inMonth ? '' : ' outside'}`,
       tooltip: myParts ? `You: ${partsLabel(myParts)}. Click to clear` : 'Click: I am free all day',
       dateLabel: formatDate(date, user.date_format),
       parts: myParts ? myParts.join(' ') : 'none',
@@ -206,21 +226,24 @@ export function calendarPage(user, yearMonth, {
     isDefaultView: (group ? group.id : null) === (user.default_group_id ?? null),
     groupChoices: groups.map(choice => ({ value: choice.id, label: choice.name, selected: choice.id === group?.id })),
     weekdays: weekdayNames(user.week_start),
-    padding: Array.from({ length: month.pad }, () => ({})),
+    padding: Array.from({ length: leadingBlanks }, () => ({})),
     days,
     partChoices: Object.entries(PART_CHOICES).map(([value, label]) => ({
       value,
       label,
       classes: value === 'none' ? 'danger' : '',
     })),
-    events: events.map(event => ({
-      id: event.id,
-      title: event.title,
-      creator: event.creator,
-      when: formatEventWhen(event, user.date_format),
-      classes: event.end_date < today ? 'past' : '', // its last day is before today
-      canEdit: event.created_by === user.id || Boolean(user.is_admin),
-    })),
+    // the list under the calendar is this month's only, even when the grid shows days around it
+    events: events
+      .filter(event => event.date <= `${yearMonth}-31` && event.end_date >= `${yearMonth}-01`)
+      .map(event => ({
+        id: event.id,
+        title: event.title,
+        creator: event.creator,
+        when: formatEventWhen(event, user.date_format),
+        classes: event.end_date < today ? 'past' : '', // its last day is before today
+        canEdit: event.created_by === user.id || Boolean(user.is_admin),
+      })),
   });
 }
 
@@ -432,6 +455,7 @@ const groupFeedUrl = (base, user, groupId) => `${base}/feed/${user.feed_token}/g
 // `calendarLinks`: my calendar_links rows, listed under Calendar Integration.
 export function settingsPage(user, { base, groups = [], invites = [], calendarLinks = [], msg, errors = {} }) {
   const birthdaysFeed = `${base}/feed/${user.feed_token}/birthdays.ics`;
+  const allEventsFeed = `${base}/feed/${user.feed_token}/events.ics`;
 
   return page('Settings', user, 'settings', {
     ...notices(msg),
@@ -452,6 +476,8 @@ export function settingsPage(user, { base, groups = [], invites = [], calendarLi
     }),
     version: packageJson.version, // shown under the title; bump it in package.json
     birthdays: { name: 'Birthdays', feed: birthdaysFeed, webcal: webcal(birthdaysFeed) },
+    // only offered while groups are off, when there are no group feeds (the route refuses it otherwise)
+    allEvents: { name: 'All events', feed: allEventsFeed, webcal: webcal(allEventsFeed) },
     groupFeeds: groups.map(group => {
       const feed = groupFeedUrl(base, user, group.id);
       return { name: group.name, feed, webcal: webcal(feed) };
@@ -462,6 +488,7 @@ export function settingsPage(user, { base, groups = [], invites = [], calendarLi
     showBirthdays: Boolean(user.show_birthdays),
     hideFreeBorder: Boolean(user.hide_free_border),
     hideOwnInitials: Boolean(user.hide_own_initials),
+    continuousCalendar: user.continuous_calendar !== 0, // on unless turned off, like the calendar
   });
 }
 

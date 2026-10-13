@@ -1,7 +1,9 @@
 {{! A grid of members × proposed dates: my row holds selects, everyone else's is read-only. }}
 <h1>{{title}}</h1>
 <p class="hint">{{status}}</p>
+{{#groupsEnabled}}
 <p class="hint">Who sees it: {{visibilityLabel}}</p>
+{{/groupsEnabled}}
 {{#errors.answers}}<p class="err">{{errors.answers}}</p>{{/errors.answers}}
 <form method="post" action="/polls/{{id}}">
   <table class="poll">
@@ -71,13 +73,16 @@
 </section>
 {{/result}}
 
-{{! Creator or admin only (the route checks it again). Inside, Who sees it reads this poll's sharing values. }}
+{{! Creator or admin only (the route checks it again). Inside, Who sees it reads this poll's sharing values.
+    Nothing to choose while groups are off: every poll is public. }}
+{{#groupsEnabled}}
 {{#sharing}}
 <form method="post" action="/polls/{{id}}/visibility" class="stack">
   {{> share-with}}
   <button>Save who sees it</button>
 </form>
 {{/sharing}}
+{{/groupsEnabled}}
 
 {{#canClose}}
 <form method="post" action="/polls/{{id}}/close">

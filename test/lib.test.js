@@ -113,6 +113,11 @@ test('monthInfo: pad and weekday header follow the chosen first day', () => {
   assert.equal(monthInfo('2026-10', 1).pad, 3);     // Monday-first
   assert.equal(monthInfo('2026-10', 4).pad, 0);     // Thursday-first: day 1 leads the grid
   assert.equal(monthInfo('2026-10', 5).pad, 6);     // Friday-first: wraps a full week
+  // the whole weeks the month touches: Sunday Sep 27 to Saturday Oct 31, Monday-first Sep 28 to Sunday Nov 1
+  assert.equal(monthInfo('2026-10').gridStart, '2026-09-27');
+  assert.equal(monthInfo('2026-10').gridEnd, '2026-10-31');
+  assert.equal(monthInfo('2026-10', 1).gridStart, '2026-09-28');
+  assert.equal(monthInfo('2026-10', 1).gridEnd, '2026-11-01');
   assert.deepEqual(weekdayNames(1), ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
   assert.equal(weekdayNames(0)[0], 'Sun');
 });

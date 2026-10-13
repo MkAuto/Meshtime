@@ -47,7 +47,7 @@ export function addDays(isoDate, days) {
 }
 
 // Written out by hand: Intl's short months drop the period ("Sept" in en-GB, "Sep" in en-US).
-const SHORT_MONTHS = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'June', 'July', 'Aug.', 'Sept.', 'Oct.', 'Nov.', 'Dec.'];
+export const SHORT_MONTHS = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'June', 'July', 'Aug.', 'Sept.', 'Oct.', 'Nov.', 'Dec.'];
 
 const pad2 = number => String(number).padStart(2, '0');
 
@@ -156,9 +156,16 @@ export function monthInfo(yearMonth, weekStart = DEFAULT_WEEK_START) {
   const [year, month] = yearMonth.split('-').map(Number);
   const firstDay = new Date(Date.UTC(year, month - 1, 1));
   const lastDay = new Date(Date.UTC(year, month, 0)); // day 0 of the next month
+  const days = lastDay.getUTCDate();
+  const pad = (firstDay.getUTCDay() - weekStart + 7) % 7; // cells before day 1
+  const trail = (7 - (pad + days) % 7) % 7; // cells after the last day, to finish its week
   return {
-    days: lastDay.getUTCDate(),
-    pad: (firstDay.getUTCDay() - weekStart + 7) % 7, // empty cells before day 1
+    days,
+    pad,
+    trail,
+    // the whole weeks the month touches, first and last cell: the continuous calendar fills them all
+    gridStart: addDays(`${yearMonth}-01`, -pad),
+    gridEnd: addDays(`${yearMonth}-${String(days).padStart(2, '0')}`, trail),
     prev: new Date(Date.UTC(year, month - 2, 1)).toISOString().slice(0, 7),
     next: new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 7),
     label: firstDay.toLocaleString('en', { month: 'long', year: 'numeric', timeZone: 'UTC' }),

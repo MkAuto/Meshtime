@@ -1,6 +1,8 @@
 {{! Partial: "Who sees it" for an event or a poll (readSharing in routes.js reads it back). Expects isPrivate,
     groupChoices (the creator's groups) and errors. The group list only shows for a private one (style.css,
-    no JS), and the server ignores the groups of a public one. }}
+    no JS), and the server ignores the groups of a public one. Not shown at all while groups are off
+    (Administration → Options): everything is public then. }}
+{{#groupsEnabled}}
 <fieldset class="visibility">
   <legend>Who sees it</legend>
   <label class="check">
@@ -24,3 +26,4 @@
   </div>
 </fieldset>
 {{#errors.visibility}}<p class="err">{{errors.visibility}}</p>{{/errors.visibility}}
+{{/groupsEnabled}}

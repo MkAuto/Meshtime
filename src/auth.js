@@ -46,11 +46,13 @@ export function createSession(userId) {
 /**
  * The logged-in user row for a session cookie, or undefined if it is missing, unknown or expired.
  * pending_invites (group invites waiting for an answer) rides along so every page's nav can show it, and
- * member_invites (app_settings: may members create invite links) so routes and pages read it without a query.
+ * member_invites (app_settings: may members create invite links) and groups_enabled (app_settings: are groups
+ * turned on) so routes and pages read them without a query.
  */
 export const userFromSession = sessionId => sessionId
   ? get(`SELECT u.*, (SELECT COUNT(*) FROM group_invites i WHERE i.user_id = u.id) AS pending_invites,
-                (SELECT member_invites FROM app_settings) AS member_invites
+                (SELECT member_invites FROM app_settings) AS member_invites,
+                (SELECT groups_enabled FROM app_settings) AS groups_enabled
          FROM sessions s
          JOIN users u ON u.id = s.user_id
          WHERE s.id_hash = ? AND s.expires_at > ?`, sha256(sessionId), now())

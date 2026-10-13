@@ -7,6 +7,19 @@ for (const form of document.querySelectorAll('form[data-confirm]')) {
   });
 }
 
+// Checkboxes with data-confirm-on / data-confirm-off ask before their form is saved, but only when the box
+// was changed: ticked asks data-confirm-on, unticked data-confirm-off. Saving the rest of the form never asks.
+for (const box of document.querySelectorAll('input[data-confirm-on]')) {
+  box.form.addEventListener('submit', event => {
+    if (box.checked === box.defaultChecked) {
+      return;
+    }
+    if (!confirm(box.checked ? box.dataset.confirmOn : box.dataset.confirmOff)) {
+      event.preventDefault();
+    }
+  });
+}
+
 // Live preview of the color slider in Settings.
 const hue = document.querySelector('.hue'), swatch = document.getElementById('swatch');
 if (hue && swatch) {

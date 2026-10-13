@@ -7,26 +7,29 @@
 <details class="panel panel-custom" open data-remember="settings-customisation">
   <summary><h2>Customisation</h2></summary>
   <form method="post" action="/settings/customisation">
-    <h3>First day of the week</h3>
-    <select name="week_start" aria-label="First day of the week">
-      {{#weekStarts}}
-      <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
-      {{/weekStarts}}
-    </select>
+    {{! Two sections: everything about how the calendar looks, then how dates are written (style.css
+        uppercases the headings). }}
+    <h3>Calendar</h3>
+    <label>
+      First day of the week
+      <select name="week_start">
+        {{#weekStarts}}
+        <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
+        {{/weekStarts}}
+      </select>
+    </label>
     {{#errors.weekStart}}<p class="err">{{errors.weekStart}}</p>{{/errors.weekStart}}
-    <h3>Date format</h3>
-    <select name="date_format" aria-label="Date format">
-      {{#dateFormats}}
-      <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
-      {{/dateFormats}}
-    </select>
-    {{#errors.dateFormat}}<p class="err">{{errors.dateFormat}}</p>{{/errors.dateFormat}}
-    <h3>Birthdays</h3>
+    <br>
+    <label>
+      <input type="checkbox" name="continuous_calendar" value="1"{{#continuousCalendar}} checked{{/continuousCalendar}}>
+      Continuous calendar: fill the first and last weeks with the days of the months around
+    </label>
+    <br>
     <label>
       <input type="checkbox" name="show_birthdays" value="1"{{#showBirthdays}} checked{{/showBirthdays}}>
       Show birthdays on my calendar
     </label>
-    <h3>Free days</h3>
+    <br>
     <label>
       <input type="checkbox" name="hide_free_border" value="1"{{#hideFreeBorder}} checked{{/hideFreeBorder}}>
       Disable border of free days
@@ -36,6 +39,13 @@
       <input type="checkbox" name="hide_own_initials" value="1"{{#hideOwnInitials}} checked{{/hideOwnInitials}}>
       Hide my own initials on the calendar
     </label>
+    <h3>Date format</h3>
+    <select name="date_format" aria-label="Date format">
+      {{#dateFormats}}
+      <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
+      {{/dateFormats}}
+    </select>
+    {{#errors.dateFormat}}<p class="err">{{errors.dateFormat}}</p>{{/errors.dateFormat}}
     <p><button>Save</button></p>
   </form>
 </details>
@@ -108,7 +118,9 @@
       <a href="{{webcal}}">webcal link (Apple / Outlook desktop)</a>
     </li>
     {{/birthdays}}
-    {{! One feed per group I am in: that group's events only (members' events, no outsiders). }}
+    {{! One feed per group I am in: that group's events only (members' events, no outsiders). None while
+        groups are off (Administration → Options). }}
+    {{#groupsEnabled}}
     {{#groupFeeds}}
     <li>
       <b>{{name}}</b> (group events)<br>
@@ -119,6 +131,17 @@
     {{^groupFeeds}}
     <li class="hint">Group events: each <a href="/groups">group</a> you are in gets its own feed here.</li>
     {{/groupFeeds}}
+    {{/groupsEnabled}}
+    {{! Groups off (Administration → Options): one feed with every event instead of one per group. }}
+    {{^groupsEnabled}}
+    {{#allEvents}}
+    <li>
+      <b>All events</b><br>
+      {{> feed-link}}
+      <a href="{{webcal}}">webcal link (Apple / Outlook desktop)</a>
+    </li>
+    {{/allEvents}}
+    {{/groupsEnabled}}
   </ul>
   <details id="subscribe-help" data-remember="settings-subscribe-help">
     <summary>How to subscribe</summary>
@@ -137,7 +160,7 @@
       </li>
     </ul>
   </details>
-  {{! Rotating changes the token in every feed link: birthdays and each group's. }}
+  {{! Rotating changes the token in every feed link: birthdays, each group's, and All events. }}
   <form method="post" action="/settings/rotate-feed"><button class="danger">Rotate all feed links</button></form>
 </details>
 

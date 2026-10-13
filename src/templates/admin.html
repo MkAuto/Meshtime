@@ -41,6 +41,17 @@
   <h2>Options</h2>
   <form method="post" action="/admin/options">
     <label>
+      {{! data-confirm-on / -off: app.js asks before saving, only when this box was ticked / unticked. }}
+      <input type="checkbox" name="groups_enabled" value="1"{{#groupsEnabled}} checked{{/groupsEnabled}}
+        data-confirm-on="Turn groups on? Groups come back; members, events and polls stay public."
+        data-confirm-off="Turn groups off? Every member, event and poll becomes public. This cannot be undone.">
+      Groups
+    </label>
+    <p class="hint">
+      Turning groups off makes every member, event and poll public, and hides groups and every public / private
+      choice. Turning them back on brings the groups back; everything stays public until its owner changes it.
+    </p>
+    <label>
       <input type="checkbox" name="member_invites" value="1"{{#memberInvites}} checked{{/memberInvites}}>
       Members can create invite links (in their Settings)
     </label>
