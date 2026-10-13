@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import ical from 'node-ical';
 import { freePartsByDay, withoutFreeEvents } from '../src/sync.js';
 
-// Times are TZID'd in SYNC_TIME_ZONE's default zone, so the test does not depend on the machine's zone.
+// Times are TZID'd in TIME_ZONE (pinned to America/Toronto for tests by test/test.env).
 const calendar = events => ical.sync.parseICS(`BEGIN:VCALENDAR\r\n${events.map(lines => [
   'BEGIN:VEVENT', ...lines, 'END:VEVENT'].join('\r\n')).join('\r\n')}\r\nEND:VCALENDAR\r\n`);
 const at = time => `;TZID=America/Toronto:${time}`;

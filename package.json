@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test"
+    "test": "node --env-file=test/test.env --test"
   },
   "dependencies": {
     "mustache": "4.2.0",

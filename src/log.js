@@ -1,21 +1,21 @@
 import { appendFileSync, openSync, fstatSync, readSync, closeSync } from 'node:fs';
 import { join } from 'node:path';
 import { DATA_DIR } from './db.js';
+import { TIME_ZONE } from './lib.js';
 
 // ---- connection log: one line per login event, in DATA_DIR/meshtime.log ----
 // ponytail: grows forever; add rotation (or logrotate on the volume) if it ever gets big.
 
 export const LOG_PATH = join(DATA_DIR, 'meshtime.log');
 
-// Log times are Eastern time (UTC-5, UTC-4 in summer), written with their offset so a line stays
-// unambiguous across the DST switch. Node's built-in Intl knows the zone rules, no library needed.
-export const LOG_TIME_ZONE = 'America/Toronto';
+// Log times are in TIME_ZONE (the TZ env var), written with their offset so a line stays unambiguous
+// across a DST switch or a TZ change. Node's built-in Intl knows the zone rules, no library needed.
 const zoneFormat = new Intl.DateTimeFormat('en-US', {
-  timeZone: LOG_TIME_ZONE, hourCycle: 'h23', timeZoneName: 'longOffset',
+  timeZone: TIME_ZONE, hourCycle: 'h23', timeZoneName: 'longOffset',
   year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
 });
 
-/** `date` in LOG_TIME_ZONE as ISO 8601 with its offset: "2026-09-29T16:44:24-04:00". */
+/** `date` in TIME_ZONE as ISO 8601 with its offset: "2026-09-29T16:44:24-04:00". */
 export function localTimestamp(date = new Date()) {
   const part = Object.fromEntries(zoneFormat.formatToParts(date).map(({ type, value }) => [type, value]));
   const offset = part.timeZoneName.replace('GMT', '') || '+00:00'; // "GMT-04:00"; plain "GMT" at UTC+0
@@ -54,7 +54,7 @@ export function parseLogLine(line) {
     return { time: '', ip: '', user: '', known: true, action: line };
   }
   const [, rawTime, ip, user, unknown, action] = match;
-  // Lines written before the switch to Eastern are in UTC ("...Z"): convert them so the table reads as one zone.
+  // Every line carries its offset (old ones are UTC "...Z"): re-show it in TIME_ZONE so the table reads as one zone.
   const date = new Date(rawTime);
   const time = Number.isNaN(date.getTime()) ? rawTime : localTimestamp(date);
   return { time, ip, user: user === '-' ? '' : JSON.parse(user), known: !unknown, action };

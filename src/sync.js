@@ -18,7 +18,7 @@ const SLOT_HOURS = { am: [6, 12], pm: [12, 18], eve: [18, 24] };
 const toMinutes = wallClockTime => Date.parse(wallClockTime.replace(' ', 'T') + ':00Z') / 60_000;
 
 /**
- * One event instance as wall-clock minutes (toMinutes), [start, end), in SYNC_TIME_ZONE.
+ * One event instance as wall-clock minutes (toMinutes), [start, end), in TIME_ZONE.
  * An all-day event's dates are midnights in the server's own zone, so its day is read with local getters.
  */
 function wallClockSpan(instance) {
@@ -104,7 +104,7 @@ export async function fetchCalendar(url) {
   return ical.sync.parseICS(text);
 }
 
-/** Today's date in SYNC_TIME_ZONE. */
+/** Today's date in TIME_ZONE. */
 export const syncToday = () => wallClock(new Date()).slice(0, 10);
 
 /**
