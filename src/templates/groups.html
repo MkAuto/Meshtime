@@ -75,9 +75,10 @@
   </ul>
   {{/invited.length}}
 
+  {{! Admins pick from everyone; one form, two buttons: formaction sends "Add directly" to /add instead. }}
+  {{#isAdmin}}
   {{#invitable.length}}
   <h3>Invite someone</h3>
-  {{! One form, two buttons: formaction sends an admin's "Add directly" to /add instead. }}
   <form method="post" action="/groups/{{id}}/invite" class="row">
     <select name="user_id" aria-label="Who to invite" required>
       <option value="">Pick someone…</option>
@@ -86,13 +87,29 @@
       {{/invitable}}
     </select>
     <button>Send invite</button>
-    {{#isAdmin}}<button formaction="/groups/{{id}}/add">Add directly</button>{{/isAdmin}}
+    <button formaction="/groups/{{id}}/add">Add directly</button>
   </form>
   {{/invitable.length}}
+  {{/isAdmin}}
+  {{! Everyone else types a name: the datalist suggests the people they know (public, or in one of their groups),
+      no JS, but any member's name works. Names are unique, so the name is what is sent. }}
+  {{^isAdmin}}
+  <h3>Invite someone</h3>
+  <form method="post" action="/groups/{{id}}/invite" class="row">
+    <input name="name" list="invitable-{{id}}" required autocomplete="off"
+      placeholder="Type a name…" aria-label="Who to invite">
+    <datalist id="invitable-{{id}}">
+      {{#invitable}}
+      <option value="{{name}}">
+      {{/invitable}}
+    </datalist>
+    <button>Send invite</button>
+  </form>
+  {{/isAdmin}}
 
   <h3>Calendar feed</h3>
   <p class="hint">
-    This group's events only. For how to subscribe go to <a href="/settings">Settings</a>
+    This group's events only. For how to subscribe go to <a href="/settings#subscribe-help">Settings</a>
   </p>
   {{> feed-link}}
 

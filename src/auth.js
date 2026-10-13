@@ -45,10 +45,12 @@ export function createSession(userId) {
 
 /**
  * The logged-in user row for a session cookie, or undefined if it is missing, unknown or expired.
- * pending_invites (group invites waiting for an answer) rides along so every page's nav can show it.
+ * pending_invites (group invites waiting for an answer) rides along so every page's nav can show it, and
+ * member_invites (app_settings: may members create invite links) so routes and pages read it without a query.
  */
 export const userFromSession = sessionId => sessionId
-  ? get(`SELECT u.*, (SELECT COUNT(*) FROM group_invites i WHERE i.user_id = u.id) AS pending_invites
+  ? get(`SELECT u.*, (SELECT COUNT(*) FROM group_invites i WHERE i.user_id = u.id) AS pending_invites,
+                (SELECT member_invites FROM app_settings) AS member_invites
          FROM sessions s
          JOIN users u ON u.id = s.user_id
          WHERE s.id_hash = ? AND s.expires_at > ?`, sha256(sessionId), now())
@@ -81,11 +83,13 @@ export const consumeInvite = inviteToken =>
   run('UPDATE invites SET used_at = ? WHERE token = ? AND used_at IS NULL AND expires_at > ?',
     now(), inviteToken, now()).changes === 1;
 
-export const openInvites = () => all(`
-  SELECT i.token, i.is_admin, u.name AS user_name FROM invites i
+/** Unused, unexpired links: everyone's (Administration), or only those `createdBy` made (their Settings). */
+export const openInvites = (createdBy = null) => all(`
+  SELECT i.token, i.is_admin, i.created_by, u.name AS user_name, c.name AS creator FROM invites i
   LEFT JOIN users u ON u.id = i.user_id
-  WHERE i.used_at IS NULL AND i.expires_at > ?
-  ORDER BY i.expires_at`, now());
+  LEFT JOIN users c ON c.id = i.created_by
+  WHERE i.used_at IS NULL AND i.expires_at > ? AND (? IS NULL OR i.created_by = ?)
+  ORDER BY i.expires_at`, now(), createdBy, createdBy);
 
 // ---- passkeys ----
 // The crypto lives in lib.js (verifyWebAuthn); this is only the database around it.

@@ -43,6 +43,8 @@ const MESSAGES = {
   rotated: 'Feed links rotated. Re-subscribe in your calendar apps.',
   password: 'Password changed.',
   invite: 'Link created (see below).',
+  invite_copied: 'Link created and copied: paste it to them.',
+  options: 'Options saved.',
   about: 'Profile saved.',
   customisation: 'Customisation saved.',
   passkey: 'Passkey added.',
@@ -168,7 +170,8 @@ export function calendarPage(user, yearMonth, {
       tooltip: myParts ? `You: ${partsLabel(myParts)}. Click to clear` : 'Click: I am free all day',
       dateLabel: formatDate(date, user.date_format),
       parts: myParts ? myParts.join(' ') : 'none',
-      free: whoIsFree.map(member => ({
+      // Settings → Customisation can leave my own initials out; the day still counts me as free
+      free: whoIsFree.filter(member => !(member.isMe && user.hide_own_initials)).map(member => ({
         color: member.color,
         tooltip: `${member.name}, ${partsLabel(member.parts)}`,
         initials: initials(member.name),
@@ -221,10 +224,10 @@ export function calendarPage(user, yearMonth, {
 
 // `groups` are mine, each with members / invited / invitable / canManage (see showGroups in routes.js);
 // `invites` are the ones waiting for my answer. errors[groupId] shows in that group, errors.create in New group.
-// `base` is BASE_URL, for each group's private calendar feed link.
-export function groupsPage(user, { groups, invites, base, msg, errors = {} }) {
+// `base` is BASE_URL, for each group's private calendar feed link. `invitedName`: who an invite just went to.
+export function groupsPage(user, { groups, invites, base, msg, invitedName, errors = {} }) {
   return page('Groups', user, 'groups', {
-    ...notices(msg),
+    ...(msg === 'invited' && invitedName ? { notice: `Invite sent to ${invitedName}.` } : notices(msg)),
     invites,
     createError: errors.create,
     newGroupColor: randomColor(),
@@ -421,12 +424,15 @@ const groupFeedUrl = (base, user, groupId) => `${base}/feed/${user.feed_token}/g
 
 // `errors` after a rejected Customisation form ({ weekStart, dateFormat }): shown under each field.
 // `groups` are the ones I am in: each gets its events feed in the Calendar feeds panel.
-export function settingsPage(user, { base, groups = [], msg, errors = {} }) {
+// `invites`: my own open invite links, listed under Invite someone while admins allow it (user.member_invites).
+export function settingsPage(user, { base, groups = [], invites = [], msg, errors = {} }) {
   const birthdaysFeed = `${base}/feed/${user.feed_token}/birthdays.ics`;
 
   return page('Settings', user, 'settings', {
     ...notices(msg),
     errors,
+    memberInvites: Boolean(user.member_invites),
+    invites: invites.map(invite => ({ url: `${base}/invite/${invite.token}` })),
     version: packageJson.version, // shown under the title; bump it in package.json
     birthdays: { name: 'Birthdays', feed: birthdaysFeed, webcal: webcal(birthdaysFeed) },
     groupFeeds: groups.map(group => {
@@ -438,6 +444,7 @@ export function settingsPage(user, { base, groups = [], msg, errors = {} }) {
     dateFormats: options(Object.keys(DATE_FORMATS).map(key => [key, formatDate(today(), key)]), user.date_format),
     showBirthdays: Boolean(user.show_birthdays),
     hideFreeBorder: Boolean(user.hide_free_border),
+    hideOwnInitials: Boolean(user.hide_own_initials),
   });
 }
 
@@ -473,8 +480,11 @@ export function adminPage(user, { base, invites, members, log, msg, errors = {} 
     ...notices(msg),
     errors,
     members: members.map(member => ({ ...member, isMe: member.id === user.id })),
+    memberInvites: Boolean(user.member_invites),
     invites: invites.map(invite => ({
-      label: invite.user_name ? `Reset for ${invite.user_name}` : 'Invite',
+      // a member's own link (Settings, when Options allows it) says whose it is
+      label: invite.user_name ? `Reset for ${invite.user_name}`
+        : invite.created_by && invite.created_by !== user.id ? `Invite from ${invite.creator}` : 'Invite',
       url: `${base}/invite/${invite.token}`,
     })),
     // Newest first. Times are stored as local ISO strings: the date part is formatted, the clock kept.

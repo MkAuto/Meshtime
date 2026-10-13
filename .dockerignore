@@ -4,4 +4,4 @@ data/
 README.md
 compose.yaml
 Caddyfile
-test.js
+test/
