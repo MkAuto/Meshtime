@@ -5,6 +5,7 @@ services:
     restart: unless-stopped
     environment:
       BASE_URL: https://${DOMAIN:?set DOMAIN in .env}
+      TZ: ${TZ:-UTC}
     volumes:
       - data:/data
   caddy:

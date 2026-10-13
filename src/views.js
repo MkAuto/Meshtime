@@ -4,7 +4,7 @@ import { basename, join } from 'node:path';
 import Mustache from 'mustache';
 import packageJson from '../package.json' with { type: 'json' };
 import {
-  monthInfo, formatDate, formatEventWhen, eventLanes, dayClass, weekdayNames, today,
+  monthInfo, formatDate, formatEventWhen, eventLanes, dayClass, weekdayNames, today, wallClock, BUSY_HOURS,
   DATE_FORMATS, WEEKDAYS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD, randomColor,
 } from './lib.js';
 
@@ -60,6 +60,10 @@ const MESSAGES = {
   member_removed: 'Member removed from the group.',
   invite_cancelled: 'Invite cancelled.',
   group_deleted: 'Group deleted.',
+  calendar_added: 'Calendar connected. Your free days are filled in from it.',
+  calendar_removed: 'Calendar removed.',
+  calendar_synced: 'Calendars synced.',
+  calendar_saved: 'Calendar saved.',
 };
 
 /** The value the notices partial shows for ?msg=. Form errors are shown under their fields instead. */
@@ -425,7 +429,8 @@ const groupFeedUrl = (base, user, groupId) => `${base}/feed/${user.feed_token}/g
 // `errors` after a rejected Customisation form ({ weekStart, dateFormat }): shown under each field.
 // `groups` are the ones I am in: each gets its events feed in the Calendar feeds panel.
 // `invites`: my own open invite links, listed under Invite someone while admins allow it (user.member_invites).
-export function settingsPage(user, { base, groups = [], invites = [], msg, errors = {} }) {
+// `calendarLinks`: my calendar_links rows, listed under Calendar Integration.
+export function settingsPage(user, { base, groups = [], invites = [], calendarLinks = [], msg, errors = {} }) {
   const birthdaysFeed = `${base}/feed/${user.feed_token}/birthdays.ics`;
 
   return page('Settings', user, 'settings', {
@@ -433,6 +438,18 @@ export function settingsPage(user, { base, groups = [], invites = [], msg, error
     errors,
     memberInvites: Boolean(user.member_invites),
     invites: invites.map(invite => ({ url: `${base}/invite/${invite.token}` })),
+    busyHours: BUSY_HOURS,
+    calendarLinks: calendarLinks.map(link => {
+      const synced = link.last_synced_at && wallClock(new Date(link.last_synced_at));
+      return {
+        id: link.id,
+        // the label, or the link's host: the full secret address is not shown again
+        name: link.label || new URL(link.url).host,
+        synced: synced && `${formatDate(synced.slice(0, 10), user.date_format)} ${synced.slice(11)}`,
+        error: link.last_error,
+        countFree: Boolean(link.count_free),
+      };
+    }),
     version: packageJson.version, // shown under the title; bump it in package.json
     birthdays: { name: 'Birthdays', feed: birthdaysFeed, webcal: webcal(birthdaysFeed) },
     groupFeeds: groups.map(group => {

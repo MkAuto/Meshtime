@@ -12,14 +12,14 @@ test('log line: time, ip, user (real or not), action; user input cannot forge a 
   assert.equal(forged.split('\n').length, 2, 'exactly one line plus the trailing newline');
 });
 
-test('log times are Eastern, following daylight saving', () => {
+test('log times follow TZ (Eastern in tests), with daylight saving', () => {
   assert.equal(localTimestamp(new Date('2026-07-01T12:00:00Z')), '2026-07-01T08:00:00-04:00', 'summer: UTC-4');
   assert.equal(localTimestamp(new Date('2026-01-15T12:00:00Z')), '2026-01-15T07:00:00-05:00', 'winter: UTC-5');
   assert.equal(localTimestamp(new Date('2026-01-01T03:30:00Z')), '2025-12-31T22:30:00-05:00',
     'crosses midnight and the year');
   // 2026-11-01 06:30Z is 01:30 EST, after clocks fell back at 06:00Z
   assert.equal(localTimestamp(new Date('2026-11-01T06:30:00Z')), '2026-11-01T01:30:00-05:00');
-  // an old UTC line is shown in Eastern like the rest
+  // an old UTC line is shown in TIME_ZONE like the rest
   assert.equal(parseLogLine('2026-09-29T20:44:24.123Z ip=::1 user="a" action=logout').time,
     '2026-09-29T16:44:24-04:00');
 });

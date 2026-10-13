@@ -1,5 +1,6 @@
 {{! Admin only: the route enforces it, this only draws it.
-    Future admin-only tools get their own section with class "panel panel-admin" here. }}
+    Future admin-only tools get their own section here: class "panel" plus a .panel-* color no other section
+    on this page uses (public/style.css). }}
 <h1>Administration</h1>
 {{> notices}}
 <section class="panel panel-admin">
@@ -36,7 +37,7 @@
   {{/invites.length}}
 </section>
 
-<section class="panel panel-admin">
+<section class="panel panel-options">
   <h2>Options</h2>
   <form method="post" action="/admin/options">
     <label>
@@ -48,7 +49,7 @@
   </form>
 </section>
 
-<section class="panel panel-admin">
+<section class="panel panel-log">
   <h2>Connection log</h2>
   <p class="hint"><a href="/admin/log" download>Download meshtime.log</a></p>
   {{#log.length}}

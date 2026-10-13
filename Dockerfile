@@ -1,6 +1,6 @@
 FROM node:26-alpine
 WORKDIR /app
-ENV NODE_ENV=production DB_PATH=/data/app.db PORT=3000
+ENV NODE_ENV=production DB_PATH=/data/app.db PORT=3000 TZ=UTC
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY src ./src

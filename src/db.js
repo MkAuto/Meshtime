@@ -164,12 +164,36 @@ INSERT OR IGNORE INTO app_settings(id) VALUES (1);
 CREATE TABLE IF NOT EXISTS challenges(
   challenge TEXT PRIMARY KEY,
   expires_at TEXT NOT NULL);
+
+-- Calendar Integration: a member's own calendars, read every hour to fill their free days (src/sync.js).
+-- url is the calendar's secret iCal address: as private as feed_token. last_error: why the last read failed.
+CREATE TABLE IF NOT EXISTS calendar_links(
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  url TEXT NOT NULL,
+  label TEXT NOT NULL DEFAULT '',
+  count_free INTEGER NOT NULL DEFAULT 0, -- 1: events shown as Free in that calendar (TRANSP) count as busy too
+  last_synced_at TEXT,
+  last_error TEXT,
+  created_at TEXT NOT NULL);
+
+-- days a member set by hand on the calendar: the sync never changes them.
+CREATE TABLE IF NOT EXISTS manual_days(
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  date TEXT NOT NULL,
+  PRIMARY KEY(user_id, date));
 `);
 
 // ---- migrations: also run on every start, so each one has to be safe to repeat ----
 
 // DBs created before user colors existed: add the column and hand out random colors.
 const userColumns = db.prepare('PRAGMA table_info(users)').all().map(column => column.name);
+
+// DBs created before calendars had the Free events choice: only Busy events counted.
+const calendarLinkColumns = db.prepare('PRAGMA table_info(calendar_links)').all().map(column => column.name);
+if (!calendarLinkColumns.includes('count_free')) {
+  db.exec('ALTER TABLE calendar_links ADD COLUMN count_free INTEGER NOT NULL DEFAULT 0');
+}
 if (!userColumns.includes('color')) {
   db.exec(`ALTER TABLE users ADD COLUMN color INTEGER NOT NULL DEFAULT 0;
            UPDATE users SET color = abs(random()) % ${COLORS}`);

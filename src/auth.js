@@ -112,8 +112,9 @@ export const consumeChallenge = challenge =>
 export const userCredentials = userId =>
   all('SELECT id, label, created_at FROM credentials WHERE user_id = ? ORDER BY created_at', userId);
 
-export const deleteCredential = (id, userId) =>
-  run('DELETE FROM credentials WHERE id = ? AND user_id = ?', id, userId); // user_id IS the permission check
+// The WHERE clause is the permission check: `user`'s own passkey, or anyone's if `user` is an admin.
+export const deleteCredential = (id, user) =>
+  run('DELETE FROM credentials WHERE id = ? AND (user_id = ? OR ? = 1)', id, user.id, user.is_admin ? 1 : 0);
 
 export const deleteUserCredentials = userId => run('DELETE FROM credentials WHERE user_id = ?', userId);
 
