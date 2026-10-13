@@ -45,7 +45,8 @@ if (rememberedPanels.length) {
 
 // A link to a folded panel (e.g. Groups → /settings#subscribe-help) unfolds it and every panel around it, whatever
 // was remembered, then scrolls to it: the browser already tried to scroll while it was still folded.
-const linkedPanel = location.hash && document.getElementById(location.hash.slice(1));
+// A ternary, not &&: with no hash, && would give '' and ''?.matches() throws, stopping the rest of this file.
+const linkedPanel = location.hash ? document.getElementById(location.hash.slice(1)) : null;
 if (linkedPanel?.matches('details')) {
   for (let panel = linkedPanel; panel; panel = panel.parentElement.closest('details')) {
     panel.open = true;
@@ -154,6 +155,27 @@ if (partMenu) {
   }
 }
 
+const eventForm = document.querySelector('input[name=start_time]')?.form;
+if (eventForm) {
+  const { date: startDate, start_time: startTime, end_date: endDate, end_time: endTime } = eventForm.elements;
+  const ONE_HOUR_MS = 60 * 60 * 1000;
+  // UTC, so a daylight-saving change never adds or loses an hour here.
+  const toMs = (date, time) => Date.parse(`${date}T${time}Z`);
+
+  let previousStart = startTime.value;
+  // input, not change: Firefox and Safari fire change on a time box only once it loses focus.
+  startTime.addEventListener('input', () => {
+    if (startTime.value && startDate.value) {
+      const length = previousStart && endTime.value
+        ? toMs(endDate.value || startDate.value, endTime.value) - toMs(startDate.value, previousStart)
+        : ONE_HOUR_MS;
+      const end = new Date(toMs(startDate.value, startTime.value) + length).toISOString(); // YYYY-MM-DDTHH:MM:...
+      endTime.value = end.slice(11, 16);
+      endDate.value = end.slice(0, 10) === startDate.value ? '' : end.slice(0, 10);
+    }
+    previousStart = startTime.value;
+  });
+}
 
 const dates = document.querySelector('.dates');
 if (dates) {

@@ -30,6 +30,16 @@ export function birthdayIn(yearMonth, birthday) {
 export const birthdayRrule = birthday =>
   birthday.endsWith('-02-29') ? 'FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-1' : 'FREQ=YEARLY';
 
+export const SYNC_TIME_ZONE = process.env.TZ || 'America/Toronto';
+export const BUSY_HOURS = 2;
+const wallClockFormat = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: SYNC_TIME_ZONE, hourCycle: 'h23',
+  year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+});
+
+/** A Date as "YYYY-MM-DD HH:MM" in SYNC_TIME_ZONE. */
+export const wallClock = date => wallClockFormat.format(date);
+
 export function addDays(isoDate, days) {
   const date = new Date(isoDate + 'T00:00:00Z');
   date.setUTCDate(date.getUTCDate() + days);

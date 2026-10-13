@@ -4,6 +4,98 @@
 <h1>Settings</h1>
 <p class="hint">Version {{version}}</p>
 {{> notices}}
+<details class="panel panel-custom" open data-remember="settings-customisation">
+  <summary><h2>Customisation</h2></summary>
+  <form method="post" action="/settings/customisation">
+    <h3>First day of the week</h3>
+    <select name="week_start" aria-label="First day of the week">
+      {{#weekStarts}}
+      <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
+      {{/weekStarts}}
+    </select>
+    {{#errors.weekStart}}<p class="err">{{errors.weekStart}}</p>{{/errors.weekStart}}
+    <h3>Date format</h3>
+    <select name="date_format" aria-label="Date format">
+      {{#dateFormats}}
+      <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
+      {{/dateFormats}}
+    </select>
+    {{#errors.dateFormat}}<p class="err">{{errors.dateFormat}}</p>{{/errors.dateFormat}}
+    <h3>Birthdays</h3>
+    <label>
+      <input type="checkbox" name="show_birthdays" value="1"{{#showBirthdays}} checked{{/showBirthdays}}>
+      Show birthdays on my calendar
+    </label>
+    <h3>Free days</h3>
+    <label>
+      <input type="checkbox" name="hide_free_border" value="1"{{#hideFreeBorder}} checked{{/hideFreeBorder}}>
+      Disable border of free days
+    </label>
+    <br>
+    <label>
+      <input type="checkbox" name="hide_own_initials" value="1"{{#hideOwnInitials}} checked{{/hideOwnInitials}}>
+      Hide my own initials on the calendar
+    </label>
+    <p><button>Save</button></p>
+  </form>
+</details>
+
+{{! Calendar Integration: my own calendars, read every hour to fill in my free days (src/sync.js). }}
+<details class="panel panel-integration" open data-remember="settings-integration">
+  <summary><h2>Calendar Integration</h2></summary>
+  <ul class="hint">
+    <li>Update next 60 days every hour</li>
+    <li>6h to 12h (AM) | 12h to 18h (PM) | 18h to 24h (EVE)</li>
+    <li>{{busyHours}}h or more of events in a timeframe makes it busy</li>
+    <li>Manual days have priority</li>
+  </ul>
+  {{#calendarLinks.length}}
+  <ul>
+    {{#calendarLinks}}
+    <li>
+      <b>{{name}}</b>
+      {{#synced}}<span class="hint">synced {{synced}}</span>{{/synced}}
+      {{#error}}<span class="err">{{error}}</span>{{/error}}
+      {{! data-autosubmit: ticking saves at once; the button is only there with JS off (app.js). }}
+      <form method="post" action="/settings/calendars/{{id}}" class="inline" data-autosubmit>
+        <label>
+          <input type="checkbox" name="count_free" value="1"{{#countFree}} checked{{/countFree}}>
+          Count events shown as Free
+        </label>
+        <button>Save</button>
+      </form>
+      <form method="post" action="/settings/calendars/{{id}}/delete" class="inline">
+        <button class="danger">Remove</button>
+      </form>
+    </li>
+    {{/calendarLinks}}
+  </ul>
+  <form method="post" action="/settings/calendars/sync"><button>Sync now</button></form>
+  {{/calendarLinks.length}}
+  <form method="post" action="/settings/calendars" class="stack">
+    <h3>Add a calendar</h3>
+    <label>Secret iCal link <input name="url" required placeholder="https://… .ics"></label>
+    <label>Name (optional) <input name="label" maxlength="60" placeholder="Work"></label>
+    <label class="check">
+      <input type="checkbox" name="count_free" value="1">
+      Count events shown as Free (otherwise only Busy events count)
+    </label>
+    {{#errors.calendar}}<p class="err">{{errors.calendar}}</p>{{/errors.calendar}}
+    <p><button>Connect</button></p>
+  </form>
+  <details id="integration-help" data-remember="settings-integration-help">
+    <summary>Where to find the link</summary>
+    <ul>
+      <li>
+        <b>Google Calendar</b> (web): Settings → your calendar under "Settings for my calendars" →
+        Integrate calendar → <i>Secret address in iCal format</i>.
+      </li>
+      <li><b>Outlook</b> (web): Settings → Calendar → Shared calendars → Publish a calendar → ICS link.</li>
+      <li><b>Apple iCloud</b>: Calendar → share icon next to the calendar → Public Calendar → copy the link.</li>
+    </ul>
+  </details>
+</details>
+
 <details class="panel panel-feeds" open data-remember="settings-feeds">
   <summary><h2>Calendar feeds</h2></summary>
   <p class="hint">Private link: anyone who has it can read it. Rotating it requires re-subscribing.</p>
@@ -52,7 +144,7 @@
 {{! Only while an admin allows it (Administration → Options); /settings/invite refuses otherwise.
     data-copy-link: app.js copies the new link as it is created (it is listed below without JS). }}
 {{#memberInvites}}
-<details class="panel panel-custom" open data-remember="settings-invite">
+<details class="panel panel-invites" open data-remember="settings-invite">
   <summary><h2>Invite someone</h2></summary>
   <p class="hint">A link to create an account: valid 7 days, single use. Send it only to who you mean to invite.</p>
   <form method="post" action="/settings/invite" data-copy-link><button>Create invite link</button></form>
@@ -66,39 +158,3 @@
   {{/invites.length}}
 </details>
 {{/memberInvites}}
-
-<details class="panel panel-custom" open data-remember="settings-customisation">
-  <summary><h2>Customisation</h2></summary>
-  <form method="post" action="/settings/customisation">
-    <h3>First day of the week</h3>
-    <select name="week_start" aria-label="First day of the week">
-      {{#weekStarts}}
-      <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
-      {{/weekStarts}}
-    </select>
-    {{#errors.weekStart}}<p class="err">{{errors.weekStart}}</p>{{/errors.weekStart}}
-    <h3>Date format</h3>
-    <select name="date_format" aria-label="Date format">
-      {{#dateFormats}}
-      <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
-      {{/dateFormats}}
-    </select>
-    {{#errors.dateFormat}}<p class="err">{{errors.dateFormat}}</p>{{/errors.dateFormat}}
-    <h3>Birthdays</h3>
-    <label>
-      <input type="checkbox" name="show_birthdays" value="1"{{#showBirthdays}} checked{{/showBirthdays}}>
-      Show birthdays on my calendar
-    </label>
-    <h3>Free days</h3>
-    <label>
-      <input type="checkbox" name="hide_free_border" value="1"{{#hideFreeBorder}} checked{{/hideFreeBorder}}>
-      Disable border of free days
-    </label>
-    <br>
-    <label>
-      <input type="checkbox" name="hide_own_initials" value="1"{{#hideOwnInitials}} checked{{/hideOwnInitials}}>
-      Hide my own initials on the calendar
-    </label>
-    <p><button>Save</button></p>
-  </form>
-</details>

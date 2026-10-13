@@ -5,6 +5,7 @@ import { db, get, now } from './db.js';
 import { userFromSession, sessionOwner, createInvite } from './auth.js';
 import { logEvent } from './log.js';
 import { routes } from './routes.js';
+import { syncAll } from './sync.js';
 import { errorPage } from './views.js';
 import { BASE_URL } from './lib.js';
 
@@ -188,6 +189,14 @@ server.listen(PORT, () => {
   printFirstAdminInvite();
 });
 
-const shutdown = () => server.close(() => { db.close(); process.exit(0); });
+// Calendar Integration: every member's own calendars are read at start and then every hour.
+const SYNC_INTERVAL_MS = 60 * 60 * 1000;
+syncAll();
+const syncTimer = setInterval(syncAll, SYNC_INTERVAL_MS);
+
+const shutdown = () => {
+  clearInterval(syncTimer);
+  server.close(() => { db.close(); process.exit(0); });
+};
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);

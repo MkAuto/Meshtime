@@ -112,6 +112,7 @@ form { margin: 0; }
 code { word-break: break-all; font-size: .85rem; background: var(--code-bg); padding: .1rem .3rem; border-radius: 4px; }
 
 /* settings / admin panels: one tinted card per topic, so the page reads as groups, not one long list.
+   No two panels on the same page share a color.
    Each .panel-* only sets --panel (fill) and --panel-edge (stripe + heading); dark mode reuses the names. */
 .panel {
   background: var(--panel);
@@ -182,6 +183,9 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 .panel-security { --panel: #fff7ed; --panel-edge: #c2410c; }
 .panel-admin    { --panel: #fef2f2; --panel-edge: #b91c1c; }
 .panel-invites  { --panel: #fefce8; --panel-edge: #a16207; }
+.panel-integration { --panel: #f0fdfa; --panel-edge: #0f766e; }
+.panel-options  { --panel: #f0fdf4; --panel-edge: #15803d; }
+.panel-log      { --panel: #eef2ff; --panel-edge: #4338ca; }
 /* one group on the groups page: stripe and title in the group's own color (member_groups.color) */
 .panel-group    { --panel: color-mix(in srgb, var(--c) 8%, var(--card)); --panel-edge: var(--c); }
 
@@ -416,5 +420,8 @@ details { margin: .8rem 0; }
   .panel-security { --panel: #211206; --panel-edge: #fb923c; }
   .panel-admin    { --panel: #240d0d; --panel-edge: #f87171; }
   .panel-invites  { --panel: #1f1a06; --panel-edge: #facc15; }
+  .panel-integration { --panel: #04201c; --panel-edge: #2dd4bf; }
+  .panel-options  { --panel: #05200f; --panel-edge: #4ade80; }
+  .panel-log      { --panel: #0e1030; --panel-edge: #818cf8; }
   .panel-group    { --panel: color-mix(in srgb, var(--cd) 10%, var(--card)); --panel-edge: var(--cd); }
 }

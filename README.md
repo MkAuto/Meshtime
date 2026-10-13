@@ -41,7 +41,7 @@ docker compose exec app node -e "new (require('node:sqlite').DatabaseSync)('/dat
 docker compose cp app:/data/backup.db ./backup.db
 ```
 
-Environment variables: `BASE_URL` (public https URL, required behind a proxy), `DB_PATH`, `PORT`, `NODE_ENV=production` (sets the `Secure` cookie flag).
+Environment variables: `BASE_URL` (public https URL, required behind a proxy), `DB_PATH`, `PORT`, `NODE_ENV=production` (sets the `Secure` cookie flag), `TZ` (the zone Calendar Integration reads event times in, default `America/Toronto`).
 
 ## Subscribing to the feeds
 
@@ -54,6 +54,10 @@ Settings → *Calendar feeds* lists one events feed per group you are in (the ev
 | Outlook (web) | Add calendar → *Subscribe from web* → paste the https link | every few hours |
 
 Anyone with the link can read the feed. **Rotate all feed links** in Settings invalidates every one of your feed links at once (you then re-subscribe). A group's feed also stops working when you leave that group.
+
+## Calendar Integration
+
+Settings → *Calendar Integration* takes the secret iCal link of your own calendars (Google: Settings → your calendar → *Integrate calendar* → *Secret address in iCal format*; Outlook: *Publish a calendar* → ICS). Several can be connected. Every hour the server reads them and sets each of the next 60 days to the parts no event takes up: morning 6:00–12:00, afternoon 12:00–18:00, evening 18:00–midnight. A part is taken once events cover at least 2 hours of it, added up (`BUSY_HOURS` in `src/lib.js`): 10:00–13:00 leaves the afternoon and evening free, two 1-hour meetings take the morning. A day with no event is free all day, and events shown as *free* in your calendar are ignored. Days you click on the calendar yourself (and the ones already marked when you connect your first calendar) are never changed. Removing your last calendar clears the days it filled in.
 
 ## Forgot password
 

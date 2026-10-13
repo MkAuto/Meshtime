@@ -3,6 +3,7 @@ import * as auth from './auth.js';
 import * as views from './views.js';
 import { logEvent, tailLog, LOG_PATH } from './log.js';
 import { createReadStream, existsSync } from 'node:fs';
+import { fetchCalendar, syncUser, syncToday } from './sync.js';
 import {
   isValidDate, isValidMonth, isValidWeekStart, isValidDateFormat, isValidColor, eventError,
   bestDates, buildIcs, birthdayIn, birthdayRrule, today, randomColor, ANSWERS, MAX_DATES, MIN_PASSWORD, BASE_URL,
@@ -342,6 +343,8 @@ on('POST', '/free', ctx => {
   } else {
     return showCalendar(ctx, postedMonth(ctx), { status: 400, error: 'Invalid part of the day.' });
   }
+  // set by hand: the calendar sync (src/sync.js) leaves this day alone from now on
+  run('INSERT OR IGNORE INTO manual_days(user_id, date) VALUES (?, ?)', ctx.user.id, date);
   ctx.redirect(backToMonth(ctx));
 });
 
@@ -810,10 +813,13 @@ function groupForMember(ctx) {
   return group;
 }
 
-/** Like groupForMember, but only for its creator or an admin in it. */
+/** The group in the URL, only for its creator or an admin (in the group or not); otherwise answers 404 / 403. */
 function groupForManager(ctx) {
-  const group = groupForMember(ctx);
-  if (group && !managesGroup(ctx.user, group)) {
+  const group = get('SELECT * FROM member_groups WHERE id = ?', Number(ctx.params.id));
+  if (!group) {
+    return ctx.fail(404, 'Group not found.');
+  }
+  if (!managesGroup(ctx.user, group)) {
     return ctx.fail(403, 'Only its creator or an admin can change this group.');
   }
   return group;
@@ -1001,6 +1007,8 @@ const showSettings = (ctx, { status = 200, errors = {} } = {}) => ctx.html(views
   base: BASE_URL,
   groups: myGroups(ctx.user.id),
   invites: auth.openInvites(ctx.user.id),
+  calendarLinks: all(`SELECT id, url, label, count_free, last_synced_at, last_error FROM calendar_links
+                      WHERE user_id = ? ORDER BY id`, ctx.user.id),
   msg: ctx.url.searchParams.get('msg'),
   errors,
 }), status);
@@ -1026,6 +1034,85 @@ on('POST', '/settings/invite', ctx => {
     return ctx.json({ url: `${BASE_URL}/invite/${inviteToken}` });
   }
   ctx.redirect('/settings?msg=invite');
+});
+
+// ---- Calendar Integration: free days from my own calendars (src/sync.js) ----
+
+// The secret iCal link is read once before it is saved, so a wrong link is refused with the reason.
+// webcal:// is the same address over https. Only https: the server fetches what members paste.
+// ponytail: private / LAN addresses are not blocked; add that if people you do not trust can get an account.
+on('POST', '/settings/calendars', async ctx => {
+  const url = cleanText(ctx.body.get('url'), 2000).replace(/^webcal:\/\//i, 'https://');
+  const label = cleanText(ctx.body.get('label'), 60);
+  const countFree = ctx.body.get('count_free') === '1' ? 1 : 0;
+  if (!/^https:\/\/[^\s]+$/i.test(url)) {
+    return showSettings(ctx, { status: 400, errors: { calendar: 'Paste an https:// or webcal:// link.' } });
+  }
+  try {
+    await fetchCalendar(url);
+  } catch (err) {
+    return showSettings(ctx, { status: 400, errors: { calendar: err.message } });
+  }
+  tx(() => {
+    // the first calendar: days already marked by hand stay as they are
+    if (!get('SELECT 1 FROM calendar_links WHERE user_id = ?', ctx.user.id)) {
+      run(`INSERT OR IGNORE INTO manual_days(user_id, date)
+           SELECT user_id, date FROM free_days WHERE user_id = ? AND date >= ?`, ctx.user.id, syncToday());
+    }
+    run('INSERT INTO calendar_links(user_id, url, label, count_free, created_at) VALUES (?, ?, ?, ?, ?)',
+      ctx.user.id, url, label, countFree, now());
+  });
+  logUser(ctx, 'calendar connected');
+  await syncUser(ctx.user.id);
+  ctx.redirect('/settings?msg=calendar_added');
+});
+
+/** The calendar link in the URL, for its owner or an admin; otherwise answers 404 / 403 and returns nothing. */
+function calendarLinkForOwner(ctx) {
+  const link = get('SELECT id, user_id FROM calendar_links WHERE id = ?', Number(ctx.params.id));
+  if (!link) {
+    return ctx.fail(404, 'Calendar not found.');
+  }
+  if (link.user_id !== ctx.user.id && !ctx.user.is_admin) {
+    return ctx.fail(403, 'Only its owner or an admin can change this calendar.');
+  }
+  return link;
+}
+
+// "Count events shown as Free": changed any time, and the owner's days are worked out again at once.
+on('POST', '/settings/calendars/(?<id>\\d+)', async ctx => {
+  const link = calendarLinkForOwner(ctx);
+  if (!link) {
+    return;
+  }
+  const countFree = ctx.body.get('count_free') === '1' ? 1 : 0; // an unchecked checkbox posts nothing
+  run('UPDATE calendar_links SET count_free = ? WHERE id = ?', countFree, link.id);
+  await syncUser(link.user_id);
+  ctx.redirect('/settings?msg=calendar_saved');
+});
+
+// Its owner or an admin. Removing the owner's last calendar also clears the free days it filled in from today
+// on; days set by hand stay.
+on('POST', '/settings/calendars/(?<id>\\d+)/delete', async ctx => {
+  const link = calendarLinkForOwner(ctx);
+  if (!link) {
+    return;
+  }
+  const ownerId = link.user_id;
+  run('DELETE FROM calendar_links WHERE id = ?', link.id);
+  if (get('SELECT 1 FROM calendar_links WHERE user_id = ?', ownerId)) {
+    await syncUser(ownerId);
+  } else {
+    run(`DELETE FROM free_days WHERE user_id = ? AND date >= ?
+         AND date NOT IN (SELECT date FROM manual_days WHERE user_id = ?)`, ownerId, syncToday(), ownerId);
+  }
+  logUser(ctx, ownerId === ctx.user.id ? 'calendar removed' : `admin: calendar removed for user ${ownerId}`);
+  ctx.redirect('/settings?msg=calendar_removed');
+});
+
+on('POST', '/settings/calendars/sync', async ctx => {
+  await syncUser(ctx.user.id);
+  ctx.redirect('/settings?msg=calendar_synced');
 });
 
 // The whole Customisation panel is one form: every value is checked before any is saved.
@@ -1158,7 +1245,7 @@ on('POST', '/profile/passkeys', ctx => {
 // A plain form, so removing a passkey works with JS off.
 on('POST', '/profile/passkeys/delete', ctx => {
   // Only logged when a row actually went: a stale form for an already removed passkey is not an event.
-  if (auth.deleteCredential(ctx.body.get('id') || '', ctx.user.id).changes) {
+  if (auth.deleteCredential(ctx.body.get('id') || '', ctx.user).changes) {
     logUser(ctx, 'passkey removed');
   }
   ctx.redirect('/profile?msg=passkey_removed');

@@ -11,6 +11,7 @@
     "test": "node --test"
   },
   "dependencies": {
-    "mustache": "4.2.0"
+    "mustache": "4.2.0",
+    "node-ical": "0.27.2"
   }
 }

@@ -20,3 +20,20 @@ test('settingsPage: one feed per group I am in, with Copy and webcal, and the bi
   assert.doesNotMatch(page, /events\.ics/, 'no all-events feed any more');
   assert.match(settingsPage(user, { base: 'https://x.test' }), /each <a href="\/groups">group<\/a> you are in/);
 });
+
+test('settingsPage: Customisation first, then Calendar Integration with my calendars, then Calendar feeds', () => {
+  const user = { id: 1, feed_token: 'tok', week_start: 0, show_birthdays: 1 };
+  const page = settingsPage(user, { base: '', calendarLinks: [
+    {
+      id: 4, url: 'https://calendar.google.com/x/private-secret/basic.ics', label: '',
+      last_error: 'Could not reach that link.',
+    },
+  ] });
+  const order = ['Customisation', 'Calendar Integration', 'Calendar feeds']
+    .map(title => page.indexOf(`<h2>${title}</h2>`));
+  assert.deepEqual(order, [...order].sort((a, b) => a - b));
+  assert.match(page, /<b>calendar\.google\.com<\/b>/, 'named by host when it has no label');
+  assert.doesNotMatch(page, /private-secret/, 'the secret link is not shown again');
+  assert.match(page, /action="\/settings\/calendars\/4\/delete"/);
+  assert.match(page, /Could not reach that link\./);
+});
