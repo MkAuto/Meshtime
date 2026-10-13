@@ -266,7 +266,7 @@ function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
     if (!free.has(row.date)) {
       free.set(row.date, []);
     }
-    free.get(row.date).push({ name: row.name, color: row.color, parts });
+    free.get(row.date).push({ name: row.name, color: row.color, parts, isMe: row.user_id === ctx.user.id });
     if (row.user_id === ctx.user.id) {
       mine.set(row.date, parts);
     }
@@ -1034,6 +1034,7 @@ on('POST', '/settings/customisation', ctx => {
   const dateFormat = ctx.body.get('date_format');
   const showBirthdays = ctx.body.get('show_birthdays') === '1' ? 1 : 0; // an unchecked checkbox posts nothing: hide
   const hideFreeBorder = ctx.body.get('hide_free_border') === '1' ? 1 : 0; // unchecked: keep the border
+  const hideOwnInitials = ctx.body.get('hide_own_initials') === '1' ? 1 : 0; // unchecked: show my initials
   const errors = {};
   if (!isValidWeekStart(weekStart)) {
     errors.weekStart = 'Invalid first day of the week.';
@@ -1044,8 +1045,9 @@ on('POST', '/settings/customisation', ctx => {
   if (hasErrors(errors)) {
     return showSettings(ctx, { status: 400, errors });
   }
-  run('UPDATE users SET week_start = ?, date_format = ?, show_birthdays = ?, hide_free_border = ? WHERE id = ?',
-    weekStart, dateFormat, showBirthdays, hideFreeBorder, ctx.user.id);
+  run('UPDATE users SET week_start = ?, date_format = ?, show_birthdays = ?, hide_free_border = ?, '
+    + 'hide_own_initials = ? WHERE id = ?',
+    weekStart, dateFormat, showBirthdays, hideFreeBorder, hideOwnInitials, ctx.user.id);
   ctx.redirect('/settings?msg=customisation');
 });
 

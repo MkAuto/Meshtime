@@ -170,7 +170,8 @@ export function calendarPage(user, yearMonth, {
       tooltip: myParts ? `You: ${partsLabel(myParts)}. Click to clear` : 'Click: I am free all day',
       dateLabel: formatDate(date, user.date_format),
       parts: myParts ? myParts.join(' ') : 'none',
-      free: whoIsFree.map(member => ({
+      // Settings → Customisation can leave my own initials out; the day still counts me as free
+      free: whoIsFree.filter(member => !(member.isMe && user.hide_own_initials)).map(member => ({
         color: member.color,
         tooltip: `${member.name}, ${partsLabel(member.parts)}`,
         initials: initials(member.name),
@@ -443,6 +444,7 @@ export function settingsPage(user, { base, groups = [], invites = [], msg, error
     dateFormats: options(Object.keys(DATE_FORMATS).map(key => [key, formatDate(today(), key)]), user.date_format),
     showBirthdays: Boolean(user.show_birthdays),
     hideFreeBorder: Boolean(user.hide_free_border),
+    hideOwnInitials: Boolean(user.hide_own_initials),
   });
 }
 
