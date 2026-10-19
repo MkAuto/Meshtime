@@ -49,6 +49,9 @@ function isSameOrigin(req) {
 
 // ---- request plumbing ----
 
+// Invite and feed links carry their secret token in the path: keep it out of errors.log.
+const withoutSecrets = url => url.pathname.replace(/^\/(invite|feed)\/[\w-]+/, '/$1/<token>') + url.search;
+
 const parseCookies = req => Object.fromEntries((req.headers.cookie || '')
   .split(';')
   .map(pair => pair.trim().split('='))
@@ -161,12 +164,20 @@ async function handle(req, res) {
     }
     return await route.handler(ctx);
   } catch (err) {
+    // err.status means we threw it deliberately and the message is safe to show.
+    // The rest is a bug: logged (and so in errors.log) with what is needed to reproduce it. Never the body,
+    // which can hold a password.
+    if (!err.status) {
+      console.error(`Request failed: ${req.method} ${withoutSecrets(url)}`, {
+        user: ctx.user ? { id: ctx.user.id, name: ctx.user.name } : null,
+        ip: ctx.ip,
+        userAgent: req.headers['user-agent'],
+        referer: req.headers.referer,
+        formFields: ctx.body ? [...ctx.body.keys()] : undefined,
+      }, err);
+    }
     if (res.headersSent) {
       return res.end();
-    }
-    // err.status means we threw it deliberately and the message is safe to show.
-    if (!err.status) {
-      console.error(err);
     }
     ctx.fail(err.status || 500, err.status ? err.message : 'Something went wrong.');
   }

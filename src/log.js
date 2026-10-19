@@ -1,10 +1,10 @@
 import { appendFileSync, openSync, fstatSync, readSync, closeSync } from 'node:fs';
 import { join } from 'node:path';
+import { format } from 'node:util';
 import { DATA_DIR } from './db.js';
 import { TIME_ZONE } from './lib.js';
 
 // ---- connection log: one line per login event, in DATA_DIR/meshtime.log ----
-// ponytail: grows forever; add rotation (or logrotate on the volume) if it ever gets big.
 
 export const LOG_PATH = join(DATA_DIR, 'meshtime.log');
 
@@ -40,6 +40,31 @@ export function logEvent(entry) {
     console.error('Could not write meshtime.log', err); // a full disk must not break logging in
   }
 }
+
+// ---- error log: everything written to console.error / console.warn, in DATA_DIR/errors.log ----
+
+export const ERROR_LOG_PATH = join(DATA_DIR, 'errors.log');
+
+/** One entry: a header line (time, level), then the message as the console shows it, then a blank line. */
+function appendError(level, text) {
+  try {
+    appendFileSync(ERROR_LOG_PATH, `${localTimestamp()} ${level}\n${text}\n\n`);
+  } catch {
+    // the console already has it; a full disk must not turn one error into a crash
+  }
+}
+
+for (const level of ['error', 'warn']) {
+  const writeToConsole = console[level];
+  console[level] = (...args) => {
+    writeToConsole(...args);
+    appendError(level.toUpperCase(), format(...args));
+  };
+}
+
+// A crash prints straight to stderr, not through console: catch it here too. The monitor only watches,
+// so Node still exits as before. It also sees unhandled promise rejections (Node's default: they crash).
+process.on('uncaughtExceptionMonitor', (err, origin) => appendError(`FATAL (${origin})`, format(err)));
 
 const TAIL_BYTES = 256 * 1024; // comfortably more than 200 lines, and bounded however big the file gets
 

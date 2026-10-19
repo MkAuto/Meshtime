@@ -1,7 +1,7 @@
 import { all, get, run, now, tx } from './db.js';
 import * as auth from './auth.js';
 import * as views from './views.js';
-import { logEvent, tailLog, LOG_PATH } from './log.js';
+import { logEvent, tailLog, LOG_PATH, ERROR_LOG_PATH } from './log.js';
 import { createReadStream, existsSync } from 'node:fs';
 import { fetchCalendar, syncUser, syncToday } from './sync.js';
 import {
@@ -1269,21 +1269,24 @@ const showAdmin = (ctx, { status = 200, errors = {} } = {}) => ctx.html(views.ad
 
 on('GET', '/admin', ctx => requireAdmin(ctx) && showAdmin(ctx));
 
-// The whole connection log as a file. Streamed, since it only ever grows.
-on('GET', '/admin/log', ctx => {
+/** A whole log file as a download. Streamed, since logs only ever grow. */
+function sendLogFile(ctx, path, fileName) {
   if (!requireAdmin(ctx)) {
     return;
   }
   ctx.res.writeHead(200, {
     'Content-Type': 'text/plain; charset=utf-8',
-    'Content-Disposition': 'attachment; filename="meshtime.log"',
+    'Content-Disposition': `attachment; filename="${fileName}"`,
     'Cache-Control': 'private, no-store',
   });
-  if (ctx.req.method === 'HEAD' || !existsSync(LOG_PATH)) {
+  if (ctx.req.method === 'HEAD' || !existsSync(path)) {
     return ctx.res.end(); // nothing logged yet: empty file
   }
-  createReadStream(LOG_PATH).pipe(ctx.res);
-});
+  createReadStream(path).pipe(ctx.res);
+}
+
+on('GET', '/admin/log', ctx => sendLogFile(ctx, LOG_PATH, 'meshtime.log'));
+on('GET', '/admin/errors', ctx => sendLogFile(ctx, ERROR_LOG_PATH, 'errors.log'));
 
 on('POST', '/admin/invite', ctx => {
   if (!requireAdmin(ctx)) {
