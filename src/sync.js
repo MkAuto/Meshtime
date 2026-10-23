@@ -87,8 +87,9 @@ export async function fetchCalendar(url) {
   let response;
   try {
     response = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), redirect: 'follow' });
-  } catch {
-    throw new Error('Could not reach that link.');
+  } catch (err) {
+    // the cause (DNS, TLS, timeout...) is kept for errors.log; the member only sees the message
+    throw new Error('Could not reach that link.', { cause: err });
   }
   if (!response.ok) {
     throw new Error(`The calendar answered ${response.status}. Check that the link is the secret iCal address.`);
@@ -112,7 +113,7 @@ export const syncToday = () => wallClock(new Date()).slice(0, 10);
  * is written: a calendar that is down for an hour must not mark every day free.
  */
 export async function syncUser(userId) {
-  const links = all('SELECT id, url, count_free FROM calendar_links WHERE user_id = ?', userId);
+  const links = all('SELECT id, url, count_free, last_error FROM calendar_links WHERE user_id = ?', userId);
   if (links.length === 0) {
     return;
   }
@@ -125,6 +126,12 @@ export async function syncUser(userId) {
       run('UPDATE calendar_links SET last_synced_at = ?, last_error = NULL WHERE id = ?', now(), link.id);
     } catch (err) {
       failed = true;
+      // Only when the error changes: a link that stays broken would otherwise add an entry every hour.
+      // The URL itself is a secret (it reads the member's calendar), so only its host is logged.
+      if (err.message !== link.last_error) {
+        console.warn('Calendar link failed to sync',
+          { linkId: link.id, userId, host: URL.parse(link.url)?.host }, err);
+      }
       run('UPDATE calendar_links SET last_error = ? WHERE id = ?', err.message, link.id);
     }
   }
