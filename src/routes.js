@@ -3,7 +3,7 @@ import * as auth from './auth.js';
 import * as views from './views.js';
 import { logEvent, tailLog, LOG_PATH, ERROR_LOG_PATH } from './log.js';
 import { createReadStream, existsSync } from 'node:fs';
-import { fetchCalendar, syncUser } from './sync.js';
+import { fetchCalendar, syncUser, freePartsAround } from './sync.js';
 import {
   isValidDate, isValidMonth, monthInfo, isValidWeekStart, isValidDateFormat, isValidColor, eventError,
   bestDates, buildIcs, birthdayIn, birthdayRrule, today, randomColor, ANSWERS, MAX_DATES, MIN_PASSWORD, BASE_URL,
@@ -270,15 +270,42 @@ function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
     ? { sql: IN_GROUP, params: [group.id], eventSql: EVENT_IN_GROUP, eventParams: [group.id, group.id] }
     : { sql: VISIBLE_TO_ME, params: [me, me], eventSql: EVENT_VISIBLE_TO_ME, eventParams: [me, me, me, me] };
 
-  // date -> everyone shown who marked themselves free that day, for the initials in each cell,
+  // Every event shown that touches those weeks, including ones that started before or end after them.
+  // All-day ones first.
+  const events = all(`SELECT e.*, u.name AS creator FROM events e
+                      JOIN users u ON u.id = e.created_by
+                      WHERE e.date <= ? AND e.end_date >= ? AND ${audience.eventSql}
+                      ORDER BY e.date, e.start_time IS NOT NULL, e.start_time, e.id`,
+                      gridEnd, gridStart, ...audience.eventParams);
+
+  // A private event this view does not show (another group's) takes up its groups' members: here they are
+  // only free around it, by their Calendar Integration rules. My own days stay as I set them, for the day menu.
+  const shownEventIds = new Set(events.map(event => event.id));
+  const hiddenEvents = new Map(); // user id -> the hidden events they are in
+  for (const row of all(`SELECT DISTINCT e.id, e.title, e.date, e.end_date, e.start_time, e.end_time, m.user_id
+                         FROM events e JOIN event_groups shared ON shared.event_id = e.id
+                         JOIN group_members m ON m.group_id = shared.group_id
+                         WHERE e.is_private = 1 AND e.date <= ? AND e.end_date >= ? AND m.user_id != ?`,
+                         gridEnd, gridStart, me)) {
+    if (!shownEventIds.has(row.id)) {
+      hiddenEvents.set(row.user_id, [...hiddenEvents.get(row.user_id) ?? [], row]);
+    }
+  }
+
+  // date -> everyone shown who is free that day, for the initials in each cell,
   // and date -> which parts of it I am free (['all'], or one or two of 'am' | 'pm' | 'eve')
   const free = new Map();
   const mine = new Map();
-  for (const row of all(`SELECT f.date, f.part, f.part2, f.user_id, u.name, u.color FROM free_days f
-                         JOIN users u ON u.id = f.user_id
+  for (const row of all(`SELECT f.date, f.part, f.part2, f.user_id, u.name, u.color, u.busy_minutes, u.ignore_words
+                         FROM free_days f JOIN users u ON u.id = f.user_id
                          WHERE f.date BETWEEN ? AND ? AND ${audience.sql} ORDER BY u.name`,
                          gridStart, gridEnd, ...audience.params)) {
-    const parts = freeParts(row);
+    const busyWith = (hiddenEvents.get(row.user_id) ?? [])
+      .filter(event => event.date <= row.date && row.date <= event.end_date);
+    const parts = busyWith.length ? freePartsAround(freeParts(row), row.date, busyWith, row) : freeParts(row);
+    if (parts.length === 0) {
+      continue;
+    }
     if (!free.has(row.date)) {
       free.set(row.date, []);
     }
@@ -293,13 +320,6 @@ function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
       .map(row => row.date))
     : null;
 
-  // Every event shown that touches those weeks, including ones that started before or end after them.
-  // All-day ones first.
-  const events = all(`SELECT e.*, u.name AS creator FROM events e
-                      JOIN users u ON u.id = e.created_by
-                      WHERE e.date <= ? AND e.end_date >= ? AND ${audience.eventSql}
-                      ORDER BY e.date, e.start_time IS NOT NULL, e.start_time, e.id`,
-                      gridEnd, gridStart, ...audience.eventParams);
   // a day is "everyone free" at this count
   const members = get(`SELECT COUNT(*) AS n FROM users u WHERE ${audience.sql}`, ...audience.params).n;
   // Birthdays are not events rows: each one is worked out from users.birthday for the months on screen

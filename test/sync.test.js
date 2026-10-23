@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import ical from 'node-ical';
-import { freePartsByDay, withoutFreeEvents } from '../src/sync.js';
+import { freePartsByDay, freePartsAround, withoutFreeEvents } from '../src/sync.js';
 
 // Times are TZID'd in TIME_ZONE (pinned to America/Toronto for tests by test/test.env).
 const calendar = events => ical.sync.parseICS(`BEGIN:VCALENDAR\r\n${events.map(lines => [
@@ -74,4 +74,22 @@ test('withoutFreeEvents: drops the events shown as Free, keeps the Busy ones', (
   const days = freePartsByDay([withoutFreeEvents(both)], '2026-10-03', '2026-10-04');
   assert.deepEqual(days.get('2026-10-03'), ['pm', 'eve']);
   assert.deepEqual(days.get('2026-10-04'), ['all']);
+});
+
+test('freePartsAround: another group\'s events take a member\'s free parts by their Calendar Integration rules', () => {
+  const event = (title, date, start_time = null, end_time = null, end_date = date) =>
+    ({ title, date, end_date, start_time, end_time });
+  const day = '2026-10-05';
+  assert.deepEqual(freePartsAround(['all'], day, [event('Hike', day)]), [], 'all day');
+  assert.deepEqual(freePartsAround(['all'], day, [event('Brunch', day, '10:00', '13:00')]), ['pm', 'eve'],
+    '10:00 to 13:00: 2 h of the morning, 1 of the afternoon');
+  assert.deepEqual(freePartsAround(['am', 'eve'], day, [event('Dinner', day, '19:00')]), ['am'],
+    'no end time: its whole slot');
+  assert.deepEqual(freePartsAround(['all'], day, [event('Late', day, '05:00')]), ['all'], 'before 6:00 is in no part');
+  assert.deepEqual(freePartsAround(['all'], day, [event('Trip', '2026-10-04', '18:00', '09:00', day)]), ['pm', 'eve'],
+    'the day it ends: 3 h of the morning');
+  assert.deepEqual(freePartsAround(['all'], day, [event('Call', day, '09:00', '09:30')], { busy_minutes: 1 }),
+    ['pm', 'eve'], 'Any event');
+  assert.deepEqual(freePartsAround(['all'], day, [event('Gym class', day)], { ignore_words: 'gym' }), ['all'],
+    'ignored title');
 });

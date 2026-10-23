@@ -32,6 +32,62 @@ function wallClockSpan(instance) {
   return [start, instance.end ? toMinutes(wallClock(instance.end)) : start]; // no end: an instant, takes nothing
 }
 
+/** A member's ignore_words as the lowercase words a title is checked for. */
+const ignoredWords = ignoreWords => ignoreWords.toLowerCase().split(',').map(word => word.trim()).filter(Boolean);
+
+/** Busy minutes inside [slotStart, slotEnd): the spans' overlaps added up, time two spans share counted once. */
+function busyMinutes(busy, slotStart, slotEnd) {
+  const inSlot = busy.map(([start, end]) => [Math.max(start, slotStart), Math.min(end, slotEnd)])
+    .filter(([start, end]) => end > start)
+    .sort((a, b) => a[0] - b[0]);
+  let total = 0;
+  let coveredUntil = slotStart;
+  for (const [start, end] of inSlot) {
+    total += Math.max(0, end - Math.max(start, coveredUntil));
+    coveredUntil = Math.max(coveredUntil, end);
+  }
+  return total;
+}
+
+/** The slots of `date` that the busy spans (wall-clock minutes) fill for at least `threshold` minutes. */
+function takenSlots(date, busy, threshold) {
+  const midnight = toMinutes(`${date} 00:00`);
+  return SLOTS.filter(slot => {
+    const [slotStart, slotEnd] = SLOT_HOURS[slot].map(hour => midnight + hour * 60);
+    return busyMinutes(busy, slotStart, slotEnd) >= threshold;
+  });
+}
+
+/** A Meshtime events row as wall-clock minutes like wallClockSpan. A start time with no end takes its whole slot. */
+function eventSpan({ date, end_date: endDate, start_time: startTime, end_time: endTime }) {
+  const midnight = toMinutes(`${date} 00:00`);
+  if (!startTime) {
+    return [midnight, toMinutes(`${addDays(endDate, 1)} 00:00`)];
+  }
+  if (endTime) {
+    return [toMinutes(`${date} ${startTime}`), toMinutes(`${endDate} ${endTime}`)];
+  }
+  // ponytail: "Dinner 19:00" means the evening here, where an iCal feed would read an instant that takes nothing
+  const hour = Number(startTime.slice(0, 2));
+  const hours = Object.values(SLOT_HOURS).find(([from, to]) => from <= hour && hour < to);
+  return hours ? hours.map(slotHour => midnight + slotHour * 60) : [midnight, midnight];
+}
+
+/**
+ * A member's free parts of `date` (['all'] or slots, as free_days holds them) without what Meshtime `events`
+ * take up, by their Calendar Integration rules: busy_minutes and ignore_words. Their always-busy slots are left
+ * out: the day already has them, or the member set it by hand. [] when nothing is left.
+ */
+export function freePartsAround(parts, date, events, {
+  busy_minutes: busyThreshold = DEFAULT_BUSY_MINUTES, ignore_words: ignoreWords = '',
+} = {}) {
+  const words = ignoredWords(ignoreWords);
+  const busy = events.filter(event => !words.some(word => event.title.toLowerCase().includes(word))).map(eventSpan);
+  const taken = takenSlots(date, busy, busyThreshold);
+  const free = (parts.includes('all') ? SLOTS : parts).filter(slot => !taken.includes(slot));
+  return free.length === SLOTS.length ? ['all'] : free;
+}
+
 /**
  * The parsed calendars (node-ical's parseICS output, several are merged) -> Map(date -> free parts) for
  * every day from `fromDate` to `toDate`: ['all'], one or two slots, or [] when every slot is busy.
@@ -41,7 +97,7 @@ function wallClockSpan(instance) {
 export function freePartsByDay(calendars, fromDate, toDate, {
   busy_minutes: busyThreshold = DEFAULT_BUSY_MINUTES, busy_slots: busySlots = '', ignore_words: ignoreWords = '',
 } = {}) {
-  const words = ignoreWords.toLowerCase().split(',').map(word => word.trim()).filter(Boolean);
+  const words = ignoredWords(ignoreWords);
   const alwaysBusy = new Set(busySlots.split(' '));
   // a day either side, so an event crossing a window edge in another timezone is still seen
   const from = new Date(addDays(fromDate, -1) + 'T00:00:00Z');
@@ -63,28 +119,11 @@ export function freePartsByDay(calendars, fromDate, toDate, {
     }
   }
 
-  // busy minutes inside [slotStart, slotEnd): the events' overlaps added up, time two events share counted once
-  const busyMinutes = (slotStart, slotEnd) => {
-    const inSlot = busy.map(([start, end]) => [Math.max(start, slotStart), Math.min(end, slotEnd)])
-      .filter(([start, end]) => end > start)
-      .sort((a, b) => a[0] - b[0]);
-    let total = 0;
-    let coveredUntil = slotStart;
-    for (const [start, end] of inSlot) {
-      total += Math.max(0, end - Math.max(start, coveredUntil));
-      coveredUntil = Math.max(coveredUntil, end);
-    }
-    return total;
-  };
-
   const days = new Map();
   for (let date = fromDate; date <= toDate; date = addDays(date, 1)) {
-    const midnight = toMinutes(`${date} 00:00`);
     const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
-    const freeSlots = SLOTS.filter(slot => {
-      const [slotStart, slotEnd] = SLOT_HOURS[slot].map(hour => midnight + hour * 60);
-      return !alwaysBusy.has(weekday + slot) && busyMinutes(slotStart, slotEnd) < busyThreshold;
-    });
+    const taken = takenSlots(date, busy, busyThreshold);
+    const freeSlots = SLOTS.filter(slot => !alwaysBusy.has(weekday + slot) && !taken.includes(slot));
     days.set(date, freeSlots.length === SLOTS.length ? ['all'] : freeSlots);
   }
   return days;
