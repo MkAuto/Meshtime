@@ -337,3 +337,6 @@ onPasskeyButton('passkey-login', async () => {
   });
   location.href = '/';
 });
+
+// The nav link of the page we are on gets .active (style.css draws it as a pill).
+document.querySelector(`nav a[href="${location.pathname}"]`)?.classList.add('active');
