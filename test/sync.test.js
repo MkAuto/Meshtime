@@ -49,6 +49,23 @@ test('freePartsByDay: weekly repeats, skipped dates and several calendars', () =
   assert.deepEqual(days.get('2026-10-26'), ['all'], 'COUNT=3 ended');
 });
 
+test('freePartsByDay: the member\'s rules: busy threshold, always-busy slots, ignored title words', () => {
+  const events = calendar([
+    ['UID:a', 'SUMMARY:Standup', `DTSTART${at('20261005T090000')}`, `DTEND${at('20261005T093000')}`], // Mon
+    ['UID:b', 'SUMMARY:GYM with Sam', `DTSTART${at('20261006T090000')}`, `DTEND${at('20261006T120000')}`],
+    ['UID:c', `DTSTART${at('20261007T090000')}`, `DTEND${at('20261007T120000')}`],
+  ]);
+  const days = freePartsByDay([events], '2026-10-05', '2026-10-08',
+    { busy_minutes: 1, busy_slots: '4eve', ignore_words: 'lunch, gym' });
+  assert.deepEqual(days.get('2026-10-05'), ['pm', 'eve'], 'Any event: 30 min take the morning');
+  assert.deepEqual(days.get('2026-10-06'), ['all'], 'title contains "gym", any case');
+  assert.deepEqual(days.get('2026-10-07'), ['pm', 'eve'], 'an event without a title is never ignored');
+  assert.deepEqual(days.get('2026-10-08'), ['am', 'pm'], 'Thursday evening is always busy');
+  assert.deepEqual(freePartsByDay([events], '2026-10-05', '2026-10-07').get('2026-10-05'), ['all'], 'default: 2 h');
+  assert.deepEqual(freePartsByDay([events], '2026-10-07', '2026-10-07', { busy_minutes: 360 }).get('2026-10-07'),
+    ['all'], 'Whole slot: 3 h of 6 is not enough');
+});
+
 test('withoutFreeEvents: drops the events shown as Free, keeps the Busy ones', () => {
   const both = calendar([
     ['UID:busy', `DTSTART${at('20261003T090000')}`, `DTEND${at('20261003T110000')}`],

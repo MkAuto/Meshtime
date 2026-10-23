@@ -7,7 +7,7 @@ import { fetchCalendar, syncUser, syncToday } from './sync.js';
 import {
   isValidDate, isValidMonth, monthInfo, isValidWeekStart, isValidDateFormat, isValidColor, eventError,
   bestDates, buildIcs, birthdayIn, birthdayRrule, today, randomColor, ANSWERS, MAX_DATES, MIN_PASSWORD, BASE_URL,
-  RP_ID, SLOTS, MAX_SLOTS_PER_DAY, toggleSlot,
+  RP_ID, SLOTS, MAX_SLOTS_PER_DAY, toggleSlot, isValidBusyMinutes,
 } from './lib.js';
 
 export const routes = [];
@@ -1154,6 +1154,23 @@ on('POST', '/settings/calendars/(?<id>\\d+)/delete', async ctx => {
 on('POST', '/settings/calendars/sync', async ctx => {
   await syncUser(ctx.user.id);
   ctx.redirect('/settings?msg=calendar_synced');
+});
+
+// The Rules form: one per member, for all their calendars; saving works the days out again at once.
+// busy: one checkbox per always-busy "<weekday><slot>" ('1am' = Monday morning); anything else is dropped.
+const BUSY_SLOT = new RegExp(`^[0-6](${SLOTS.join('|')})$`);
+on('POST', '/settings/calendars/rules', async ctx => {
+  const busyMinutes = Number(ctx.body.get('busy_minutes'));
+  if (!isValidBusyMinutes(busyMinutes)) {
+    return showSettings(ctx, { status: 400, errors: { rules: 'Invalid busy threshold.' } });
+  }
+  const busySlots = [...new Set(ctx.body.getAll('busy').filter(value => BUSY_SLOT.test(value)))].sort().join(' ');
+  const ignoreWords = cleanText(ctx.body.get('ignore_words'), 500).split(',')
+    .map(word => word.trim()).filter(Boolean).join(', ');
+  run('UPDATE users SET busy_minutes = ?, busy_slots = ?, ignore_words = ? WHERE id = ?',
+    busyMinutes, busySlots, ignoreWords, ctx.user.id);
+  await syncUser(ctx.user.id);
+  ctx.redirect('/settings?msg=calendar_rules');
 });
 
 // The whole Customisation panel is one form: every value is checked before any is saved.

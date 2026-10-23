@@ -57,7 +57,13 @@ Anyone with the link can read the feed. **Rotate all feed links** in Settings in
 
 ## Calendar Integration
 
-Settings → *Calendar Integration* takes the secret iCal link of your own calendars (Google: Settings → your calendar → *Integrate calendar* → *Secret address in iCal format*; Outlook: *Publish a calendar* → ICS). Several can be connected. Every hour the server reads them and sets each of the next 60 days to the parts no event takes up: morning 6:00–12:00, afternoon 12:00–18:00, evening 18:00–midnight. A part is taken once events cover at least 2 hours of it, added up (`BUSY_HOURS` in `src/lib.js`): 10:00–13:00 leaves the afternoon and evening free, two 1-hour meetings take the morning. A day with no event is free all day, and events shown as *free* in your calendar are ignored. Days you click on the calendar yourself (and the ones already marked when you connect your first calendar) are never changed. Removing your last calendar clears the days it filled in.
+Settings → *Calendar Integration* takes the secret iCal link of your own calendars (Google: Settings → your calendar → *Integrate calendar* → *Secret address in iCal format*; Outlook: *Publish a calendar* → ICS). Several can be connected. Every hour the server reads them and sets each of the next 60 days to the parts no event takes up: morning 6:00–12:00, afternoon 12:00–18:00, evening 18:00–midnight. A part is taken once events cover at least 2 hours of it, added up: 10:00–13:00 leaves the afternoon and evening free, two 1-hour meetings take the morning. A day with no event is free all day, and events shown as *free* in your calendar are ignored. Invitations you decline are not in Google's feed at all, so they never take a part. Days you click on the calendar yourself (and the ones already marked when you connect your first calendar) are never changed. Removing your last calendar clears the days it filled in.
+
+Once a calendar is connected, **Rules** (one set per member, for all their calendars) change how the days are worked out; saving them syncs again at once:
+
+- **A timeframe is busy from**: how much of a part events must fill before it is taken, from *Any event* to *Whole slot (6h)*. 2h by default.
+- **Ignore events whose title contains**: comma-separated words, any case, matched anywhere in the title (`gym` also leaves out "Gymnastics"). Outlook links published as *Availability only* have no titles, so this does nothing for them.
+- **Always busy**: a weekday × morning / afternoon / evening grid, for work hours a work calendar does not show (it holds meetings, not "at work"). For a day off, click the day on the calendar: days set by hand win.
 
 ## Forgot password
 

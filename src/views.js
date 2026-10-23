@@ -5,7 +5,7 @@ import Mustache from 'mustache';
 import packageJson from '../package.json' with { type: 'json' };
 import {
   monthInfo, addDays, SHORT_MONTHS, formatDate, formatTime, formatEventWhen, eventLanes, dayClass, weekdayNames, today, wallClock,
-  BUSY_HOURS, DATE_FORMATS, WEEKDAYS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD, randomColor,
+  BUSY_CHOICES, DEFAULT_BUSY_MINUTES, SLOTS, DATE_FORMATS, WEEKDAYS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD, randomColor,
 } from './lib.js';
 
 // Each page is a Mustache template in src/templates/ (https://mustache.github.io/mustache.5.html).
@@ -64,6 +64,7 @@ const MESSAGES = {
   calendar_removed: 'Calendar removed.',
   calendar_synced: 'Calendars synced.',
   calendar_saved: 'Calendar saved.',
+  calendar_rules: 'Rules saved. Your free days are worked out again with them.',
 };
 
 /** The value the notices partial shows for ?msg=. Form errors are shown under their fields instead. */
@@ -464,7 +465,21 @@ export function settingsPage(user, { base, groups = [], invites = [], calendarLi
     errors,
     memberInvites: Boolean(user.member_invites),
     invites: invites.map(invite => ({ url: `${base}/invite/${invite.token}` })),
-    busyHours: BUSY_HOURS,
+    // Calendar Integration rules (users.busy_minutes, busy_slots, ignore_words; src/sync.js)
+    busyChoices: options(BUSY_CHOICES, user.busy_minutes ?? DEFAULT_BUSY_MINUTES),
+    ignoreWords: user.ignore_words,
+    slotNames: SLOTS.map(slot => slot.toUpperCase()),
+    // Always busy: a row per weekday in my week's order, a checkbox per slot, valued '1am' for Monday morning
+    busyGrid: weekdayNames(user.week_start).map((name, index) => {
+      const day = (user.week_start + index) % 7;
+      const busySlots = (user.busy_slots ?? '').split(' ');
+      return {
+        name,
+        slots: SLOTS.map(slot => ({
+          value: day + slot, label: `${name} ${slot.toUpperCase()}`, checked: busySlots.includes(day + slot),
+        })),
+      };
+    }),
     calendarLinks: calendarLinks.map(link => {
       const synced = link.last_synced_at && wallClock(new Date(link.last_synced_at));
       return {

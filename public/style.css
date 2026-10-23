@@ -184,6 +184,9 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 .panel-admin    { --panel: #fef2f2; --panel-edge: #b91c1c; }
 .panel-invites  { --panel: #fefce8; --panel-edge: #a16207; }
 .panel-integration { --panel: #f0fdfa; --panel-edge: #0f766e; }
+/* Calendar Integration rules: always-busy days × slots */
+.busy-grid th, .busy-grid td { padding: .1rem .6rem; text-align: center; font-weight: normal; }
+.busy-grid tr > th:first-child { text-align: left; }
 .panel-options  { --panel: #f0fdf4; --panel-edge: #15803d; }
 .panel-log      { --panel: #eef2ff; --panel-edge: #4338ca; }
 /* one group on the groups page: stripe and title in the group's own color (member_groups.color) */

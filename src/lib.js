@@ -31,7 +31,11 @@ export const birthdayRrule = birthday =>
   birthday.endsWith('-02-29') ? 'FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-1' : 'FREQ=YEARLY';
 
 export const TIME_ZONE = process.env.TZ || 'UTC';
-export const BUSY_HOURS = 2;
+// Calendar Integration: minutes of events that make a slot busy (users.busy_minutes), as Settings lists them.
+// Every slot is 6 h, so 360 = only when events fill it; 1 = any event at all.
+export const BUSY_CHOICES = [[1, 'Any event'], [60, '1h'], [120, '2h'], [180, '3h'], [240, '4h'], [360, 'Whole slot (6h)']];
+export const DEFAULT_BUSY_MINUTES = 120;
+export const isValidBusyMinutes = value => BUSY_CHOICES.some(([minutes]) => minutes === value);
 const wallClockFormat = new Intl.DateTimeFormat('sv-SE', {
   timeZone: TIME_ZONE, hourCycle: 'h23',
   year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',

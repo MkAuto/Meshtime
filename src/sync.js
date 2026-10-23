@@ -1,11 +1,12 @@
 import ical from 'node-ical';
 import { all, get, run, now, tx } from './db.js';
-import { addDays, wallClock, SLOTS, BUSY_HOURS } from './lib.js';
+import { addDays, wallClock, SLOTS, DEFAULT_BUSY_MINUTES } from './lib.js';
 
 // ---- Calendar Integration: free days worked out from members' own calendars (secret iCal links) ----
 // Every hour (server.js) each member's links are read, and every day from today to SYNC_DAYS ahead gets
-// the parts of it events do not take up (BUSY_HOURS): no event at all = free all day. Days the member set by hand
-// (manual_days, written by POST /free) are never touched.
+// the parts of it events do not take up: no event at all = free all day. The member's rules (Settings) say how much
+// makes a part busy, which parts always are, and which titles to leave out. Days the member set by hand
+// (manual_days, written by POST /free) are never touched. Declined invitations are not in Google's feed at all.
 
 export const SYNC_DAYS = 60;
 const FETCH_TIMEOUT_MS = 10_000;
@@ -35,8 +36,13 @@ function wallClockSpan(instance) {
  * The parsed calendars (node-ical's parseICS output, several are merged) -> Map(date -> free parts) for
  * every day from `fromDate` to `toDate`: ['all'], one or two slots, or [] when every slot is busy.
  * Cancelled events block nothing; events shown as Free are left out beforehand if needed (withoutFreeEvents).
+ * `rules` is the member's users row (busy_minutes, busy_slots, ignore_words); left out, the defaults.
  */
-export function freePartsByDay(calendars, fromDate, toDate) {
+export function freePartsByDay(calendars, fromDate, toDate, {
+  busy_minutes: busyThreshold = DEFAULT_BUSY_MINUTES, busy_slots: busySlots = '', ignore_words: ignoreWords = '',
+} = {}) {
+  const words = ignoreWords.toLowerCase().split(',').map(word => word.trim()).filter(Boolean);
+  const alwaysBusy = new Set(busySlots.split(' '));
   // a day either side, so an event crossing a window edge in another timezone is still seen
   const from = new Date(addDays(fromDate, -1) + 'T00:00:00Z');
   const to = new Date(addDays(toDate, 2) + 'T00:00:00Z');
@@ -47,6 +53,11 @@ export function freePartsByDay(calendars, fromDate, toDate) {
         continue;
       }
       for (const instance of ical.expandRecurringEvent(event, { from, to, expandOngoing: true })) {
+        // the instance's own title: a moved occurrence can be renamed. With LANGUAGE it is { params, val }.
+        const title = String(instance.summary?.val ?? instance.summary ?? '').toLowerCase();
+        if (words.some(word => title.includes(word))) {
+          continue;
+        }
         busy.push(wallClockSpan(instance));
       }
     }
@@ -69,9 +80,10 @@ export function freePartsByDay(calendars, fromDate, toDate) {
   const days = new Map();
   for (let date = fromDate; date <= toDate; date = addDays(date, 1)) {
     const midnight = toMinutes(`${date} 00:00`);
+    const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
     const freeSlots = SLOTS.filter(slot => {
       const [slotStart, slotEnd] = SLOT_HOURS[slot].map(hour => midnight + hour * 60);
-      return busyMinutes(slotStart, slotEnd) < BUSY_HOURS * 60;
+      return !alwaysBusy.has(weekday + slot) && busyMinutes(slotStart, slotEnd) < busyThreshold;
     });
     days.set(date, freeSlots.length === SLOTS.length ? ['all'] : freeSlots);
   }
@@ -114,6 +126,7 @@ export const syncToday = () => wallClock(new Date()).slice(0, 10);
  */
 export async function syncUser(userId) {
   const links = all('SELECT id, url, count_free, last_error FROM calendar_links WHERE user_id = ?', userId);
+  const rules = get('SELECT busy_minutes, busy_slots, ignore_words FROM users WHERE id = ?', userId);
   if (links.length === 0) {
     return;
   }
@@ -140,7 +153,7 @@ export async function syncUser(userId) {
   }
 
   const fromDate = syncToday();
-  const days = freePartsByDay(calendars, fromDate, addDays(fromDate, SYNC_DAYS));
+  const days = freePartsByDay(calendars, fromDate, addDays(fromDate, SYNC_DAYS), rules);
   tx(() => {
     for (const [date, parts] of days) {
       if (get('SELECT 1 FROM manual_days WHERE user_id = ? AND date = ?', userId, date)) {
