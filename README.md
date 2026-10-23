@@ -5,7 +5,7 @@ A small self-hosted web app for a group of friends:
 - **Calendar**: click a day to say you're free (hold it on a phone, or double-click it, for just the morning, afternoon or evening). Everyone's free days are overlaid, and the group can add events: all day or with times, over one day or several, in a color of their choice. Times follow your device's 12 h / 24 h clock.
 - **Groups**: create one and invite members. Members of a group see each other's free days and events even with a private account (Profile), events and polls can be kept private to chosen groups, and the calendar can show one group at a time (*Make default* opens it there). A private event takes up its groups' members: wherever it is not shown (another group, or another group's view) they are free only around it, by each member's Calendar Integration [Rules](#calendar-integration) (busy threshold, ignored words; a start time with no end takes its whole morning, afternoon or evening). An admin can turn groups off: everyone and everything is then shown to everyone, and nothing is lost when they are turned back on.
 - **Polls**: propose a few dates, everyone answers yes / maybe / no. When everyone has answered (or the creator closes it), the best date is shown with an **Add to calendar** button.
-- **Birthdays**: give yours in Profile and it shows on everyone's calendar every year (each member can hide them in Settings).
+- **Birthdays**: give yours in Profile and it shows every year on the calendar of everyone in your groups (everyone's while groups are off; each member can hide them in Settings).
 - **Passkeys**: add one in Profile and log in with a fingerprint, face or device PIN instead of a password.
 - **Calendar feeds**: each member gets private ICS links to subscribe from Google Calendar, Apple Calendar or Outlook. No OAuth, no API keys.
 - **Calendar Integration**: connect the secret iCal link of your own Google, Outlook or iCloud calendar and your free days fill themselves in ([below](#calendar-integration)).
@@ -47,7 +47,7 @@ Environment variables: `BASE_URL` (public https URL, required behind a proxy), `
 
 ## Subscribing to the feeds
 
-Settings → *Calendar feeds* lists one events feed per group you are in (the events created by that group's members, with a *Copy* button; each group's panel on the **Groups** page shows its own too), and the **Birthdays** feed (each member's birthday from their Profile, repeating every year). While groups are off, a single **All events** feed takes the place of the group feeds.
+Settings → *Calendar feeds* lists one events feed per group you are in (the events created by that group's members, with a *Copy* button; each group's panel on the **Groups** page shows its own too), and the **Birthdays** feed (your own and your groups' members' birthdays from their Profile, repeating every year). While groups are off, a single **All events** feed takes the place of the group feeds.
 
 | App | How | Refresh |
 |---|---|---|

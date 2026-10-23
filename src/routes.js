@@ -198,11 +198,15 @@ const GROUPS_OFF = '(SELECT groups_enabled FROM app_settings) = 0';
 // Whose free days a viewer may see: their own, public accounts', and those of anyone sharing a group with them.
 // A public event or poll goes with its creator the same way. For a users table aliased `u`. `viewer` is an SQL
 // expression: '?' to pass a user id (twice), or a column, to ask it for every user at once (a poll's audience).
-const visibleTo = viewer => `(${GROUPS_OFF} OR u.id = ${viewer} OR u.is_private = 0 OR EXISTS (
+const sharesGroupWith = viewer => `EXISTS (
   SELECT 1 FROM group_members theirs JOIN group_members mine ON mine.group_id = theirs.group_id
-  WHERE theirs.user_id = u.id AND mine.user_id = ${viewer}))`;
+  WHERE theirs.user_id = u.id AND mine.user_id = ${viewer})`;
+const visibleTo = viewer => `(${GROUPS_OFF} OR u.id = ${viewer} OR u.is_private = 0 OR ${sharesGroupWith(viewer)})`;
 // Takes my user id twice.
 const VISIBLE_TO_ME = visibleTo('?');
+// Whose birthday I see: my own and those of anyone sharing a group with me; a public account is not enough.
+// Takes my user id twice.
+const BIRTHDAY_VISIBLE_TO_ME = `(${GROUPS_OFF} OR u.id = ? OR ${sharesGroupWith('?')})`;
 // The one-group view: only that group's members, public or not. Takes the group id.
 const IN_GROUP = 'EXISTS (SELECT 1 FROM group_members m WHERE m.group_id = ? AND m.user_id = u.id)';
 
@@ -267,8 +271,10 @@ function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
   const group = calendarGroup(ctx);
   const me = ctx.user.id;
   const audience = group
-    ? { sql: IN_GROUP, params: [group.id], eventSql: EVENT_IN_GROUP, eventParams: [group.id, group.id] }
-    : { sql: VISIBLE_TO_ME, params: [me, me], eventSql: EVENT_VISIBLE_TO_ME, eventParams: [me, me, me, me] };
+    ? { sql: IN_GROUP, params: [group.id], eventSql: EVENT_IN_GROUP, eventParams: [group.id, group.id],
+        birthdaySql: IN_GROUP, birthdayParams: [group.id] }
+    : { sql: VISIBLE_TO_ME, params: [me, me], eventSql: EVENT_VISIBLE_TO_ME, eventParams: [me, me, me, me],
+        birthdaySql: BIRTHDAY_VISIBLE_TO_ME, birthdayParams: [me, me] };
 
   // Every event shown that touches those weeks, including ones that started before or end after them.
   // All-day ones first.
@@ -326,7 +332,8 @@ function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
   // (the weeks shown reach into the months before and after).
   const birthdays = [];
   if (ctx.user.show_birthdays) {
-    for (const member of all('SELECT name, color, birthday FROM users WHERE birthday IS NOT NULL')) {
+    for (const member of all(`SELECT u.name, u.color, u.birthday FROM users u
+                              WHERE u.birthday IS NOT NULL AND ${audience.birthdaySql}`, ...audience.birthdayParams)) {
       for (const shownMonth of [prev, yearMonth, next]) {
         const date = birthdayIn(shownMonth, member.birthday);
         if (date && gridStart <= date && date <= gridEnd) {
@@ -1511,12 +1518,15 @@ on('GET', '/feed/(?<token>[\\w-]+)/events\\.ics', ctx => {
   ctx.text(buildIcs({ name: 'Meshtime · All events', host: new URL(BASE_URL).host, items }), 200, ICS_HEADERS);
 }, true);
 
-// One yearly recurring all-day event per member who gave a birthday, starting on the birthday itself.
+// One yearly recurring all-day event per member who gave a birthday, starting on the birthday itself:
+// the subscriber's own and their groups' members' (BIRTHDAY_VISIBLE_TO_ME).
 on('GET', '/feed/(?<token>[\\w-]+)/birthdays\\.ics', ctx => {
-  if (!get('SELECT 1 FROM users WHERE feed_token = ?', ctx.params.token)) {
+  const viewer = get('SELECT id FROM users WHERE feed_token = ?', ctx.params.token);
+  if (!viewer) {
     return ctx.fail(404, 'Not found.');
   }
-  const items = all('SELECT id, name, birthday, created_at FROM users WHERE birthday IS NOT NULL').map(member => ({
+  const items = all(`SELECT u.id, u.name, u.birthday, u.created_at FROM users u
+                     WHERE u.birthday IS NOT NULL AND ${BIRTHDAY_VISIBLE_TO_ME}`, viewer.id, viewer.id).map(member => ({
     uid: 'birthday-' + member.id,
     date: member.birthday,
     rrule: birthdayRrule(member.birthday),
