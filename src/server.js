@@ -143,8 +143,12 @@ async function handle(req, res) {
       ctx.body = await readBody(req);
     }
 
-    ctx.sid = parseCookies(req).sid || null;
+    const cookies = parseCookies(req);
+    ctx.sid = cookies.sid || null;
     ctx.user = userFromSession(ctx.sid) || null;
+    if (ctx.user) {
+      ctx.user.hour12 = cookies.hour12 === '1'; // the device's clock, set by app.js: pages write times like it
+    }
     if (ctx.sid && !ctx.user) {
       // A cookie with no live session: it expired, or a password change logged this device out.
       // Log it once, then clear the cookie so the next request does not log it again.

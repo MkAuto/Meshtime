@@ -20,7 +20,9 @@
     <nav id="menu" popover>
       <a href="/">Calendar</a>
       <a href="/polls">Polls</a>
+      {{#groupsEnabled}}
       <a href="/groups">Groups{{#pending_invites}} ({{pending_invites}}){{/pending_invites}}</a>
+      {{/groupsEnabled}}
       <a href="/profile">Profile</a>
       <a href="/settings">Settings</a>
       {{#is_admin}}

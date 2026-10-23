@@ -201,6 +201,9 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
   font-size: .75rem;
 }
 .day.pad { background: none; border: none; }
+/* continuous calendar: the days of the months before and after, still usable but stepped back */
+.day.outside { background: none; }
+.day.outside .num { color: var(--muted); font-weight: 400; }
 .day.today { border-color: var(--accent); }
 /* the button is the whole cell: grid on every wrapper stretches it edge to edge, no fixed heights.
    Each day spans two rows of .grid (head, events, see calendar.html) and passes them down as a

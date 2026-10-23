@@ -17,6 +17,8 @@
       <input type="range" name="color" class="hue" min="0" max="{{maxColor}}" value="{{color}}" aria-label="Color">
     </div>
     {{#errors.color}}<p class="err">{{errors.color}}</p>{{/errors.color}}
+    {{! Groups off (Administration → Options): everyone is public, there is nothing to choose. }}
+    {{#groupsEnabled}}
     <h3>Account</h3>
     <div class="row">
       <label><input type="radio" name="privacy" value="private" {{#isPrivate}}checked{{/isPrivate}}> Private</label>
@@ -24,6 +26,7 @@
     </div>
     <p class="hint">In private mode, only group members can see your free time slots and events.</p>
     {{#errors.privacy}}<p class="err">{{errors.privacy}}</p>{{/errors.privacy}}
+    {{/groupsEnabled}}
     <p><button>Save</button></p>
   </form>
 </details>

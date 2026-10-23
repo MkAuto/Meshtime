@@ -5,7 +5,7 @@ import { logEvent, tailLog, LOG_PATH, ERROR_LOG_PATH } from './log.js';
 import { createReadStream, existsSync } from 'node:fs';
 import { fetchCalendar, syncUser, syncToday } from './sync.js';
 import {
-  isValidDate, isValidMonth, isValidWeekStart, isValidDateFormat, isValidColor, eventError,
+  isValidDate, isValidMonth, monthInfo, isValidWeekStart, isValidDateFormat, isValidColor, eventError,
   bestDates, buildIcs, birthdayIn, birthdayRrule, today, randomColor, ANSWERS, MAX_DATES, MIN_PASSWORD, BASE_URL,
   RP_ID, SLOTS, MAX_SLOTS_PER_DAY, toggleSlot,
 } from './lib.js';
@@ -41,6 +41,9 @@ const backToMonth = ctx => {
 
 const TOO_MANY = 'Too many attempts. Try again in 15 minutes.';
 const BANNED = 'banned (too many attempts)'; // the log's name for a login the rate limit refused
+
+/** Is the groups feature on (Administration → Options)? For routes with no logged-in ctx.user to ask. */
+const groupsEnabled = () => Boolean(get('SELECT groups_enabled FROM app_settings').groups_enabled);
 
 /** Logs an action done by the logged-in member. */
 const logUser = (ctx, action) => logEvent({ ip: ctx.ip, user: ctx.user.name, known: true, action });
@@ -175,9 +178,11 @@ on('POST', '/invite/(?<token>[\\w-]+)', async ctx => {
       auth.deleteUserCredentials(invite.user_id);
       return invite.user_id;
     }
-    return run(`INSERT INTO users(name, password_hash, feed_token, is_admin, created_at, color)
-                VALUES (?,?,?,?,?,?)`,
-      name, passwordHash, auth.token(), invite.is_admin, now(), randomColor()).lastInsertRowid;
+    // Joining while groups are off: public, like every event and poll made then (there is no choice to make).
+    return run(`INSERT INTO users(name, password_hash, feed_token, is_admin, created_at, color, is_private)
+                VALUES (?,?,?,?,?,?,?)`,
+      name, passwordHash, auth.token(), invite.is_admin, now(), randomColor(), groupsEnabled() ? 1 : 0)
+      .lastInsertRowid;
   });
   logEvent({ ip: ctx.ip, user: isReset ? invite.user_name : name, known: true,
     action: isReset ? 'password reset by link' : `account created by invite${invite.is_admin ? ' (admin)' : ''}` });
@@ -186,10 +191,14 @@ on('POST', '/invite/(?<token>[\\w-]+)', async ctx => {
 
 // ---- calendar ----
 
+// While an admin has groups turned off (Administration → Options) everyone and everything is seen as public.
+// The private flags and group shares are left as they are, so turning groups back on brings them back.
+const GROUPS_OFF = '(SELECT groups_enabled FROM app_settings) = 0';
+
 // Whose free days a viewer may see: their own, public accounts', and those of anyone sharing a group with them.
 // A public event or poll goes with its creator the same way. For a users table aliased `u`. `viewer` is an SQL
 // expression: '?' to pass a user id (twice), or a column, to ask it for every user at once (a poll's audience).
-const visibleTo = viewer => `(u.id = ${viewer} OR u.is_private = 0 OR EXISTS (
+const visibleTo = viewer => `(${GROUPS_OFF} OR u.id = ${viewer} OR u.is_private = 0 OR EXISTS (
   SELECT 1 FROM group_members theirs JOIN group_members mine ON mine.group_id = theirs.group_id
   WHERE theirs.user_id = u.id AND mine.user_id = ${viewer}))`;
 // Takes my user id twice.
@@ -200,7 +209,7 @@ const IN_GROUP = 'EXISTS (SELECT 1 FROM group_members m WHERE m.group_id = ? AND
 // Events, for events `e` joined to their creator `u`. A public event (is_private = 0) is seen by everyone
 // who sees its creator; a private one only by its creator and the members of the groups it is shared with.
 // Takes my user id four times.
-const EVENT_VISIBLE_TO_ME = `(e.created_by = ? OR (e.is_private = 0 AND ${VISIBLE_TO_ME}) OR EXISTS (
+const EVENT_VISIBLE_TO_ME = `(${GROUPS_OFF} OR e.created_by = ? OR (e.is_private = 0 AND ${VISIBLE_TO_ME}) OR EXISTS (
   SELECT 1 FROM event_groups shared JOIN group_members mine ON mine.group_id = shared.group_id
   WHERE shared.event_id = e.id AND mine.user_id = ?))`;
 // One group's events (its view on the calendar, and its feed): its members' public events, and the private
@@ -210,7 +219,7 @@ const EVENT_IN_GROUP = `(${IN_GROUP} AND (e.is_private = 0 OR EXISTS (
 
 // Polls, for polls `p` joined to their creator `u`: the same rule as events, with poll_groups.
 // `viewer` as in visibleTo: '?' takes the user id four times.
-const pollVisibleTo = viewer => `(p.created_by = ${viewer} OR (p.is_private = 0 AND ${visibleTo(viewer)}) OR EXISTS (
+const pollVisibleTo = viewer => `(${GROUPS_OFF} OR p.created_by = ${viewer} OR (p.is_private = 0 AND ${visibleTo(viewer)}) OR EXISTS (
   SELECT 1 FROM poll_groups shared JOIN group_members mine ON mine.group_id = shared.group_id
   WHERE shared.poll_id = p.id AND mine.user_id = ${viewer}))`;
 
@@ -223,9 +232,12 @@ const myGroups = userId => all(`SELECT g.* FROM member_groups g
  * The group the calendar shows on its own (?g= on a page, a posted g from its forms), or null for
  * "everyone I can see". A page opened with no g at all shows my default group (users.default_group_id);
  * an empty g is an explicit "everyone". A group I am not in is ignored, so a stale or guessed id shows
- * nothing extra, and a default group I have since left falls back to everyone.
+ * nothing extra, and a default group I have since left falls back to everyone. Groups off: always everyone.
  */
 function calendarGroup(ctx) {
+  if (!ctx.user.groups_enabled) {
+    return null; // groups are off (Administration → Options): always everyone
+  }
   let requested;
   if (ctx.body) {
     requested = ctx.body.get('g');
@@ -247,7 +259,9 @@ const freeParts = row => (row.part2 ? [row.part, row.part2] : [row.part]);
 
 /** Draws one month of the calendar. `error` goes under the month title (a rejected /free). */
 function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
-  const inMonth = yearMonth + '-%'; // dates are 'YYYY-MM-DD' strings, so LIKE is enough
+  // Every day of the weeks the month touches, so the continuous calendar can fill its first and last weeks
+  // with the months around it. ISO dates compare as strings.
+  const { gridStart, gridEnd, prev, next } = monthInfo(yearMonth, ctx.user.week_start);
   // Whose free days and events are drawn, and who "everyone" is for the green days: one group, or
   // everyone I can see. Events follow their creator too, unless they are private (see EVENT_VISIBLE_TO_ME).
   const group = calendarGroup(ctx);
@@ -262,7 +276,8 @@ function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
   const mine = new Map();
   for (const row of all(`SELECT f.date, f.part, f.part2, f.user_id, u.name, u.color FROM free_days f
                          JOIN users u ON u.id = f.user_id
-                         WHERE f.date LIKE ? AND ${audience.sql} ORDER BY u.name`, inMonth, ...audience.params)) {
+                         WHERE f.date BETWEEN ? AND ? AND ${audience.sql} ORDER BY u.name`,
+                         gridStart, gridEnd, ...audience.params)) {
     const parts = freeParts(row);
     if (!free.has(row.date)) {
       free.set(row.date, []);
@@ -273,19 +288,28 @@ function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
     }
   }
 
-  // Every event shown that touches this month, including ones that started before or end after it.
-  // ISO dates compare as strings, and '-31' is past the last day of any month. All-day ones first.
+  // Every event shown that touches those weeks, including ones that started before or end after them.
+  // All-day ones first.
   const events = all(`SELECT e.*, u.name AS creator FROM events e
                       JOIN users u ON u.id = e.created_by
                       WHERE e.date <= ? AND e.end_date >= ? AND ${audience.eventSql}
                       ORDER BY e.date, e.start_time IS NOT NULL, e.start_time, e.id`,
-                      yearMonth + '-31', yearMonth + '-01', ...audience.eventParams);
+                      gridEnd, gridStart, ...audience.eventParams);
   // a day is "everyone free" at this count
   const members = get(`SELECT COUNT(*) AS n FROM users u WHERE ${audience.sql}`, ...audience.params).n;
-  // Birthdays are not events rows: each one is worked out from users.birthday for the month shown.
-  const birthdays = ctx.user.show_birthdays ? all('SELECT name, color, birthday FROM users WHERE birthday IS NOT NULL')
-    .map(member => ({ name: member.name, color: member.color, date: birthdayIn(yearMonth, member.birthday) }))
-    .filter(member => member.date) : [];
+  // Birthdays are not events rows: each one is worked out from users.birthday for the months on screen
+  // (the weeks shown reach into the months before and after).
+  const birthdays = [];
+  if (ctx.user.show_birthdays) {
+    for (const member of all('SELECT name, color, birthday FROM users WHERE birthday IS NOT NULL')) {
+      for (const shownMonth of [prev, yearMonth, next]) {
+        const date = birthdayIn(shownMonth, member.birthday);
+        if (date && gridStart <= date && date <= gridEnd) {
+          birthdays.push({ name: member.name, color: member.color, date });
+        }
+      }
+    }
+  }
 
   ctx.html(views.calendarPage(ctx.user, yearMonth, {
     free, mine, events, birthdays, today: today(), members, error, group, groups: myGroups(ctx.user.id),
@@ -354,8 +378,13 @@ on('POST', '/free', ctx => {
  * The "Who sees it" fields of the event and poll forms (templates/share-with.html): { isPrivate, groupIds, error }.
  * A private event or poll needs at least one group, and only groups of its creator (`creatorGroups`) count:
  * any other id is dropped. A public one is shared with no group. `what` names it in the error.
+ * While groups are off the form has no Who sees it: a new one is public, and one being changed keeps `current`
+ * (its saved choice) for when groups are turned back on.
  */
-function readSharing(ctx, creatorGroups, what) {
+function readSharing(ctx, creatorGroups, what, current = { isPrivate: 0, groupIds: [] }) {
+  if (!ctx.user.groups_enabled) {
+    return current;
+  }
   const visibility = ctx.body.get('visibility');
   const postedGroupIds = ctx.body.getAll('group_ids').map(Number);
   if (visibility !== 'public' && visibility !== 'private') {
@@ -393,12 +422,13 @@ const sharedGroupIds = (kind, id) =>
  * The event form, in the shape of an events row so a rejected form re-renders with what was typed.
  * The optional fields arrive as '' when left empty: those become NULL (end_date: the start date).
  * `creatorGroups` are the groups of the event's creator: a private event can only be shared with those.
+ * `currentSharing`: an edited event's saved Who sees it, kept while groups are off (readSharing).
  */
-function readEventForm(ctx, creatorGroups) {
+function readEventForm(ctx, creatorGroups, currentSharing) {
   const colorText = ctx.body.get('color') || '';
   // The time inputs are only hidden when "All day" is ticked, so the browser still sends them: drop them.
   const allDay = ctx.body.get('all_day') === '1';
-  const sharing = readSharing(ctx, creatorGroups, 'event');
+  const sharing = readSharing(ctx, creatorGroups, 'event', currentSharing);
   const event = {
     title: cleanText(ctx.body.get('title'), 100),
     date: ctx.body.get('date') || '',
@@ -487,7 +517,8 @@ on('POST', '/events/(?<id>\\d+)', ctx => {
     return;
   }
   const groups = myGroups(existing.created_by);
-  const { event, errors } = readEventForm(ctx, groups);
+  const { event, errors } = readEventForm(ctx, groups,
+    { isPrivate: existing.is_private, groupIds: sharedGroupIds('event', existing.id) });
   event.id = existing.id;
   if (hasErrors(errors)) {
     return ctx.html(views.eventPage(ctx.user, { event, errors, groups }), 400);
@@ -676,7 +707,8 @@ on('POST', '/polls/(?<id>\\d+)/visibility', ctx => {
   if (!managesPoll(ctx.user, data.poll)) {
     return ctx.fail(403, 'Only its creator or an admin can change who sees this poll.');
   }
-  const sharing = readSharing(ctx, data.creatorGroups, 'poll');
+  const sharing = readSharing(ctx, data.creatorGroups, 'poll',
+    { isPrivate: data.poll.is_private, groupIds: data.groupIds });
   if (sharing.error) {
     const posted = { ...data, poll: { ...data.poll, is_private: sharing.isPrivate }, groupIds: sharing.groupIds };
     return rejectPoll(ctx, posted, 400, { visibility: sharing.error });
@@ -723,6 +755,15 @@ on('POST', '/polls/(?<id>\\d+)/confirm', ctx => {
 });
 
 // ---- groups: sharing one lets private members see each other's free days ----
+
+// Registers a /groups route: while an admin has groups turned off they answer 404, like a page that is not there.
+const onGroups = (method, path, handler) => on(method, path, ctx => {
+  if (!ctx.user.groups_enabled) {
+    return ctx.fail(404, 'Groups are turned off.');
+  }
+  return handler(ctx);
+});
+
 // Any member can invite; the invited member accepts or declines. Its creator and admins in it manage it
 // (rename, remove members, cancel invites, delete). Admins can also add a member directly, no invite.
 
@@ -854,9 +895,9 @@ function invitee(ctx, group) {
 
 const GROUP_NAME_MAX = 40;
 
-on('GET', '/groups', ctx => showGroups(ctx));
+onGroups('GET', '/groups', ctx => showGroups(ctx));
 
-on('POST', '/groups', ctx => {
+onGroups('POST', '/groups', ctx => {
   const name = cleanText(ctx.body.get('name'), GROUP_NAME_MAX);
   if (!name) {
     return showGroups(ctx, { status: 400, errors: { create: 'A group needs a name.' } });
@@ -873,7 +914,7 @@ on('POST', '/groups', ctx => {
   ctx.redirect('/groups?msg=group_created');
 });
 
-on('POST', '/groups/(?<id>\\d+)/invite', ctx => {
+onGroups('POST', '/groups/(?<id>\\d+)/invite', ctx => {
   const group = groupForMember(ctx);
   if (!group) {
     return;
@@ -890,7 +931,7 @@ on('POST', '/groups/(?<id>\\d+)/invite', ctx => {
 });
 
 // Admins skip the invite: the member is in at once (and any invite waiting for them is spent).
-on('POST', '/groups/(?<id>\\d+)/add', ctx => {
+onGroups('POST', '/groups/(?<id>\\d+)/add', ctx => {
   const group = groupForMember(ctx);
   if (!group) {
     return;
@@ -911,7 +952,7 @@ on('POST', '/groups/(?<id>\\d+)/add', ctx => {
 });
 
 // Answering an invite: only the invited member can, so the lookup is by my id, not a membership.
-on('POST', '/groups/(?<id>\\d+)/(?<answer>accept|decline)', ctx => {
+onGroups('POST', '/groups/(?<id>\\d+)/(?<answer>accept|decline)', ctx => {
   const groupId = Number(ctx.params.id);
   const group = get(`SELECT g.* FROM group_invites i JOIN member_groups g ON g.id = i.group_id
                      WHERE i.group_id = ? AND i.user_id = ?`, groupId, ctx.user.id);
@@ -930,7 +971,7 @@ on('POST', '/groups/(?<id>\\d+)/(?<answer>accept|decline)', ctx => {
 });
 
 // The last one out deletes the group: nobody would be left to see it or manage it.
-on('POST', '/groups/(?<id>\\d+)/leave', ctx => {
+onGroups('POST', '/groups/(?<id>\\d+)/leave', ctx => {
   const group = groupForMember(ctx);
   if (!group) {
     return;
@@ -944,7 +985,7 @@ on('POST', '/groups/(?<id>\\d+)/leave', ctx => {
   ctx.redirect('/groups?msg=left');
 });
 
-on('POST', '/groups/(?<id>\\d+)/rename', ctx => {
+onGroups('POST', '/groups/(?<id>\\d+)/rename', ctx => {
   const group = groupForManager(ctx);
   if (!group) {
     return;
@@ -958,7 +999,7 @@ on('POST', '/groups/(?<id>\\d+)/rename', ctx => {
 });
 
 // Removing yourself is what Leave is for, so a manager can only remove the others.
-on('POST', '/groups/(?<id>\\d+)/members/(?<userId>\\d+)/remove', ctx => {
+onGroups('POST', '/groups/(?<id>\\d+)/members/(?<userId>\\d+)/remove', ctx => {
   const group = groupForManager(ctx);
   if (!group) {
     return;
@@ -980,7 +1021,7 @@ on('POST', '/groups/(?<id>\\d+)/members/(?<userId>\\d+)/remove', ctx => {
   ctx.redirect('/groups?msg=member_removed');
 });
 
-on('POST', '/groups/(?<id>\\d+)/invites/(?<userId>\\d+)/cancel', ctx => {
+onGroups('POST', '/groups/(?<id>\\d+)/invites/(?<userId>\\d+)/cancel', ctx => {
   const group = groupForManager(ctx);
   if (!group) {
     return;
@@ -990,7 +1031,7 @@ on('POST', '/groups/(?<id>\\d+)/invites/(?<userId>\\d+)/cancel', ctx => {
 });
 
 // ON DELETE CASCADE takes its members and pending invites with it.
-on('POST', '/groups/(?<id>\\d+)/delete', ctx => {
+onGroups('POST', '/groups/(?<id>\\d+)/delete', ctx => {
   const group = groupForManager(ctx);
   if (!group) {
     return;
@@ -1122,6 +1163,7 @@ on('POST', '/settings/customisation', ctx => {
   const showBirthdays = ctx.body.get('show_birthdays') === '1' ? 1 : 0; // an unchecked checkbox posts nothing: hide
   const hideFreeBorder = ctx.body.get('hide_free_border') === '1' ? 1 : 0; // unchecked: keep the border
   const hideOwnInitials = ctx.body.get('hide_own_initials') === '1' ? 1 : 0; // unchecked: show my initials
+  const continuousCalendar = ctx.body.get('continuous_calendar') === '1' ? 1 : 0; // unchecked: blank cells
   const errors = {};
   if (!isValidWeekStart(weekStart)) {
     errors.weekStart = 'Invalid first day of the week.';
@@ -1133,8 +1175,8 @@ on('POST', '/settings/customisation', ctx => {
     return showSettings(ctx, { status: 400, errors });
   }
   run('UPDATE users SET week_start = ?, date_format = ?, show_birthdays = ?, hide_free_border = ?, '
-    + 'hide_own_initials = ? WHERE id = ?',
-    weekStart, dateFormat, showBirthdays, hideFreeBorder, hideOwnInitials, ctx.user.id);
+    + 'hide_own_initials = ?, continuous_calendar = ? WHERE id = ?',
+    weekStart, dateFormat, showBirthdays, hideFreeBorder, hideOwnInitials, continuousCalendar, ctx.user.id);
   ctx.redirect('/settings?msg=customisation');
 });
 
@@ -1176,10 +1218,11 @@ on('POST', '/profile/about', ctx => {
   if (!isValidColor(color)) {
     errors.color = 'Invalid color.';
   }
-  if (privacy !== 'private' && privacy !== 'public') {
+  // Groups off: the page has no Account choice, and the saved one is kept for when groups come back.
+  if (ctx.user.groups_enabled && privacy !== 'private' && privacy !== 'public') {
     errors.privacy = 'Pick private or public.';
   }
-  const isPrivate = privacy === 'public' ? 0 : 1;
+  const isPrivate = ctx.user.groups_enabled ? (privacy === 'public' ? 0 : 1) : ctx.user.is_private;
   if (hasErrors(errors)) {
     // An invalid color cannot be drawn, so the slider goes back to the saved one.
     const about = { name, birthday, color: errors.color ? ctx.user.color : color, is_private: isPrivate };
@@ -1312,8 +1355,14 @@ on('POST', '/admin/options', ctx => {
     return;
   }
   const memberInvites = ctx.body.get('member_invites') === '1' ? 1 : 0;
+  // A hidden groups_enabled=0 comes before the checkbox (admin.html), so the field is always posted. A form
+  // without it (an admin page left open over an update) leaves groups as they are instead of turning them off.
+  const groupsOn = ctx.body.has('groups_enabled')
+    ? (ctx.body.getAll('groups_enabled').includes('1') ? 1 : 0)
+    : ctx.user.groups_enabled;
   tx(() => {
-    run('UPDATE app_settings SET member_invites = ?', memberInvites);
+    // Nothing else changes: while groups are off, GROUPS_OFF shows everyone and everything as public.
+    run('UPDATE app_settings SET member_invites = ?, groups_enabled = ?', memberInvites, groupsOn);
     if (!memberInvites) {
       // Turning it off takes effect now: the links members made and nobody used yet stop working too.
       run(`DELETE FROM invites WHERE used_at IS NULL AND user_id IS NULL
@@ -1321,6 +1370,9 @@ on('POST', '/admin/options', ctx => {
     }
   });
   logUser(ctx, `admin: member invite links turned ${memberInvites ? 'on' : 'off'}`);
+  if (groupsOn !== ctx.user.groups_enabled) {
+    logUser(ctx, `admin: groups turned ${groupsOn ? 'on' : 'off'}`);
+  }
   ctx.redirect('/admin?msg=options');
 });
 
@@ -1362,6 +1414,9 @@ const ICS_HEADERS = { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Con
 // One feed per group: its members' public events and the private ones shared with it; nobody else's.
 // The token is the subscriber's own, so the link dies when they leave the group or rotate their links.
 on('GET', '/feed/(?<token>[\\w-]+)/groups/(?<id>\\d+)\\.ics', ctx => {
+  if (!groupsEnabled()) {
+    return ctx.fail(404, 'Not found.');
+  }
   const group = get(`SELECT g.id, g.name FROM users u
                      JOIN group_members m ON m.user_id = u.id
                      JOIN member_groups g ON g.id = m.group_id
@@ -1384,6 +1439,25 @@ on('GET', '/feed/(?<token>[\\w-]+)/groups/(?<id>\\d+)\\.ics', ctx => {
   }));
 
   ctx.text(buildIcs({ name: `Meshtime · ${group.name}`, host, items }), 200, ICS_HEADERS);
+}, true);
+
+// Every event, in one feed: only while groups are off (Administration → Options), when there are no group
+// feeds and everything is public. With groups on it answers 404, so it can never leak a private event.
+on('GET', '/feed/(?<token>[\\w-]+)/events\\.ics', ctx => {
+  if (groupsEnabled() || !get('SELECT 1 FROM users WHERE feed_token = ?', ctx.params.token)) {
+    return ctx.fail(404, 'Not found.');
+  }
+  // GROUPS_OFF is already true here; kept so the feed stays safe on its own
+  const items = all(`SELECT * FROM events WHERE ${GROUPS_OFF}`).map(event => ({
+    uid: 'event-' + event.id,
+    date: event.date,
+    endDate: event.end_date,
+    startTime: event.start_time,
+    endTime: event.end_time,
+    summary: event.title,
+    stamp: event.created_at,
+  }));
+  ctx.text(buildIcs({ name: 'Meshtime · All events', host: new URL(BASE_URL).host, items }), 200, ICS_HEADERS);
 }, true);
 
 // One yearly recurring all-day event per member who gave a birthday, starting on the birthday itself.
