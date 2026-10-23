@@ -2,13 +2,15 @@
 
 A small self-hosted web app for a group of friends:
 
-- **Calendar**: click a day to say you're free (hold it on a phone, or double-click it, for just the morning, afternoon or evening). Everyone's free days are overlaid, and the group can add events: all day or with times, over one day or several, in a color of their choice.
+- **Calendar**: click a day to say you're free (hold it on a phone, or double-click it, for just the morning, afternoon or evening). Everyone's free days are overlaid, and the group can add events: all day or with times, over one day or several, in a color of their choice. Times follow your device's 12 h / 24 h clock.
+- **Groups**: create one and invite members. Members of a group see each other's free days and events even with a private account (Profile), events and polls can be kept private to chosen groups, and the calendar can show one group at a time (*Make default* opens it there). An admin can turn groups off: everyone and everything is then shown to everyone, and nothing is lost when they are turned back on.
 - **Polls**: propose a few dates, everyone answers yes / maybe / no. When everyone has answered (or the creator closes it), the best date is shown with an **Add to calendar** button.
 - **Birthdays**: give yours in Profile and it shows on everyone's calendar every year (each member can hide them in Settings).
 - **Passkeys**: add one in Profile and log in with a fingerprint, face or device PIN instead of a password.
 - **Calendar feeds**: each member gets private ICS links to subscribe from Google Calendar, Apple Calendar or Outlook. No OAuth, no API keys.
+- **Calendar Integration**: connect the secret iCal link of your own Google, Outlook or iCloud calendar and your free days fill themselves in ([below](#calendar-integration)).
 
-One npm dependency, [`mustache`](https://github.com/janl/mustache.js) for the HTML templates in `src/templates/`. Everything else is Node built-ins (`node:http`, `node:sqlite`, `node:crypto`), passkeys included.
+Two npm dependencies: [`mustache`](https://github.com/janl/mustache.js) for the HTML templates in `src/templates/`, and [`node-ical`](https://github.com/jens-maus/node-ical) to read the calendars connected in Calendar Integration, repeating events included. Everything else is Node built-ins (`node:http`, `node:sqlite`, `node:crypto`), passkeys included.
 
 ## Run locally
 
@@ -18,10 +20,10 @@ npm install      # once, and again after pulling a change to package.json
 npm start        # http://localhost:3000, database in ./data/app.db
 ```
 
-On first start the console prints a one-time **admin invite link**. Open it, pick a name and password. Then go to **Administration → Create invite link** to invite friends (links last 7 days, single use). The Administration page is only shown to admins; Profile holds your name, birthday, color, password and passkeys; Settings holds calendar feeds and display preferences.
+On first start the console prints a one-time **admin invite link**. Open it, pick a name and password. Then go to **Administration → Create invite link** to invite friends (links last 7 days, single use). The Administration page is only shown to admins: members, invite links, *Options* (groups on / off, members may create invite links) and the logs to download. Profile holds your name, birthday, color, private / public, password and passkeys; Settings holds display preferences (*Customisation*), Calendar Integration, calendar feeds, and invite links while an admin allows members to create them.
 
 ```sh
-npm test         # unit tests: date and event validation, poll ranking, ICS output, passkey verification, page rendering
+npm test         # date and event validation, poll ranking, ICS output, passkey verification, Calendar Integration, groups, logs, page rendering
 ```
 
 ## Deploy with Docker + HTTPS
@@ -34,18 +36,18 @@ docker compose up -d --build
 docker compose logs app     # shows the first admin invite link
 ```
 
-The SQLite database lives in the `data` volume. Back it up with:
+The SQLite database lives in the `data` volume, next to `meshtime.log` and `errors.log` (both downloadable from Administration). Back the database up with:
 
 ```sh
 docker compose exec app node -e "new (require('node:sqlite').DatabaseSync)('/data/app.db').exec(\"VACUUM INTO '/data/backup.db'\")"
 docker compose cp app:/data/backup.db ./backup.db
 ```
 
-Environment variables: `BASE_URL` (public https URL, required behind a proxy), `DB_PATH`, `PORT`, `NODE_ENV=production` (sets the `Secure` cookie flag), `TZ` (the zone Calendar Integration reads event times in, default `UTC`).
+Environment variables: `BASE_URL` (public https URL, required behind a proxy), `DB_PATH`, `PORT`, `NODE_ENV=production` (sets the `Secure` cookie flag), `TZ` (the server's time zone, default `UTC`: which date is today, the zone Calendar Integration reads event times in, and the one the logs are written in).
 
 ## Subscribing to the feeds
 
-Settings → *Calendar feeds* lists one events feed per group you are in (the events created by that group's members, with a *Copy* button; each group's panel on the **Groups** page shows its own too), and the **Birthdays** feed (each member's birthday from their Profile, repeating every year).
+Settings → *Calendar feeds* lists one events feed per group you are in (the events created by that group's members, with a *Copy* button; each group's panel on the **Groups** page shows its own too), and the **Birthdays** feed (each member's birthday from their Profile, repeating every year). While groups are off, a single **All events** feed takes the place of the group feeds.
 
 | App | How | Refresh |
 |---|---|---|
@@ -57,7 +59,13 @@ Anyone with the link can read the feed. **Rotate all feed links** in Settings in
 
 ## Calendar Integration
 
-Settings → *Calendar Integration* takes the secret iCal link of your own calendars (Google: Settings → your calendar → *Integrate calendar* → *Secret address in iCal format*; Outlook: *Publish a calendar* → ICS). Several can be connected. Every hour the server reads them and sets each of the next 60 days to the parts no event takes up: morning 6:00–12:00, afternoon 12:00–18:00, evening 18:00–midnight. A part is taken once events cover at least 2 hours of it, added up (`BUSY_HOURS` in `src/lib.js`): 10:00–13:00 leaves the afternoon and evening free, two 1-hour meetings take the morning. A day with no event is free all day, and events shown as *free* in your calendar are ignored. Days you click on the calendar yourself (and the ones already marked when you connect your first calendar) are never changed. Removing your last calendar clears the days it filled in.
+Settings → *Calendar Integration* takes the secret iCal link of your own calendars (Google: Settings → your calendar → *Integrate calendar* → *Secret address in iCal format*; Outlook: *Publish a calendar* → ICS). Several can be connected. Every hour the server reads them and sets each of the next 60 days to the parts no event takes up: morning 6:00–12:00, afternoon 12:00–18:00, evening 18:00–midnight. A part is taken once events cover at least 2 hours of it, added up: 10:00–13:00 leaves the afternoon and evening free, two 1-hour meetings take the morning. A day with no event is free all day, and events shown as *free* in your calendar are ignored. Invitations you decline are not in Google's feed at all, so they never take a part. Days you click on the calendar yourself (and the ones already marked when you connect your first calendar) are never changed, until you pick **Automatic** in that day's menu (hold or double-click it): the calendar decides it again from the next sync, at once for the next 60 days. The menu highlights Automatic on the days the calendar decides. Removing your last calendar clears the days it filled in.
+
+Once a calendar is connected, **Rules** (one set per member, for all their calendars) change how the days are worked out; saving them syncs again at once:
+
+- **A timeframe is busy from**: how much of a part events must fill before it is taken, from *Any event* to *Whole slot (6h)*. 2h by default.
+- **Ignore events whose title contains**: comma-separated words, any case, matched anywhere in the title (`gym` also leaves out "Gymnastics"). Outlook links published as *Availability only* have no titles, so this does nothing for them.
+- **Always busy**: a weekday × morning / afternoon / evening grid, for work hours a work calendar does not show (it holds meetings, not "at work"). For a day off, click the day on the calendar: days set by hand win.
 
 ## Forgot password
 
@@ -74,5 +82,5 @@ An admin opens **Administration** → Members → *create reset-password link* a
 - Passkeys are bound to `BASE_URL`. Reaching the app on a LAN IP or a different hostname offers password login only — that origin check is the spec's anti-phishing guarantee and is deliberately strict.
 - Every POST must come from the app's own origin (CSRF), bodies are capped at 16 KB, all SQL is parameterized, all output is HTML-escaped.
 - Strict `Content-Security-Policy`, `X-Content-Type-Options`, `Referrer-Policy`; HSTS is set by Caddy.
-- Login is rate-limited per client address (20 failures per 15 minutes) and per account (10), with a global backstop of 500. The feed links are the only unauthenticated routes.
+- Login is rate-limited per client address (20 failures per 15 minutes) and per account (10), with a global backstop of 500. Apart from the login and invite pages, the feed links are the only unauthenticated routes.
 - The container runs as the unprivileged `node` user.

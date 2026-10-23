@@ -1,11 +1,12 @@
 import { createHash, createPublicKey, verify } from 'node:crypto';
 
-// Pure helpers: no DB, no HTTP. Covered by test.js.
+// Pure helpers: no DB, no HTTP. Covered by test/lib.test.js (and test/auth.test.js, test/ics.test.js).
 
 export const BASE_URL = (process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, '');
 
-// Dates are plain 'YYYY-MM-DD' strings in UTC everywhere: DB, forms, URLs and ICS.
-export const today = () => new Date().toISOString().slice(0, 10);
+// Dates are plain 'YYYY-MM-DD' strings everywhere (DB, forms, URLs and ICS), worked on as UTC midnights.
+// Today is the date on the wall clock in TIME_ZONE, the same day Calendar Integration and the logs use.
+export const today = () => wallClock(new Date()).slice(0, 10);
 
 export const isValidMonth = text => /^\d{4}-(0[1-9]|1[0-2])$/.test(text || '');
 
@@ -31,7 +32,11 @@ export const birthdayRrule = birthday =>
   birthday.endsWith('-02-29') ? 'FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-1' : 'FREQ=YEARLY';
 
 export const TIME_ZONE = process.env.TZ || 'UTC';
-export const BUSY_HOURS = 2;
+// Calendar Integration: minutes of events that make a slot busy (users.busy_minutes), as Settings lists them.
+// Every slot is 6 h, so 360 = only when events fill it; 1 = any event at all.
+export const BUSY_CHOICES = [[1, 'Any event'], [60, '1h'], [120, '2h'], [180, '3h'], [240, '4h'], [360, 'Whole slot (6h)']];
+export const DEFAULT_BUSY_MINUTES = 120;
+export const isValidBusyMinutes = value => BUSY_CHOICES.some(([minutes]) => minutes === value);
 const wallClockFormat = new Intl.DateTimeFormat('sv-SE', {
   timeZone: TIME_ZONE, hourCycle: 'h23',
   year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
@@ -323,7 +328,7 @@ export function buildIcs({ name, host, items }) {
 }
 
 // ---- WebAuthn / passkeys ----
-// The one security boundary of passkey login, kept pure so test.js can exercise it without a DB.
+// The one security boundary of passkey login, kept pure so test/auth.test.js can exercise it without a DB.
 //
 // There is no CBOR decoder here on purpose: the browser hands us the credential public key already
 // in SPKI DER (AuthenticatorAttestationResponse.getPublicKey) and the raw authenticator data

@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import {
   COLORS, DEFAULT_WEEK_START, WEEK_START_CHOICES, DATE_FORMATS, DEFAULT_DATE_FORMAT, DAY_PARTS, SLOTS,
+  DEFAULT_BUSY_MINUTES,
 } from './lib.js';
 
 const dbPath = process.env.DB_PATH || './data/app.db';
@@ -50,7 +51,11 @@ CREATE TABLE IF NOT EXISTS users(
   continuous_calendar INTEGER NOT NULL DEFAULT 1,
   is_private INTEGER NOT NULL DEFAULT 1, -- 1: only people sharing a group see my free days, 0: everyone does
   -- the group the calendar opens on; NULL = everyone I can see. Ignored while I am not in that group.
-  default_group_id INTEGER REFERENCES member_groups(id) ON DELETE SET NULL);
+  default_group_id INTEGER REFERENCES member_groups(id) ON DELETE SET NULL,
+  -- Calendar Integration rules (src/sync.js): minutes of events that make a slot busy (BUSY_CHOICES in src/lib.js),
+  busy_minutes INTEGER NOT NULL DEFAULT ${DEFAULT_BUSY_MINUTES},
+  busy_slots TEXT NOT NULL DEFAULT '', -- always busy, "<weekday><slot>" space-separated, 0 = Sunday: '1am 1pm'
+  ignore_words TEXT NOT NULL DEFAULT ''); -- comma-separated: events whose title contains one are left out
 
 -- single-use links. user_id set => password reset for that user, otherwise a new-account invite.
 CREATE TABLE IF NOT EXISTS invites(
@@ -274,6 +279,17 @@ if (!userColumns.includes('is_private')) {
 // DBs created before the calendar's default group existed: everyone opens on "everyone I can see".
 if (!userColumns.includes('default_group_id')) {
   db.exec('ALTER TABLE users ADD COLUMN default_group_id INTEGER REFERENCES member_groups(id) ON DELETE SET NULL');
+}
+
+// DBs created before Calendar Integration rules existed: the old fixed 2 h, nothing always busy, no word ignored.
+for (const [column, definition] of [
+  ['busy_minutes', `INTEGER NOT NULL DEFAULT ${DEFAULT_BUSY_MINUTES}`],
+  ['busy_slots', `TEXT NOT NULL DEFAULT ''`],
+  ['ignore_words', `TEXT NOT NULL DEFAULT ''`],
+]) {
+  if (!userColumns.includes(column)) {
+    db.exec(`ALTER TABLE users ADD COLUMN ${column} ${definition}`);
+  }
 }
 
 // DBs created before times and multi-day events existed: every event was one whole day.

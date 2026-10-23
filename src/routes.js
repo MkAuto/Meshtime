@@ -3,11 +3,11 @@ import * as auth from './auth.js';
 import * as views from './views.js';
 import { logEvent, tailLog, LOG_PATH, ERROR_LOG_PATH } from './log.js';
 import { createReadStream, existsSync } from 'node:fs';
-import { fetchCalendar, syncUser, syncToday } from './sync.js';
+import { fetchCalendar, syncUser } from './sync.js';
 import {
   isValidDate, isValidMonth, monthInfo, isValidWeekStart, isValidDateFormat, isValidColor, eventError,
   bestDates, buildIcs, birthdayIn, birthdayRrule, today, randomColor, ANSWERS, MAX_DATES, MIN_PASSWORD, BASE_URL,
-  RP_ID, SLOTS, MAX_SLOTS_PER_DAY, toggleSlot,
+  RP_ID, SLOTS, MAX_SLOTS_PER_DAY, toggleSlot, isValidBusyMinutes,
 } from './lib.js';
 
 export const routes = [];
@@ -287,6 +287,11 @@ function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
       mine.set(row.date, parts);
     }
   }
+  // With a calendar connected: the days I set by hand, so the day menu shows which ones are Automatic
+  const manualDays = get('SELECT 1 FROM calendar_links WHERE user_id = ?', me)
+    ? new Set(all('SELECT date FROM manual_days WHERE user_id = ? AND date BETWEEN ? AND ?', me, gridStart, gridEnd)
+      .map(row => row.date))
+    : null;
 
   // Every event shown that touches those weeks, including ones that started before or end after them.
   // All-day ones first.
@@ -312,7 +317,7 @@ function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
   }
 
   ctx.html(views.calendarPage(ctx.user, yearMonth, {
-    free, mine, events, birthdays, today: today(), members, error, group, groups: myGroups(ctx.user.id),
+    free, mine, events, birthdays, today: today(), members, error, group, groups: myGroups(ctx.user.id), manualDays,
   }), status);
 }
 
@@ -332,12 +337,21 @@ on('POST', '/calendar/default', ctx => {
 // Two ways in. A plain click on a day sends no `part` and toggles it: try the delete first, insert
 // "all day" only if there was nothing to delete. The long-press / double-click menu sends `part`:
 // 'all' sets the whole day, 'none' clears it, and 'am', 'pm' or 'eve' toggles that slot (see toggleSlot),
-// so opening the menu again is how a second slot gets added to the same day.
-on('POST', '/free', ctx => {
+// so opening the menu again is how a second slot gets added to the same day. 'auto' (only offered with a
+// calendar connected) hands the day back to Calendar Integration.
+on('POST', '/free', async ctx => {
   const date = ctx.body.get('date');
   const part = ctx.body.get('part');
   if (!isValidDate(date)) {
     return showCalendar(ctx, postedMonth(ctx), { status: 400, error: 'Invalid date.' });
+  }
+
+  // No longer set by hand. It keeps what it shows until the sync rewrites it: at once inside the sync's window
+  // (today to SYNC_DAYS ahead) when every calendar answers, otherwise on a later hourly sync. A past day stays.
+  if (part === 'auto') {
+    run('DELETE FROM manual_days WHERE user_id = ? AND date = ?', ctx.user.id, date);
+    await syncUser(ctx.user.id);
+    return ctx.redirect(backToMonth(ctx));
   }
 
   const clearDay = () => run('DELETE FROM free_days WHERE user_id = ? AND date = ?', ctx.user.id, date).changes;
@@ -1098,7 +1112,7 @@ on('POST', '/settings/calendars', async ctx => {
     // the first calendar: days already marked by hand stay as they are
     if (!get('SELECT 1 FROM calendar_links WHERE user_id = ?', ctx.user.id)) {
       run(`INSERT OR IGNORE INTO manual_days(user_id, date)
-           SELECT user_id, date FROM free_days WHERE user_id = ? AND date >= ?`, ctx.user.id, syncToday());
+           SELECT user_id, date FROM free_days WHERE user_id = ? AND date >= ?`, ctx.user.id, today());
     }
     run('INSERT INTO calendar_links(user_id, url, label, count_free, created_at) VALUES (?, ?, ?, ?, ?)',
       ctx.user.id, url, label, countFree, now());
@@ -1145,7 +1159,7 @@ on('POST', '/settings/calendars/(?<id>\\d+)/delete', async ctx => {
     await syncUser(ownerId);
   } else {
     run(`DELETE FROM free_days WHERE user_id = ? AND date >= ?
-         AND date NOT IN (SELECT date FROM manual_days WHERE user_id = ?)`, ownerId, syncToday(), ownerId);
+         AND date NOT IN (SELECT date FROM manual_days WHERE user_id = ?)`, ownerId, today(), ownerId);
   }
   logUser(ctx, ownerId === ctx.user.id ? 'calendar removed' : `admin: calendar removed for user ${ownerId}`);
   ctx.redirect('/settings?msg=calendar_removed');
@@ -1154,6 +1168,23 @@ on('POST', '/settings/calendars/(?<id>\\d+)/delete', async ctx => {
 on('POST', '/settings/calendars/sync', async ctx => {
   await syncUser(ctx.user.id);
   ctx.redirect('/settings?msg=calendar_synced');
+});
+
+// The Rules form: one per member, for all their calendars; saving works the days out again at once.
+// busy: one checkbox per always-busy "<weekday><slot>" ('1am' = Monday morning); anything else is dropped.
+const BUSY_SLOT = new RegExp(`^[0-6](${SLOTS.join('|')})$`);
+on('POST', '/settings/calendars/rules', async ctx => {
+  const busyMinutes = Number(ctx.body.get('busy_minutes'));
+  if (!isValidBusyMinutes(busyMinutes)) {
+    return showSettings(ctx, { status: 400, errors: { rules: 'Invalid busy threshold.' } });
+  }
+  const busySlots = [...new Set(ctx.body.getAll('busy').filter(value => BUSY_SLOT.test(value)))].sort().join(' ');
+  const ignoreWords = cleanText(ctx.body.get('ignore_words'), 500).split(',')
+    .map(word => word.trim()).filter(Boolean).join(', ');
+  run('UPDATE users SET busy_minutes = ?, busy_slots = ?, ignore_words = ? WHERE id = ?',
+    busyMinutes, busySlots, ignoreWords, ctx.user.id);
+  await syncUser(ctx.user.id);
+  ctx.redirect('/settings?msg=calendar_rules');
 });
 
 // The whole Customisation panel is one form: every value is checked before any is saved.

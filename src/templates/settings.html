@@ -53,12 +53,9 @@
 {{! Calendar Integration: my own calendars, read every hour to fill in my free days (src/sync.js). }}
 <details class="panel panel-integration" open data-remember="settings-integration">
   <summary><h2>Calendar Integration</h2></summary>
-  <ul class="hint">
-    <li>Update next 60 days every hour</li>
-    <li>6h to 12h (AM) | 12h to 18h (PM) | 18h to 24h (EVE)</li>
-    <li>{{busyHours}}h or more of events in a timeframe makes it busy</li>
-    <li>Manual days have priority</li>
-  </ul>
+  <label class="hint"> Update next 60 days every hour, Manual days have priority
+  </label>
+  <h3>Active Integration</h3>
   {{#calendarLinks.length}}
   <ul>
     {{#calendarLinks}}
@@ -81,6 +78,40 @@
     {{/calendarLinks}}
   </ul>
   <form method="post" action="/settings/calendars/sync"><button>Sync now</button></form>
+  {{! Rules: mine, for all my calendars (users row). Only once one is connected: without, nothing syncs. }}
+  <form method="post" action="/settings/calendars/rules" class="stack">
+    <h3>Rules</h3>
+    <label>
+      A timeframe is busy from
+      <span class="hint">6h to 12h (AM) | 12h to 18h (PM) | 18h to 24h (EVE)</span>
+      <select name="busy_minutes">
+        {{#busyChoices}}
+        <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
+        {{/busyChoices}}
+      </select>
+    </label>
+    <label>
+      Ignore events whose title contains
+      <span class="hint">Comma-separated. Does nothing for Outlook "Availability only" links</span>
+      <input name="ignore_words" maxlength="500" value="{{ignoreWords}}" placeholder="gym, lunch">
+    </label>
+    <fieldset>
+      <legend>Always busy (work hours…)</legend>
+      <table class="busy-grid">
+        <tr><th></th>{{#slotNames}}<th>{{.}}</th>{{/slotNames}}</tr>
+        {{#busyGrid}}
+        <tr>
+          <th>{{name}}</th>
+          {{#slots}}
+          <td><input type="checkbox" name="busy" value="{{value}}" aria-label="{{label}}"{{#checked}} checked{{/checked}}></td>
+          {{/slots}}
+        </tr>
+        {{/busyGrid}}
+      </table>
+    </fieldset>
+    {{#errors.rules}}<p class="err">{{errors.rules}}</p>{{/errors.rules}}
+    <p><button>Save rules</button></p>
+  </form>
   {{/calendarLinks.length}}
   <form method="post" action="/settings/calendars" class="stack">
     <h3>Add a calendar</h3>
@@ -108,7 +139,7 @@
 
 <details class="panel panel-feeds" open data-remember="settings-feeds">
   <summary><h2>Calendar feeds</h2></summary>
-  <p class="hint">Private link: anyone who has it can read it. Rotating it requires re-subscribing.</p>
+  <label class="hint">Private link: anyone who has it can read it. Rotating it requires re-subscribing.</label>
   <ul class="feeds">
     {{! A section, so feed-link finds this feed's feed and name the same way it does for each group's. }}
     {{#birthdays}}
