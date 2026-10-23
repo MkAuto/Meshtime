@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Free days: a month grid, the days everyone is free in sage, today in terracotta -->
+  <rect width="512" height="512" rx="112" fill="#b5522c"/>
+  <rect x="88" y="104" width="336" height="320" rx="40" fill="#fffcf6"/>
+  <rect x="88" y="104" width="336" height="68" rx="40" fill="#2a2420"/>
+  <rect x="88" y="140" width="336" height="32" fill="#2a2420"/>
+  <!-- binding rings -->
+  <rect x="160" y="72" width="28" height="72" rx="14" fill="#fffcf6"/>
+  <rect x="324" y="72" width="28" height="72" rx="14" fill="#fffcf6"/>
+  <!-- 4 x 3 grid of days -->
+  <g fill="#efe8dc">
+    <rect x="120" y="204" width="56" height="56" rx="14"/>
+    <rect x="196" y="204" width="56" height="56" rx="14"/>
+    <rect x="272" y="204" width="56" height="56" rx="14"/>
+    <rect x="348" y="204" width="56" height="56" rx="14"/>
+    <rect x="120" y="280" width="56" height="56" rx="14"/>
+    <rect x="272" y="280" width="56" height="56" rx="14"/>
+    <rect x="348" y="280" width="56" height="56" rx="14"/>
+    <rect x="120" y="356" width="56" height="56" rx="14"/>
+    <rect x="196" y="356" width="56" height="56" rx="14"/>
+    <rect x="348" y="356" width="56" height="56" rx="14"/>
+  </g>
+  <!-- everyone free -->
+  <rect x="196" y="280" width="56" height="56" rx="14" fill="#9bcf8a"/>
+  <rect x="272" y="356" width="56" height="56" rx="14" fill="#9bcf8a"/>
+  <!-- today -->
+  <circle cx="300" cy="232" r="28" fill="#b5522c"/>
+  <path d="M286 233l9 9 19-19" fill="none" stroke="#fffcf6" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
