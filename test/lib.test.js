@@ -1,11 +1,20 @@
-import { test } from 'node:test';
+import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   isValidDate, birthdayIn, isValidTime, eventError, formatEventWhen, eventLanes, isValidWeekStart,
-  formatDate, isValidDateFormat, bestDates, dayClass, monthInfo, weekdayNames, toggleSlot,
+  formatDate, isValidDateFormat, bestDates, dayClass, monthInfo, weekdayNames, toggleSlot, today,
 } from '../src/lib.js';
 
 const thisYear = new Date().getUTCFullYear();
+
+test('today: the date in TZ (Eastern in tests), not in UTC', () => {
+  mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-10-24T02:00:00Z') }); // 22:00 on the 23rd in Toronto
+  try {
+    assert.equal(today(), '2026-10-23');
+  } finally {
+    mock.timers.reset();
+  }
+});
 
 test('isValidDate', () => {
   assert.equal(isValidDate(`${thisYear}-02-28`), true);

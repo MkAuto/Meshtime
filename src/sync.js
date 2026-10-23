@@ -1,6 +1,6 @@
 import ical from 'node-ical';
 import { all, get, run, now, tx } from './db.js';
-import { addDays, wallClock, SLOTS, DEFAULT_BUSY_MINUTES } from './lib.js';
+import { addDays, wallClock, today, SLOTS, DEFAULT_BUSY_MINUTES } from './lib.js';
 
 // ---- Calendar Integration: free days worked out from members' own calendars (secret iCal links) ----
 // Every hour (server.js) each member's links are read, and every day from today to SYNC_DAYS ahead gets
@@ -117,9 +117,6 @@ export async function fetchCalendar(url) {
   return ical.sync.parseICS(text);
 }
 
-/** Today's date in TIME_ZONE. */
-export const syncToday = () => wallClock(new Date()).slice(0, 10);
-
 /**
  * Reads all of one member's links and rewrites their free days in the window. If any link fails, nothing
  * is written: a calendar that is down for an hour must not mark every day free.
@@ -152,7 +149,7 @@ export async function syncUser(userId) {
     return;
   }
 
-  const fromDate = syncToday();
+  const fromDate = today();
   const days = freePartsByDay(calendars, fromDate, addDays(fromDate, SYNC_DAYS), rules);
   tx(() => {
     for (const [date, parts] of days) {

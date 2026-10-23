@@ -83,7 +83,7 @@
     <h3>Rules</h3>
     <label>
       A timeframe is busy from
-      <label class="hint">6h to 12h (AM) | 12h to 18h (PM) | 18h to 24h (EVE)</label>
+      <span class="hint">6h to 12h (AM) | 12h to 18h (PM) | 18h to 24h (EVE)</span>
       <select name="busy_minutes">
         {{#busyChoices}}
         <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
@@ -92,7 +92,7 @@
     </label>
     <label>
       Ignore events whose title contains
-      <label class="hint">Comma-separated. Does nothing for Outlook "Availability only" links</label>
+      <span class="hint">Comma-separated. Does nothing for Outlook "Availability only" links</span>
       <input name="ignore_words" maxlength="500" value="{{ignoreWords}}" placeholder="gym, lunch">
     </label>
     <fieldset>

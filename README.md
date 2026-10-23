@@ -43,7 +43,7 @@ docker compose exec app node -e "new (require('node:sqlite').DatabaseSync)('/dat
 docker compose cp app:/data/backup.db ./backup.db
 ```
 
-Environment variables: `BASE_URL` (public https URL, required behind a proxy), `DB_PATH`, `PORT`, `NODE_ENV=production` (sets the `Secure` cookie flag), `TZ` (the zone Calendar Integration reads event times in and the logs are written in, default `UTC`).
+Environment variables: `BASE_URL` (public https URL, required behind a proxy), `DB_PATH`, `PORT`, `NODE_ENV=production` (sets the `Secure` cookie flag), `TZ` (the server's time zone, default `UTC`: which date is today, the zone Calendar Integration reads event times in, and the one the logs are written in).
 
 ## Subscribing to the feeds
 

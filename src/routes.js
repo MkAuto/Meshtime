@@ -3,7 +3,7 @@ import * as auth from './auth.js';
 import * as views from './views.js';
 import { logEvent, tailLog, LOG_PATH, ERROR_LOG_PATH } from './log.js';
 import { createReadStream, existsSync } from 'node:fs';
-import { fetchCalendar, syncUser, syncToday } from './sync.js';
+import { fetchCalendar, syncUser } from './sync.js';
 import {
   isValidDate, isValidMonth, monthInfo, isValidWeekStart, isValidDateFormat, isValidColor, eventError,
   bestDates, buildIcs, birthdayIn, birthdayRrule, today, randomColor, ANSWERS, MAX_DATES, MIN_PASSWORD, BASE_URL,
@@ -1112,7 +1112,7 @@ on('POST', '/settings/calendars', async ctx => {
     // the first calendar: days already marked by hand stay as they are
     if (!get('SELECT 1 FROM calendar_links WHERE user_id = ?', ctx.user.id)) {
       run(`INSERT OR IGNORE INTO manual_days(user_id, date)
-           SELECT user_id, date FROM free_days WHERE user_id = ? AND date >= ?`, ctx.user.id, syncToday());
+           SELECT user_id, date FROM free_days WHERE user_id = ? AND date >= ?`, ctx.user.id, today());
     }
     run('INSERT INTO calendar_links(user_id, url, label, count_free, created_at) VALUES (?, ?, ?, ?, ?)',
       ctx.user.id, url, label, countFree, now());
@@ -1159,7 +1159,7 @@ on('POST', '/settings/calendars/(?<id>\\d+)/delete', async ctx => {
     await syncUser(ownerId);
   } else {
     run(`DELETE FROM free_days WHERE user_id = ? AND date >= ?
-         AND date NOT IN (SELECT date FROM manual_days WHERE user_id = ?)`, ownerId, syncToday(), ownerId);
+         AND date NOT IN (SELECT date FROM manual_days WHERE user_id = ?)`, ownerId, today(), ownerId);
   }
   logUser(ctx, ownerId === ctx.user.id ? 'calendar removed' : `admin: calendar removed for user ${ownerId}`);
   ctx.redirect('/settings?msg=calendar_removed');
