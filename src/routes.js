@@ -287,6 +287,11 @@ function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
       mine.set(row.date, parts);
     }
   }
+  // With a calendar connected: the days I set by hand, so the day menu shows which ones are Automatic
+  const manualDays = get('SELECT 1 FROM calendar_links WHERE user_id = ?', me)
+    ? new Set(all('SELECT date FROM manual_days WHERE user_id = ? AND date BETWEEN ? AND ?', me, gridStart, gridEnd)
+      .map(row => row.date))
+    : null;
 
   // Every event shown that touches those weeks, including ones that started before or end after them.
   // All-day ones first.
@@ -312,7 +317,7 @@ function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
   }
 
   ctx.html(views.calendarPage(ctx.user, yearMonth, {
-    free, mine, events, birthdays, today: today(), members, error, group, groups: myGroups(ctx.user.id),
+    free, mine, events, birthdays, today: today(), members, error, group, groups: myGroups(ctx.user.id), manualDays,
   }), status);
 }
 
@@ -332,12 +337,21 @@ on('POST', '/calendar/default', ctx => {
 // Two ways in. A plain click on a day sends no `part` and toggles it: try the delete first, insert
 // "all day" only if there was nothing to delete. The long-press / double-click menu sends `part`:
 // 'all' sets the whole day, 'none' clears it, and 'am', 'pm' or 'eve' toggles that slot (see toggleSlot),
-// so opening the menu again is how a second slot gets added to the same day.
-on('POST', '/free', ctx => {
+// so opening the menu again is how a second slot gets added to the same day. 'auto' (only offered with a
+// calendar connected) hands the day back to Calendar Integration.
+on('POST', '/free', async ctx => {
   const date = ctx.body.get('date');
   const part = ctx.body.get('part');
   if (!isValidDate(date)) {
     return showCalendar(ctx, postedMonth(ctx), { status: 400, error: 'Invalid date.' });
+  }
+
+  // No longer set by hand. It keeps what it shows until the sync rewrites it: at once inside the sync's window
+  // (today to SYNC_DAYS ahead) when every calendar answers, otherwise on a later hourly sync. A past day stays.
+  if (part === 'auto') {
+    run('DELETE FROM manual_days WHERE user_id = ? AND date = ?', ctx.user.id, date);
+    await syncUser(ctx.user.id);
+    return ctx.redirect(backToMonth(ctx));
   }
 
   const clearDay = () => run('DELETE FROM free_days WHERE user_id = ? AND date = ?', ctx.user.id, date).changes;

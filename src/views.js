@@ -115,7 +115,10 @@ export function invitePage(token, resetName, { errors = {}, name = '' } = {}) {
 // free_days.part, as tooltips say it
 const PART_LABELS = { all: 'all day', am: 'morning', pm: 'afternoon', eve: 'evening' };
 // The long-press / double-click menu: each button posts its value as `part` to /free.
-const PART_CHOICES = { all: 'All day', am: 'Morning (AM)', pm: 'Afternoon (PM)', eve: 'Evening', none: 'Not free' };
+// auto: Calendar Integration decides the day again, only offered with a calendar connected.
+const PART_CHOICES = {
+  all: 'All day', am: 'Morning (AM)', pm: 'Afternoon (PM)', eve: 'Evening', none: 'Not free', auto: 'Automatic',
+};
 
 /** ['am', 'eve'] -> 'morning and evening' */
 const partsLabel = parts => parts.map(part => PART_LABELS[part]).join(' and ');
@@ -128,8 +131,9 @@ const MS_PER_DAY = 864e5;
 // `error` is set when a /free post was rejected: it shows under the month title.
 // `group` is the one group shown on its own (null: everyone I can see); `groups` fills the selector.
 export function calendarPage(user, yearMonth, {
-  free, mine, events, birthdays, today, members, error, group = null, groups = [],
+  free, mine, events, birthdays, today, members, error, group = null, groups = [], manualDays = null,
 }) {
+  // manualDays: the dates I set by hand, or null without a calendar connected (no Automatic in the menu)
   const month = monthInfo(yearMonth, user.week_start);
   const lanes = eventLanes(events);
   const eventTooltip = event =>
@@ -196,7 +200,8 @@ export function calendarPage(user, yearMonth, {
       classes: `day ${dayStates}${date === today ? ' today' : ''}${inMonth ? '' : ' outside'}`,
       tooltip: myParts ? `You: ${partsLabel(myParts)}. Click to clear` : 'Click: I am free all day',
       dateLabel: formatDate(date, user.date_format),
-      parts: myParts ? myParts.join(' ') : 'none',
+      // what the menu marks as current: my parts or 'none', and 'auto' when the calendar decides the day
+      parts: [...(myParts ?? ['none']), ...(manualDays && !manualDays.has(date) ? ['auto'] : [])].join(' '),
       // Settings → Customisation can leave my own initials out; the day still counts me as free
       free: whoIsFree.filter(member => !(member.isMe && user.hide_own_initials)).map(member => ({
         color: member.color,
@@ -231,11 +236,9 @@ export function calendarPage(user, yearMonth, {
     weekdays: weekdayNames(user.week_start),
     padding: Array.from({ length: leadingBlanks }, () => ({})),
     days,
-    partChoices: Object.entries(PART_CHOICES).map(([value, label]) => ({
-      value,
-      label,
-      classes: value === 'none' ? 'danger' : '',
-    })),
+    partChoices: Object.entries(PART_CHOICES)
+      .filter(([value]) => value !== 'auto' || manualDays)
+      .map(([value, label]) => ({ value, label, classes: value === 'none' ? 'danger' : '' })),
     // the list under the calendar is this month's only, even when the grid shows days around it
     events: events
       .filter(event => event.date <= `${yearMonth}-31` && event.end_date >= `${yearMonth}-01`)

@@ -99,7 +99,8 @@ for (const form of document.querySelectorAll('form[data-autosubmit]')) {
 
 // Calendar. A tap or a single click submits the day's form as-is: free all day, or clear it.
 // Holding the day (touch) or double-clicking it (mouse) opens the #day-part menu instead, to pick
-// morning / afternoon / evening / all day / not free. Right-click and the keyboard's menu key open it too.
+// morning / afternoon / evening / all day / not free, or Automatic (with a calendar connected: Calendar
+// Integration decides the day again). Right-click and the keyboard's menu key open it too.
 // The slots toggle: opening the menu again on a day free in the morning adds the afternoon or evening
 // (up to MAX_SLOTS_PER_DAY, as in src/lib.js, which the server enforces too).
 // Without JS only the plain toggle exists.
@@ -108,7 +109,7 @@ if (partMenu) {
   const LONG_PRESS_MS = 500;
   const DOUBLE_CLICK_MS = 300;
   const MAX_SLOTS_PER_DAY = 2;
-  const WHOLE_DAY_CHOICES = ['all', 'none'];
+  const WHOLE_DAY_CHOICES = ['all', 'none', 'auto'];
   const choiceForm = partMenu.querySelector('form');
 
   const openMenu = day => {

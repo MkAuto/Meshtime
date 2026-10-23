@@ -24,6 +24,19 @@ test('calendarPage: leaves my own initials out when Hide my own initials is set'
   assert.match(hidden, /Bob Kay/);
 });
 
+test('calendarPage: Automatic only with a calendar connected, marked on the days the calendar decides', () => {
+  const user = { id: 1, feed_token: 'tok', week_start: 0, show_birthdays: 1, color: 3 };
+  const month = { free: new Map(), mine: new Map([['2026-10-05', ['am']]]), events: [], birthdays: [],
+    today: '2026-10-04', members: 1 };
+  const without = calendarPage(user, '2026-10', month);
+  assert.doesNotMatch(without, /value="auto"/);
+  assert.match(without, /value="2026-10-06"[^]*?data-parts="none"/);
+  const page = calendarPage(user, '2026-10', { ...month, manualDays: new Set(['2026-10-05']) });
+  assert.match(page, /<button name="part" value="auto" class="">Automatic<\/button>/);
+  assert.match(page, /value="2026-10-05"[^]*?data-parts="am"/, 'set by hand');
+  assert.match(page, /value="2026-10-06"[^]*?data-parts="none auto"/, 'not free, decided by the calendar');
+});
+
 test('calendarPage: the continuous calendar fills the first and last weeks with the months around', () => {
   const user = { id: 1, feed_token: 'tok', week_start: 0, show_birthdays: 1, color: 3 };
   const month = { free: new Map(), mine: new Map(), events: [], birthdays: [], today: '2026-10-04', members: 1 };
