@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Swiss · Meshtime design mockup</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;700&display=swap');
+:root{--bg:#fff;--fg:#111;--muted:#666;--line:#111;--soft:#ddd;--accent:#ff4a1c;--lime:#d9ff3f;--ok:#1a5e20;--err:#c81e1e;--maybe:#9a6700;
+  --ev-bg:#111;--ev-fg:#fff;--gap:1px;--cell-pad:.4rem;--cell-border:0px;--mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace}
+body{font:15px/1.45 "Space Grotesk",system-ui,sans-serif;color:var(--fg);background:var(--bg)}
+header{display:flex;align-items:center;gap:1.5rem;padding:.8rem 1.4rem;border-bottom:3px solid var(--line)}
+.brand{font-weight:700;font-size:1.2rem;text-transform:uppercase;letter-spacing:.12em;color:var(--fg);text-decoration:none;margin-right:auto}
+nav a{color:var(--fg);text-decoration:none;font:700 .78rem var(--mono);text-transform:uppercase;letter-spacing:.08em;padding:.3rem 0;border-bottom:2px solid transparent}
+nav a.active{border-color:var(--accent)}
+nav a:hover{color:var(--accent)}
+.badge{font-family:var(--mono);background:var(--accent);color:#fff;padding:0 .3rem}
+nav button.link{font:700 .78rem var(--mono);text-transform:uppercase;letter-spacing:.08em;text-decoration:none}
+h1{font-size:3rem;font-weight:700;text-transform:uppercase;letter-spacing:-.03em;line-height:1;display:flex;align-items:center;gap:.8rem;margin:1.4rem 0 1rem}
+h1 a{color:#fff;background:var(--fg);text-decoration:none;font-size:1.6rem;width:2.4rem;height:2.4rem;display:grid;place-items:center}
+h1 a:hover{background:var(--accent)}
+h2{font-size:1rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin:2.4rem 0 .7rem;padding-bottom:.3rem;border-bottom:2px solid var(--line)}
+h3{font:400 .72rem var(--mono);text-transform:uppercase;letter-spacing:.14em;color:var(--muted);margin:1.4rem 0 .4rem}
+.hint{color:var(--muted);font-size:.88rem}
+details.hint{margin:.6rem 0 1.2rem;font-family:var(--mono);font-size:.78rem}
+input,select,button{font:inherit;padding:.45rem .7rem;border:2px solid var(--line);border-radius:0;background:#fff;color:var(--fg)}
+button,.btn{background:var(--fg);color:#fff;cursor:pointer;font:700 .8rem var(--mono);text-transform:uppercase;letter-spacing:.08em;border:2px solid var(--fg)}
+button:hover,.btn:hover{background:var(--accent);border-color:var(--accent)}
+.btn{display:inline-block;padding:.5rem .9rem;text-decoration:none}
+button.link{background:none;color:var(--fg);border:none;padding:0;text-decoration:underline;text-underline-offset:3px;font-family:inherit;text-transform:none;letter-spacing:0;font-size:inherit;font-weight:500}
+button.link:hover{background:none;color:var(--accent)}
+button.danger{background:#fff;color:var(--err);border-color:var(--err)}
+.grid{background:var(--line);border:1px solid var(--line)}
+.dow{background:var(--fg);color:#fff;text-align:center;font:700 .68rem var(--mono);text-transform:uppercase;letter-spacing:.12em;padding:.35rem 0}
+.day{background:#fff;font-size:.78rem}
+.day.pad{background:repeating-linear-gradient(135deg,#fff 0 6px,#eee 6px 7px)}
+.day.outside{background:#f4f4f4}
+.day.outside .num{color:var(--muted)}
+.day .head{display:flex;justify-content:space-between;align-items:flex-start;gap:.3rem}
+.day .num{font:700 .9rem var(--mono);order:2}
+.day.today .num{background:var(--accent);color:#fff;padding:0 .3rem;margin:-.1rem -.2rem 0 0}
+.day.mine{box-shadow:inset 0 0 0 3px var(--c,var(--fg))}
+.day.all{background:var(--lime)}
+.day.all .num::after{content:"✓";margin-left:.2rem}
+.who span{color:var(--c);font:700 .72rem var(--mono);padding:0 .1rem}
+.ev{background:var(--ev-bg);color:var(--ev-fg);border-radius:0;font:500 .72rem var(--mono);padding:.1rem .3rem}
+.ev.colored{background:var(--c);color:#fff}
+.events{list-style:none;padding:0;border-top:1px solid var(--line)}
+.events li{margin:0;padding:.55rem 0;border-bottom:1px solid var(--soft);display:flex;gap:1rem;align-items:baseline;flex-wrap:wrap}
+.events .when{font:400 .78rem var(--mono);min-width:8.5rem;text-transform:uppercase}
+.events li.past{color:var(--muted)}
+.events a{margin-left:auto;color:var(--fg);font:400 .78rem var(--mono);text-transform:uppercase}
+table.poll{border:2px solid var(--line)}
+table.poll th,table.poll td{padding:.55rem .7rem;text-align:center;border:1px solid var(--soft);font-size:.9rem}
+table.poll th{font:700 .72rem var(--mono);text-transform:uppercase;letter-spacing:.08em;border-bottom:2px solid var(--line)}
+table.poll th.best{background:var(--lime)}
+table.poll tr.tot td{color:var(--muted);font:400 .75rem var(--mono)}
+.a{font-family:var(--mono);font-size:.8rem;text-transform:uppercase}
+.a.yes{color:var(--ok);font-weight:700}.a.no{color:var(--err)}.a.maybe{color:var(--maybe)}.a.none{color:var(--muted)}
+.panel{border:2px solid var(--line);padding:.4rem 1.2rem 1.2rem;margin:1.6rem 0;position:relative}
+.panel>summary::before{content:"■";color:var(--accent);font-size:.7rem}
+.panel h2{margin:.6rem 0;border:0;padding:0}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#111;--fg:#f2f2f2;--muted:#9a9a9a;--line:#f2f2f2;--soft:#333;--ev-bg:#f2f2f2;--ev-fg:#111;--lime:#b8ff00}
+  input,select,button{background:#111}
+  .day{background:#111}
+  .day.pad{background:repeating-linear-gradient(135deg,#111 0 6px,#222 6px 7px)}
+  .day.outside{background:#1a1a1a}
+  .day.all{color:#111}
+  .day.all .who span{color:#111}
+  .dow{background:#f2f2f2;color:#111}
+  .who span{color:var(--cd)}.day.mine{box-shadow:inset 0 0 0 3px var(--cd)}.ev.colored{background:var(--cd);color:#111}
+  h1 a{background:#f2f2f2;color:#111}
+  button,.btn{background:#f2f2f2;color:#111;border-color:#f2f2f2}
+  .day.today .num{color:#fff}
+  button.danger{background:#111}
+}
+
+*{box-sizing:border-box}
+body{margin:0}
+main{max-width:900px;margin:0 auto;padding:1rem}
+form{margin:0}
+.row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+.menu-btn{display:none}
+nav{display:flex;gap:1rem;align-items:center;flex-wrap:wrap}
+.grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:var(--gap);container-type:inline-size}
+.day,.day form,.day button{display:grid;grid-row:span 2;grid-template-rows:subgrid;row-gap:0;grid-template-columns:minmax(0,1fr)}
+.day{border:var(--cell-border) solid transparent}
+.day button{text-align:left;background:none;border:none;color:inherit;padding:var(--cell-pad);font:inherit;cursor:pointer;overflow:visible;overflow-wrap:anywhere;user-select:none}
+.day .head{display:block}
+.day .day-events{display:flex;flex-direction:column;min-height:3rem}
+.who{display:flex;flex-wrap:wrap;gap:2px}
+.who sup{display:inline-grid;font-size:.7em;font-weight:600;margin-left:1px;line-height:1}
+.who sup i{font-style:normal}
+.ev{padding:0 .25rem;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ev-text{display:block;position:relative;z-index:1;pointer-events:none;overflow:hidden;text-overflow:ellipsis;width:calc(var(--run)*(100cqw + var(--gap))/7 - var(--gap) - 2*var(--cell-pad) - 2*var(--cell-border) - .5rem)}
+.run-1{--run:1}.run-2{--run:2}.run-3{--run:3}.run-4{--run:4}.run-5{--run:5}.run-6{--run:6}.run-7{--run:7}
+.ev.to{border-top-right-radius:0;border-bottom-right-radius:0;margin-right:calc(-1*var(--cell-pad) - var(--cell-border))}
+.ev.from{border-top-left-radius:0;border-bottom-left-radius:0;margin-left:calc(-1*var(--cell-pad) - var(--cell-border) - var(--gap))}
+.day:nth-child(7n+1) .ev.from{margin-left:0}
+.ev.gap{visibility:hidden}
+.c0{--c:#dc2626;--cd:#f87171}.c1{--c:#ea580c;--cd:#fb923c}.c2{--c:#ca8a04;--cd:#facc15}.c3{--c:#65a30d;--cd:#a3e635}
+.c4{--c:#16a34a;--cd:#4ade80}.c5{--c:#0d9488;--cd:#2dd4bf}.c6{--c:#0284c7;--cd:#38bdf8}.c7{--c:#2563eb;--cd:#60a5fa}
+.c8{--c:#4f46e5;--cd:#818cf8}.c9{--c:#9333ea;--cd:#c084fc}.c10{--c:#db2777;--cd:#f472b6}.c11{--c:#7c4a1d;--cd:#c9915a}.c12{--c:#475569;--cd:#94a3b8}
+.stack{display:grid;gap:.8rem;max-width:360px}
+.panel label{display:grid;gap:.2rem;margin:.4rem 0}
+.panel label.check{display:flex;align-items:center;gap:.5rem}
+.panel>summary{cursor:pointer;display:flex;align-items:center;gap:.5rem;list-style:none}
+.panel>summary::-webkit-details-marker{display:none}
+table.poll{border-collapse:collapse;width:100%;margin:1rem 0}
+table.poll td:first-child{text-align:left}
+.events li{margin:.3rem 0}
+@media (max-width:600px){.menu-btn{display:block}nav{display:none}.day{font-size:.65rem}.day .day-events{min-height:1.8rem}}
+</style></head>
+<body>
+<header>
+  <button class="menu-btn" aria-label="Menu">☰</button>
+  <a href="#" class="brand">Meshtime</a>
+  <nav>
+    <a href="#" class="active">Calendar</a><a href="#">Polls</a><a href="#">Groups <span class="badge">1</span></a>
+    <a href="#">Profile</a><a href="#">Settings</a><a href="#">Administration</a>
+    <form><button class="link" type="button">Log out (Keven)</button></form>
+  </nav>
+</header>
+<main>
+<h1><a href="#" title="Previous month">&lsaquo;</a><span>October 2026</span><a href="#" title="Next month">&rsaquo;</a></h1>
+<div class="row group-pick">
+  <select aria-label="Whose free time to show"><option>Everyone I can see</option><option>Hiking crew</option><option>Family</option></select>
+  <button class="link" type="button">Make default</button>
+</div>
+<details class="hint"><summary>How to use</summary>Click a day to mark yourself free all day. Hold or double-click it for just the morning, afternoon or evening. Green means everyone shown is free at the same time.</details>
+<div class="grid c7"><div class="dow">Mon</div><div class="dow">Tue</div><div class="dow">Wed</div><div class="dow">Thu</div><div class="dow">Fri</div><div class="dow">Sat</div><div class="dow">Sun</div><div class="day pad"></div><div class="day pad"></div><div class="day pad"></div><div class="day"><form><button type="button" title="1 October"><span class="head"><span class="num">1</span></span><span class="day-events"></span></button></form></div><div class="day mine"><form><button type="button" title="2 October"><span class="head"><span class="num">2</span><span class="who"><span class="c7" title="Keven">KB</span><span class="c10" title="Alice">AL</span></span></span><span class="day-events"></span></button></form></div><div class="day mine all"><form><button type="button" title="3 October"><span class="head"><span class="num">3</span><span class="who"><span class="c7" title="Keven">KB</span><span class="c10" title="Alice">AL</span><span class="c4" title="Marc">MR</span><span class="c1" title="Sofia">SF</span></span></span><span class="day-events"></span></button></form></div><div class="day"><form><button type="button" title="4 October"><span class="head"><span class="num">4</span></span><span class="day-events"></span></button></form></div><div class="day"><form><button type="button" title="5 October"><span class="head"><span class="num">5</span></span><span class="day-events"></span></button></form></div><div class="day"><form><button type="button" title="6 October"><span class="head"><span class="num">6</span></span><span class="day-events"></span></button></form></div><div class="day"><form><button type="button" title="7 October"><span class="head"><span class="num">7</span></span><span class="day-events"></span></button></form></div><div class="day"><form><button type="button" title="8 October"><span class="head"><span class="num">8</span></span><span class="day-events"></span></button></form></div><div class="day"><form><button type="button" title="9 October"><span class="head"><span class="num">9</span><span class="who"><span class="c4" title="Marc">MR</span><span class="c1" title="Sofia">SF</span></span></span><span class="day-events"><span class="ev bar colored c4 to" title="Cabin weekend"><span class="ev-text run-3">Cabin weekend</span></span></span></button></form></div><div class="day mine all"><form><button type="button" title="10 October"><span class="head"><span class="num">10</span><span class="who"><span class="c7" title="Keven">KB</span><span class="c4" title="Marc">MR</span><span class="c1" title="Sofia">SF</span><span class="c10" title="Alice">AL</span></span></span><span class="day-events"><span class="ev bar colored c4 from to">&nbsp;</span></span></button></form></div><div class="day"><form><button type="button" title="11 October"><span class="head"><span class="num">11</span><span class="who"><span class="c10" title="Alice">AL<sup><i>eve</i></sup></span></span></span><span class="day-events"><span class="ev bar colored c4 from">&nbsp;</span></span></button></form></div><div class="day"><form><button type="button" title="12 October"><span class="head"><span class="num">12</span></span><span class="day-events"></span></button></form></div><div class="day"><form><button type="button" title="13 October"><span class="head"><span class="num">13</span></span><span class="day-events"></span></button></form></div><div class="day"><form><button type="button" title="14 October"><span class="head"><span class="num">14</span></span><span class="day-events"></span></button></form></div><div class="day"><form><button type="button" title="15 October"><span class="head"><span class="num">15</span></span><span class="day-events"></span></button></form></div><div class="day mine"><form><button type="button" title="16 October"><span class="head"><span class="num">16</span><span class="who"><span class="c7" title="Keven">KB<sup><i>am</i></sup></span></span></span><span class="day-events"></span></button></form></div><div class="day mine"><form><button type="button" title="17 October"><span class="head"><span class="num">17</span><span class="who"><span class="c7" title="Keven">KB</span><span class="c4" title="Marc">MR</span></span></span><span class="day-events"><span class="ev" title="Board games 19:00">Board games 19:00</span></span></button></form></div><div class="day"><form><button type="button" title="18 October"><span class="head"><span class="num">18</span><span class="who"><span class="c1" title="Sofia">SF</span></span></span><span class="day-events"></span></button></form></div><div class="day"><form><button type="button" title="19 October"><span class="head"><span class="num">19</span></span><span class="day-events"><span class="ev bar colored c12 to" title="Marc away"><span class="ev-text run-3">Marc away</span></span></span></button></form></div><div class="day"><form><button type="button" title="20 October"><span class="head"><span class="num">20</span></span><span class="day-events"><span class="ev bar colored c12 from to">&nbsp;</span></span></button></form></div><div class="day"><form><button type="button" title="21 October"><span class="head"><span class="num">21</span></span><span class="day-events"><span class="ev bar colored c12 from">&nbsp;</span></span></button></form></div><div class="day"><form><button type="button" title="22 October"><span class="head"><span class="num">22</span></span><span class="day-events"></span></button></form></div><div class="day today mine"><form><button type="button" title="23 October"><span class="head"><span class="num">23</span><span class="who"><span class="c7" title="Keven">KB</span><span class="c10" title="Alice">AL<sup><i>pm</i></sup></span></span></span><span class="day-events"><span class="ev colored c1" title="Dinner at Marc's 19:00">Dinner at Marc's 19:00</span></span></button></form></div><div class="day mine all"><form><button type="button" title="24 October"><span class="head"><span class="num">24</span><span class="who"><span class="c7" title="Keven">KB</span><span class="c10" title="Alice">AL</span><span class="c4" title="Marc">MR</span><span class="c1" title="Sofia">SF</span></span></span><span class="day-events"></span></button></form></div><div class="day"><form><button type="button" title="25 October"><span class="head"><span class="num">25</span></span><span class="day-events"></span></button></form></div><div class="day"><form><button type="button" title="26 October"><span class="head"><span class="num">26</span></span><span class="day-events"></span></button></form></div><div class="day"><form><button type="button" title="27 October"><span class="head"><span class="num">27</span></span><span class="day-events"></span></button></form></div><div class="day"><form><button type="button" title="28 October"><span class="head"><span class="num">28</span></span><span class="day-events"><span class="ev colored c10" title="🎉 Alice's birthday">🎉 Alice's birthday</span></span></button></form></div><div class="day"><form><button type="button" title="29 October"><span class="head"><span class="num">29</span></span><span class="day-events"></span></button></form></div><div class="day"><form><button type="button" title="30 October"><span class="head"><span class="num">30</span><span class="who"><span class="c4" title="Marc">MR</span></span></span><span class="day-events"></span></button></form></div><div class="day mine"><form><button type="button" title="31 October"><span class="head"><span class="num">31</span><span class="who"><span class="c7" title="Keven">KB<sup><i>eve</i></sup></span><span class="c1" title="Sofia">SF</span></span></span><span class="day-events"></span></button></form></div><div class="day outside"><form><button type="button"><span class="head"><span class="num">1</span></span><span class="day-events"></span></button></form></div></div>
+
+<section>
+  <h2>Events this month</h2>
+  <p><a class="btn" href="#">Add event</a></p>
+  <ul class="events">
+    <li class="past"><span class="when">9 – 11 Oct</span> <b>Cabin weekend</b> <small class="hint">by Marc</small> <a href="#">edit</a></li>
+    <li class="past"><span class="when">17 Oct, 19:00</span> <b>Board games</b> <small class="hint">by Keven</small> <a href="#">edit</a></li>
+    <li class="past"><span class="when">19 – 21 Oct</span> <b>Marc away</b> <small class="hint">by Marc</small></li>
+    <li><span class="when">23 Oct, 19:00</span> <b>Dinner at Marc's</b> <small class="hint">by Sofia</small></li>
+    <li><span class="when">28 Oct</span> <b>🎉 Alice's birthday</b></li>
+  </ul>
+</section>
+
+<section>
+  <h2>Poll: Halloween party</h2>
+  <p class="hint">Open · 2 of 4 answered · Who sees it: Hiking crew</p>
+  <table class="poll">
+    <thead><tr><th></th><th class="best">Fri 30 Oct</th><th>Sat 31 Oct</th><th>Sun 1 Nov</th></tr></thead>
+    <tbody>
+      <tr><td>Keven</td><td><select><option>yes</option><option>maybe</option><option>no</option></select></td><td><select><option>maybe</option></select></td><td><select><option>no</option></select></td></tr>
+      <tr><td>Alice</td><td><span class="a yes">yes</span></td><td><span class="a yes">yes</span></td><td><span class="a maybe">maybe</span></td></tr>
+      <tr><td>Marc</td><td><span class="a yes">yes</span></td><td><span class="a no">no</span></td><td><span class="a none">—</span></td></tr>
+      <tr><td>Sofia</td><td><span class="a none">—</span></td><td><span class="a none">—</span></td><td><span class="a none">—</span></td></tr>
+      <tr class="tot"><td>yes / maybe / no</td><td>3 / 0 / 0</td><td>2 / 1 / 1</td><td>0 / 1 / 1</td></tr>
+    </tbody>
+  </table>
+  <p><button type="button">Save my answers</button></p>
+</section>
+
+<details class="panel panel-custom" open>
+  <summary><h2>Customisation</h2></summary>
+  <form>
+    <h3>Calendar</h3>
+    <label>First day of the week <select><option>Monday</option><option>Sunday</option></select></label>
+    <label class="check"><input type="checkbox" checked> Continuous calendar</label>
+    <label class="check"><input type="checkbox" checked> Show birthdays on my calendar</label>
+    <label class="check"><input type="checkbox"> Hide my own initials on the calendar</label>
+    <h3>Date format</h3>
+    <select><option>23 Oct 2026</option><option>2026-10-23</option></select>
+    <p><button type="button">Save</button> <button type="button" class="danger" style="margin-left:.5rem">Remove</button></p>
+  </form>
+</details>
+</main></body></html>

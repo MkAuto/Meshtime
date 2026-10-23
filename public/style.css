@@ -1,35 +1,48 @@
+/* "Linen": warm cream, a serif for titles and day numbers, soft floating cards, terracotta accent.
+   --display is a local serif stack: the CSP (server.js) is default-src 'self', so a hosted webfont would be
+   blocked; to use one (Fraunces), drop the files in public/, add them to STATIC_FILES and @font-face it here. */
 :root {
-  --bg: #fafafa;
-  --card: #fff;
-  --fg: #1f2328;
-  --muted: #6b7280;
-  --line: #e5e7eb;
-  --accent: #2563eb;
+  --bg: #f4efe6;
+  --card: #fffcf6;
+  --fg: #2a2420;
+  --muted: #7a6f66;
+  --line: #e6ddd0;
+  --accent: #b5522c;
+  --accent-soft: #f3dfd4;
   --on-accent: #fff;
-  --ok: #15803d;
-  --ok-bg: #dcfce7;
-  --err: #b91c1c;
-  --maybe: #b45309;
-  --code-bg: #f1f5f9;
-  --ev-bg: #fef3c7;
-  --ev-fg: #92400e;
+  --ok: #3f6b3a;
+  --ok-bg: #e3ecd9;
+  --err: #a33a2a;
+  --maybe: #a4661c;
+  --code-bg: #efe8dc;
+  --ev-bg: #f2e6cf;
+  --ev-fg: #6b4f1a;
+  --shadow: 0 1px 2px rgb(60 40 20 / .06), 0 8px 24px -12px rgb(60 40 20 / .18);
+  --display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --gap: 6px; /* between calendar cells; .ev-text and .ev.from count on it */
 }
 * { box-sizing: border-box; }
-body { margin: 0; font: 16px/1.4 system-ui, sans-serif; color: var(--fg); background: var(--bg); }
+body {
+  margin: 0;
+  font: 15px/1.5 system-ui, sans-serif;
+  color: var(--fg);
+  background: var(--bg) radial-gradient(1200px 500px at 50% -10%, #fff8ea, transparent 70%) no-repeat;
+}
 header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 1rem;
-  padding: .6rem 1rem;
-  background: var(--card);
-  border-bottom: 1px solid var(--line);
+  gap: .6rem 1.2rem;
+  padding: .9rem 1.4rem;
+  max-width: 960px;
+  margin: 0 auto;
 }
-header .brand { font-weight: 700; text-decoration: none; color: var(--fg); margin-right: auto; }
+header .brand { font: 700 1.5rem var(--display); letter-spacing: -.01em; text-decoration: none; color: var(--fg); margin-right: auto; }
 /* nav has the popover attribute (the phone menu); the last six lines undo the browser's popover look
    on wide screens. */
 nav {
   display: flex;
-  gap: 1rem;
+  gap: .3rem;
   align-items: center;
   flex-wrap: wrap;
   position: static;
@@ -53,7 +66,7 @@ nav {
     flex-direction: column;
     flex-wrap: nowrap;
     align-items: flex-start;
-    gap: 1.2rem;
+    gap: .6rem;
     padding: 1.2rem;
     background: var(--card);
     border-right: 1px solid var(--line);
@@ -61,11 +74,26 @@ nav {
   }
   nav::backdrop { background: rgb(0 0 0 / .35); }
 }
-nav a { color: var(--accent); text-decoration: none; }
+nav a { color: var(--muted); text-decoration: none; font-weight: 500; font-size: .95rem; padding: .3rem .6rem; border-radius: 999px; }
+nav a:hover { color: var(--fg); }
+nav a.active { color: var(--accent); background: var(--accent-soft); } /* app.js marks the current page */
+nav button.link { color: var(--muted); font-weight: 500; }
 main { max-width: 900px; margin: 0 auto; padding: 1rem; }
-h1 { font-size: 1.4rem; display: flex; align-items: center; gap: .6rem; }
-h1 a { color: var(--accent); text-decoration: none; padding: 0 .4rem; }
-h2 { font-size: 1.1rem; margin: 1.5rem 0 .5rem; }
+h1 { font: 700 2.2rem/1.1 var(--display); letter-spacing: -.02em; display: flex; align-items: center; gap: .6rem; margin: 1.2rem 0 .8rem; }
+/* the month arrows: round buttons */
+h1 a {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 1.8rem;
+  width: 2.2rem;
+  height: 2.2rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+h2 { font: 700 1.3rem var(--display); letter-spacing: -.01em; margin: 2rem 0 .6rem; }
 .hint { color: var(--muted); font-size: .9rem; }
 /* a subtitle right under a page title, like the version on Settings */
 h1 + .hint { margin-top: -.6rem; }
@@ -76,23 +104,25 @@ p.err { margin: .3rem 0 .6rem; }
 .ok { color: var(--ok); }
 input, select, button {
   font: inherit;
-  padding: .4rem .6rem;
+  padding: .45rem .7rem;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 10px;
   background: var(--card);
   color: var(--fg);
 }
-button { background: var(--accent); color: var(--on-accent); border-color: var(--accent); cursor: pointer; }
-button.link { background: none; color: var(--accent); border: none; padding: 0; text-decoration: underline; }
+button { background: var(--accent); color: var(--on-accent); border-color: var(--accent); cursor: pointer; font-weight: 600; box-shadow: var(--shadow); }
+button.link { background: none; color: var(--accent); border: none; padding: 0; box-shadow: none; text-decoration: underline; text-underline-offset: 3px; font-weight: 500; }
 button.danger, .danger { color: var(--err); }
-button.danger:not(.link) { background: var(--err); border-color: var(--err); color: #fff; }
+button.danger:not(.link) { background: var(--card); border-color: var(--line); color: var(--err); }
 .btn {
   display: inline-block;
   background: var(--accent);
   color: var(--on-accent);
-  padding: .4rem .8rem;
-  border-radius: 6px;
+  font-weight: 600;
+  padding: .5rem .9rem;
+  border-radius: 10px;
   text-decoration: none;
+  box-shadow: var(--shadow);
 }
 .stack { display: grid; gap: .8rem; max-width: 360px; }
 .stack label { display: grid; gap: .2rem; }
@@ -111,18 +141,18 @@ form:not(:has(#visibility-private:checked)) .share-groups { display: none; }
 form { margin: 0; }
 code { word-break: break-all; font-size: .85rem; background: var(--code-bg); padding: .1rem .3rem; border-radius: 4px; }
 
-/* settings / admin panels: one tinted card per topic, so the page reads as groups, not one long list.
+/* settings / admin panels: one card per topic, so the page reads as groups, not one long list.
    No two panels on the same page share a color.
-   Each .panel-* only sets --panel (fill) and --panel-edge (stripe + heading); dark mode reuses the names. */
+   Each .panel-* only sets --panel (fill) and --panel-edge (top stripe + heading); dark mode reuses the names. */
 .panel {
   background: var(--panel);
-  border: 1px solid var(--line);
-  border-left: 5px solid var(--panel-edge);
-  border-radius: 10px;
-  padding: .4rem 1.2rem 1.2rem;
-  margin: 1.2rem 0;
+  border-top: 4px solid var(--panel-edge);
+  border-radius: 14px;
+  padding: .6rem 1.4rem 1.4rem;
+  margin: 1.4rem 0;
+  box-shadow: var(--shadow);
   /* the tint costs .hint about .2 of contrast ratio; one step darker keeps it over 4.5:1 */
-  --muted: #4b5563;
+  --muted: #5e544b;
 }
 /* The default ::marker collides with the block-level h2, so the summary lays itself out as a
    flex row and draws its own triangle. list-style + the -webkit rule kill the native one. */
@@ -140,9 +170,9 @@ code { word-break: break-all; font-size: .85rem; background: var(--code-bg); pad
 /* section headings inside a panel (Members, Next event, Name…): small spaced capitals in the panel's color,
    so they read as labels and stand apart from the text under them. */
 .panel > h3, .panel > form > h3 {
-  font-size: .8rem;
+  font-size: .72rem;
   text-transform: uppercase;
-  letter-spacing: .1em;
+  letter-spacing: .14em;
   margin: 2.2rem 0 .45rem; /* room above, so each section starts clearly apart from the one before it */
   color: var(--panel-edge);
 }
@@ -150,7 +180,7 @@ code { word-break: break-all; font-size: .85rem; background: var(--code-bg); pad
 .panel > h3:first-of-type, .panel > form > h3:first-of-type { margin-top: 1.3rem; }
 /* collapsed: drop the bottom padding so the closed panel is a tidy title bar.
    Scoped to details so the admin page's plain <section class=panel> keeps its padding. */
-details.panel:not([open]) { padding-bottom: .4rem; }
+details.panel:not([open]) { padding-bottom: .6rem; }
 /* Admin connection log: the panel's full width. It scrolls both ways inside itself (long actions on
    a phone); the header row stays pinned while scrolling down. */
 /* Tall enough for the header + 20 rows, then it scrolls. --log-row is one row: text (.8rem at
@@ -160,7 +190,7 @@ details.panel:not([open]) { padding-bottom: .4rem; }
   max-height: calc(21 * var(--log-row));
   overflow: auto;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 10px;
   background: var(--card);
 }
 table.log { border-collapse: collapse; width: 100%; font-size: .8rem; line-height: 1.4; }
@@ -177,41 +207,44 @@ table.log td:not(:last-child), table.log th { white-space: nowrap; }
 table.log th:not(:last-child) { width: 1%; }
 table.log td.n { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
-.panel-feeds    { --panel: #eff6ff; --panel-edge: #2563eb; }
-.panel-custom   { --panel: #f5f3ff; --panel-edge: #7c3aed; }
-.panel-profile  { --panel: #fdf2f8; --panel-edge: #db2777; }
-.panel-security { --panel: #fff7ed; --panel-edge: #c2410c; }
-.panel-admin    { --panel: #fef2f2; --panel-edge: #b91c1c; }
-.panel-invites  { --panel: #fefce8; --panel-edge: #a16207; }
-.panel-integration { --panel: #f0fdfa; --panel-edge: #0f766e; }
+/* Earth tones, one per panel: each only sets its stripe + heading color, the fill is a faint tint of it
+   over the card (so the set stays coherent, and dark mode only swaps the edges). */
+.panel          { --panel: color-mix(in srgb, var(--panel-edge) 6%, var(--card)); }
+.panel-feeds    { --panel-edge: #5b7a9a; } /* dusty blue */
+.panel-custom   { --panel-edge: #8a5a8c; } /* plum */
+.panel-profile  { --panel-edge: #b0566a; } /* rose */
+.panel-security { --panel-edge: #b5522c; } /* terracotta, the accent */
+.panel-admin    { --panel-edge: #9c3a2e; } /* brick */
+.panel-invites  { --panel-edge: #b8862b; } /* ochre */
+.panel-integration { --panel-edge: #3f7a6e; } /* sage */
 /* Calendar Integration rules: always-busy days × slots */
 .busy-grid th, .busy-grid td { padding: .1rem .6rem; text-align: center; font-weight: normal; }
 .busy-grid tr > th:first-child { text-align: left; }
-.panel-options  { --panel: #f0fdf4; --panel-edge: #15803d; }
-.panel-log      { --panel: #eef2ff; --panel-edge: #4338ca; }
+.panel-options  { --panel-edge: #6b8a3f; } /* olive */
+.panel-log      { --panel-edge: #6f5e8f; } /* heather */
 /* one group on the groups page: stripe and title in the group's own color (member_groups.color) */
-.panel-group    { --panel: color-mix(in srgb, var(--c) 8%, var(--card)); --panel-edge: var(--c); }
+.panel-group    { --panel-edge: var(--c); }
 
 /* calendar */
 /* minmax(0, …): a plain 1fr won't shrink below its content, so one long title would widen its column */
-.grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
-.dow { text-align: center; font-size: .75rem; color: var(--muted); padding: .2rem 0; }
+.grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--gap); }
+.dow { text-align: center; font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); padding: .4rem 0; }
 .day {
   background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 6px;
+  border: 1px solid transparent;
+  border-radius: 12px;
   padding: .2rem;
   font-size: .75rem;
+  box-shadow: var(--shadow);
 }
-.day.pad { background: none; border: none; }
+.day.pad { background: none; border: none; box-shadow: none; }
 /* continuous calendar: the days of the months before and after, still usable but stepped back */
-.day.outside { background: none; }
+.day.outside { background: none; box-shadow: none; }
 .day.outside .num { color: var(--muted); font-weight: 400; }
-.day.today { border-color: var(--accent); }
 /* the button is the whole cell: grid on every wrapper stretches it edge to edge, no fixed heights.
    Each day spans two rows of .grid (head, events, see calendar.html) and passes them down as a
    subgrid, so the head row is as tall as the tallest one in the week: bars start level under
-   initials of any height. row-gap 0 inside the cell; the 3px gap stays between weeks. */
+   initials of any height. row-gap 0 inside the cell; --gap stays between weeks. */
 .day, .day form, .day button {
   display: grid;
   grid-row: span 2;
@@ -221,11 +254,12 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
      or the day's other events would stretch with it and spill into the next day */
   grid-template-columns: minmax(0, 1fr);
 }
-.day button { text-align: left; background: none; border: none; color: var(--fg); padding: .1rem .2rem; }
+.day button { text-align: left; background: none; border: none; color: var(--fg); padding: .1rem .2rem; font-weight: 400; box-shadow: none; }
 .day .head { display: block; }
 /* the cell's minimum height lives in the events row, so the head stays packed at the top */
 .day .day-events { display: flex; flex-direction: column; min-height: 3rem; }
-.day .num { font-weight: 600; }
+.day .num { font: 600 .95rem var(--display); display: inline-block; min-width: 1.4rem; }
+.day.today .num { background: var(--accent); color: var(--on-accent); border-radius: 50%; width: 1.4rem; height: 1.4rem; line-height: 1.4rem; text-align: center; }
 /* Holding a day opens the morning/afternoon menu (public/app.js), so the phone's own long-press
    reactions must not fire: no text selection, no iOS callout. manipulation also drops the
    double-tap zoom, so taps land at once. */
@@ -242,14 +276,15 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 
 /* the morning / afternoon / all day menu */
 #day-part {
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  border: none;
+  border-radius: 14px;
   padding: 1rem 1.2rem;
   background: var(--card);
   color: var(--fg);
   min-width: 240px;
+  box-shadow: var(--shadow);
 }
-#day-part::backdrop { background: rgb(0 0 0 / .4); }
+#day-part::backdrop { background: rgb(40 25 15 / .4); }
 #day-part h2 { margin: 0 0 .8rem; }
 #day-part .stack button { width: 100%; }
 /* what the day is set to now */
@@ -258,12 +293,12 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 #day-part .stack button:disabled { opacity: .4; }
 #day-part form[method=dialog] { margin-top: .8rem; text-align: center; }
 /* day states: one class per DAY_STATES key in src/lib.js */
-/* my free days, outlined in my own color: the grid carries my .cN class */
-.day.mine { outline: 2px solid var(--c, var(--accent)); outline-offset: -2px; }
+/* my free days, ringed in my own color: the grid carries my .cN class */
+.day.mine { box-shadow: var(--shadow), inset 0 0 0 2px var(--c, var(--accent)); }
 /* Settings → Customisation → "Disable border of free days" */
-.grid.no-free-border .day.mine { outline: none; }
+.grid.no-free-border .day.mine { box-shadow: var(--shadow); }
 .day.all { background: var(--ok-bg); }
-.day.all .num::after { content: " ✓"; color: var(--ok); }
+.day.all .num::after { content: " ✓"; color: var(--ok); font-size: .7rem; }
 .who { display: flex; flex-wrap: wrap; gap: 2px; }
 /* a group's feed link: as wide as the panel allows, so the whole URL is visible on a computer */
 .feed-link { flex: 1; min-width: 0; font-family: ui-monospace, monospace; font-size: .85rem; }
@@ -315,9 +350,9 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
     #4f46e5 61.54% 69.23%, #9333ea 69.23% 76.92%, #db2777 76.92% 84.62%, #7c4a1d 84.62% 92.31%,
     #475569 92.31% 100.00%);
 }
-.ev { background: var(--ev-bg); color: var(--ev-fg); border-radius: 4px; padding: 0 .25rem; margin-top: 2px; }
-/* An event with a color (events.color): a tint of its .cN palette color, text in the color itself. */
-.ev.colored { background: color-mix(in srgb, var(--c) 18%, var(--card)); color: var(--c); }
+.ev { background: var(--ev-bg); color: var(--ev-fg); border-radius: 6px; padding: 0 .25rem; margin-top: 2px; font-weight: 500; }
+/* An event with a color (events.color): a tint of its .cN palette color, text in a darkened shade of it. */
+.ev.colored { background: color-mix(in srgb, var(--c) 16%, var(--card)); color: color-mix(in srgb, var(--c) 80%, #000); }
 /* the color picker on the event page: one round chip per palette color, the radio inside it hidden */
 .colors { display: flex; flex-wrap: wrap; gap: .4rem; border: none; padding: 0; margin: 0; }
 .colors legend { padding: 0; margin-bottom: .3rem; }
@@ -339,7 +374,7 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 /* Multi-day bars: one line each so every piece of a bar is the same height; the tooltip has the full title. */
 .ev.bar { white-space: nowrap; }
 /* The label runs across the bar's next cells in the week (run-N = N cells, set in views.js).
-   One cell step is a column plus the 3px gap: (100cqw + 3px) / 7, cqw being 1% of .grid's width.
+   One cell step is a column plus the gap: (100cqw + gap) / 7, cqw being 1% of .grid's width.
    Minus the gap, the cell's inset on both sides (.4rem padding + 1px border) and the bar's padding.
    z-index lifts it over the later cells, which paint after this one; pointer-events: none lets a
    click on the text still reach the day under it. */
@@ -351,7 +386,7 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
   pointer-events: none;
   overflow: hidden;
   text-overflow: ellipsis;
-  width: calc(var(--run) * (100cqw + 3px) / 7 - 3px - .8rem - 2px - .5rem);
+  width: calc(var(--run) * (100cqw + var(--gap)) / 7 - var(--gap) - .8rem - 2px - .5rem);
 }
 .run-1 { --run: 1; }
 .run-2 { --run: 2; }
@@ -362,72 +397,86 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 .run-7 { --run: 7; }
 .ev.gap { visibility: hidden; }
 /* A piece that carries on stretches over the cell's padding (.2rem + .2rem on the button) and 1px border,
-   and the one continuing it also over the 3px grid gap, so the two meet edge to edge.
+   and the one continuing it also over the grid gap, so the two meet edge to edge.
    Not across a week break: the first column (7 weekday headers, then 7n+1) keeps its padding. */
 .day button { overflow: visible; }
 .ev.to { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: calc(-.4rem - 1px); }
-.ev.from { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: calc(-.4rem - 4px); }
+.ev.from { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: calc(-.4rem - 1px - var(--gap)); }
 .day:nth-child(7n+1) .ev.from { margin-left: 0; }
 /* too much text makes the cell taller, not wider: wrap, and break words that are longer than the cell */
 .day button { overflow-wrap: anywhere; }
-.events li { margin: .3rem 0; }
-.events li.past { color: var(--muted); } /* its last day is before today */
+/* one card per event, like the days above */
+.events { list-style: none; padding: 0; }
+.events li { margin: .4rem 0; padding: .6rem .9rem; background: var(--card); border-radius: 10px; box-shadow: var(--shadow); }
+.events li.past { opacity: .6; } /* its last day is before today */
+.events li a { color: var(--accent); }
 
 /* polls */
 .polls li { margin: .4rem 0; }
+.polls a { color: var(--accent); }
 .polls small { color: var(--muted); margin-left: .5rem; }
-table.poll { border-collapse: collapse; width: 100%; margin: 1rem 0; background: var(--card); }
-table.poll th, table.poll td { border: 1px solid var(--line); padding: .4rem; text-align: center; font-size: .9rem; }
-table.poll th.best { background: var(--ok-bg); }
+table.poll { border-collapse: collapse; width: 100%; margin: 1rem 0; background: var(--card); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+table.poll th, table.poll td { border-bottom: 1px solid var(--line); padding: .6rem .7rem; text-align: center; font-size: .9rem; }
+table.poll th { font-weight: 600; color: var(--muted); }
+table.poll th.best { background: var(--ok-bg); color: var(--ok); }
 table.poll td:first-child { text-align: left; }
-table.poll tr.tot td { color: var(--muted); font-size: .8rem; }
+table.poll tr.tot td { color: var(--muted); font-size: .8rem; border: 0; }
 .a.yes { color: var(--ok); font-weight: 600; }
 .a.no { color: var(--err); }
 .a.maybe { color: var(--maybe); }
 .a.none { color: var(--muted); }
-.result { background: var(--ok-bg); padding: 1rem; border-radius: 8px; margin: 1rem 0; }
+.result { background: var(--ok-bg); padding: 1rem 1.2rem; border-radius: 12px; margin: 1rem 0; }
 .result h2 { margin-top: 0; }
 .feeds li { margin: .8rem 0; }
 details { margin: .8rem 0; }
+a { color: var(--accent); }
 @media (max-width: 600px) {
-  .day { font-size: .65rem; }
+  :root { --gap: 4px; }
+  .day { font-size: .65rem; border-radius: 8px; }
+  .day .num { font-size: .8rem; min-width: 1.2rem; }
+  .day.today .num { width: 1.2rem; height: 1.2rem; line-height: 1.2rem; }
   .day .day-events { min-height: 1.8rem; }
   .who span { padding: 0 .15rem; }
+  h1 { font-size: 1.8rem; }
 }
 
-/* dark mode: follows the OS setting */
+/* dark mode: follows the OS setting. Same warmth, pulled down to deep brown. */
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
-    --bg: #000;
-    --card: #0b0b0b;
-    --fg: #e6e6e6;
-    --muted: #8a8a8a;
-    --line: #222;
-    --accent: #60a5fa;
-    --on-accent: #0b0b0b;
-    --ok: #4ade80;
-    --ok-bg: #0c2a17;
-    --err: #f87171;
-    --maybe: #fbbf24;
-    --code-bg: #161616;
-    --ev-bg: #2a1f05;
-    --ev-fg: #fcd34d;
+    --bg: #1a1613;
+    --card: #241f1b;
+    --fg: #efe7dc;
+    --muted: #a1958a;
+    --line: #3a322c;
+    --accent: #e2825a;
+    --accent-soft: #3a271d;
+    --on-accent: #1a1613;
+    --ok: #9bcf8a;
+    --ok-bg: #273523;
+    --err: #f08a7a;
+    --maybe: #e6b35a;
+    --code-bg: #2e2822;
+    --ev-bg: #3a3020;
+    --ev-fg: #ecd3a1;
+    --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 8px 24px -12px rgb(0 0 0 / .6);
   }
+  body { background: var(--bg); }
   .who span, .swatch { color: var(--cd, var(--accent)); }
-  .day.mine { outline-color: var(--cd, var(--accent)); }
-  .ev.colored { background: color-mix(in srgb, var(--cd) 22%, var(--card)); color: var(--cd); }
+  .day.mine { box-shadow: var(--shadow), inset 0 0 0 2px var(--cd, var(--accent)); }
+  .ev.colored { background: color-mix(in srgb, var(--cd) 20%, var(--card)); color: var(--cd); }
   .swatch-pick { background: var(--cd, var(--ev-bg)); border-color: var(--cd, var(--ev-fg)); }
-  /* same hues, pulled down to near-black so the panels tint rather than glow.
-     Dark needs no --muted bump: #8a8a8a clears 5.2:1 on all four. */
-  .panel-feeds    { --panel: #0a1526; --panel-edge: #60a5fa; }
-  .panel-custom   { --panel: #140f26; --panel-edge: #a78bfa; }
-  .panel-profile  { --panel: #26091a; --panel-edge: #f472b6; }
-  .panel-security { --panel: #211206; --panel-edge: #fb923c; }
-  .panel-admin    { --panel: #240d0d; --panel-edge: #f87171; }
-  .panel-invites  { --panel: #1f1a06; --panel-edge: #facc15; }
-  .panel-integration { --panel: #04201c; --panel-edge: #2dd4bf; }
-  .panel-options  { --panel: #05200f; --panel-edge: #4ade80; }
-  .panel-log      { --panel: #0e1030; --panel-edge: #818cf8; }
-  .panel-group    { --panel: color-mix(in srgb, var(--cd) 10%, var(--card)); --panel-edge: var(--cd); }
+  /* the same earth tones, lifted so they read on the dark card; the fill tints a little stronger.
+     Dark needs no --muted bump: #a1958a clears 4.5:1 on all of them. */
+  .panel { --muted: #a1958a; --panel: color-mix(in srgb, var(--panel-edge) 10%, var(--card)); }
+  .panel-feeds    { --panel-edge: #9ab6d3; }
+  .panel-custom   { --panel-edge: #c9a0cb; }
+  .panel-profile  { --panel-edge: #e59aa9; }
+  .panel-security { --panel-edge: #e2825a; }
+  .panel-admin    { --panel-edge: #e8927f; }
+  .panel-invites  { --panel-edge: #e0b35a; }
+  .panel-integration { --panel-edge: #8ccbbb; }
+  .panel-options  { --panel-edge: #b0c97e; }
+  .panel-log      { --panel-edge: #b5a7d8; }
+  .panel-group    { --panel-edge: var(--cd); }
 }
