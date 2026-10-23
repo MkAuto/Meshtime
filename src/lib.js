@@ -108,13 +108,22 @@ export function eventError({ date, endDate, startTime, endTime }) {
   return null;
 }
 
-/** '3 Oct. 2026 19:00–22:00', '3 Oct. 2026 – 5 Oct. 2026', ... in the member's date format. */
-export function formatEventWhen({ date, end_date, start_time, end_time }, format) {
-  const start = formatDate(date, format) + (start_time ? ' ' + start_time : '');
-  if (end_date && end_date !== date) {
-    return `${start} – ${formatDate(end_date, format)}${end_time ? ' ' + end_time : ''}`;
+/** An 'HH:MM' time as the member's device writes it (user.hour12, see app.js): '19:05', or '7:05 PM'. */
+export function formatTime(time, hour12) {
+  if (!hour12) {
+    return time;
   }
-  return end_time ? `${start}–${end_time}` : start;
+  const hour = Number(time.slice(0, 2));
+  return `${hour % 12 || 12}${time.slice(2)} ${hour < 12 ? 'AM' : 'PM'}`;
+}
+
+/** '3 Oct. 2026 19:00–22:00', '3 Oct. 2026 – 5 Oct. 2026', ... in the member's date and time format. */
+export function formatEventWhen({ date, end_date, start_time, end_time }, format, hour12 = false) {
+  const start = formatDate(date, format) + (start_time ? ' ' + formatTime(start_time, hour12) : '');
+  if (end_date && end_date !== date) {
+    return `${start} – ${formatDate(end_date, format)}${end_time ? ' ' + formatTime(end_time, hour12) : ''}`;
+  }
+  return end_time ? `${start}–${formatTime(end_time, hour12)}` : start;
 }
 
 /**

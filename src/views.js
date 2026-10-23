@@ -4,7 +4,7 @@ import { basename, join } from 'node:path';
 import Mustache from 'mustache';
 import packageJson from '../package.json' with { type: 'json' };
 import {
-  monthInfo, addDays, SHORT_MONTHS, formatDate, formatEventWhen, eventLanes, dayClass, weekdayNames, today, wallClock,
+  monthInfo, addDays, SHORT_MONTHS, formatDate, formatTime, formatEventWhen, eventLanes, dayClass, weekdayNames, today, wallClock,
   BUSY_HOURS, DATE_FORMATS, WEEKDAYS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD, randomColor,
 } from './lib.js';
 
@@ -131,7 +131,8 @@ export function calendarPage(user, yearMonth, {
 }) {
   const month = monthInfo(yearMonth, user.week_start);
   const lanes = eventLanes(events);
-  const eventTooltip = event => `${event.title}, ${formatEventWhen(event, user.date_format)} (by ${event.creator})`;
+  const eventTooltip = event =>
+    `${event.title}, ${formatEventWhen(event, user.date_format, user.hour12)} (by ${event.creator})`;
 
   // Continuous (Settings → Customisation, on unless turned off): the first and last weeks are filled with the
   // days of the months around this one, like Google Calendar. Off: blank cells before day 1, nothing after.
@@ -158,7 +159,8 @@ export function calendarPage(user, yearMonth, {
       7 - column,
       cellCount - index,
     );
-    const label = event => (event.start_time && event.date === date ? event.start_time + ' ' : '') + event.title;
+    const label = event =>
+      (event.start_time && event.date === date ? formatTime(event.start_time, user.hour12) + ' ' : '') + event.title;
 
     // Multi-day events sit in their lane; a lane with nothing today stays as a gap.
     const bars = [];
@@ -240,7 +242,7 @@ export function calendarPage(user, yearMonth, {
         id: event.id,
         title: event.title,
         creator: event.creator,
-        when: formatEventWhen(event, user.date_format),
+        when: formatEventWhen(event, user.date_format, user.hour12),
         classes: event.end_date < today ? 'past' : '', // its last day is before today
         canEdit: event.created_by === user.id || Boolean(user.is_admin),
       })),
@@ -281,7 +283,7 @@ export function groupsPage(user, { groups, invites, base, msg, invitedName, erro
       eventHeading: group.headlineEvent?.isLast ? 'Last event' : 'Next event',
       headlineEvent: group.headlineEvent && {
         title: group.headlineEvent.title,
-        when: formatEventWhen(group.headlineEvent, user.date_format),
+        when: formatEventWhen(group.headlineEvent, user.date_format, user.hour12),
         creator: group.headlineEvent.creator,
         // the group's own calendar view, on the event's month
         calendarUrl: `/?m=${group.headlineEvent.date.slice(0, 7)}&g=${group.id}`,
@@ -469,7 +471,8 @@ export function settingsPage(user, { base, groups = [], invites = [], calendarLi
         id: link.id,
         // the label, or the link's host: the full secret address is not shown again
         name: link.label || new URL(link.url).host,
-        synced: synced && `${formatDate(synced.slice(0, 10), user.date_format)} ${synced.slice(11)}`,
+        synced: synced
+          && `${formatDate(synced.slice(0, 10), user.date_format)} ${formatTime(synced.slice(11), user.hour12)}`,
         error: link.last_error,
         countFree: Boolean(link.count_free),
       };

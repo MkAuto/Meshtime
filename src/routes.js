@@ -178,7 +178,7 @@ on('POST', '/invite/(?<token>[\\w-]+)', async ctx => {
       auth.deleteUserCredentials(invite.user_id);
       return invite.user_id;
     }
-    // With groups off nobody is private: there would be no group to share their free time with.
+    // Joining while groups are off: public, like every event and poll made then (there is no choice to make).
     return run(`INSERT INTO users(name, password_hash, feed_token, is_admin, created_at, color, is_private)
                 VALUES (?,?,?,?,?,?,?)`,
       name, passwordHash, auth.token(), invite.is_admin, now(), randomColor(), groupsEnabled() ? 1 : 0)
@@ -191,10 +191,14 @@ on('POST', '/invite/(?<token>[\\w-]+)', async ctx => {
 
 // ---- calendar ----
 
+// While an admin has groups turned off (Administration → Options) everyone and everything is seen as public.
+// The private flags and group shares are left as they are, so turning groups back on brings them back.
+const GROUPS_OFF = '(SELECT groups_enabled FROM app_settings) = 0';
+
 // Whose free days a viewer may see: their own, public accounts', and those of anyone sharing a group with them.
 // A public event or poll goes with its creator the same way. For a users table aliased `u`. `viewer` is an SQL
 // expression: '?' to pass a user id (twice), or a column, to ask it for every user at once (a poll's audience).
-const visibleTo = viewer => `(u.id = ${viewer} OR u.is_private = 0 OR EXISTS (
+const visibleTo = viewer => `(${GROUPS_OFF} OR u.id = ${viewer} OR u.is_private = 0 OR EXISTS (
   SELECT 1 FROM group_members theirs JOIN group_members mine ON mine.group_id = theirs.group_id
   WHERE theirs.user_id = u.id AND mine.user_id = ${viewer}))`;
 // Takes my user id twice.
@@ -205,7 +209,7 @@ const IN_GROUP = 'EXISTS (SELECT 1 FROM group_members m WHERE m.group_id = ? AND
 // Events, for events `e` joined to their creator `u`. A public event (is_private = 0) is seen by everyone
 // who sees its creator; a private one only by its creator and the members of the groups it is shared with.
 // Takes my user id four times.
-const EVENT_VISIBLE_TO_ME = `(e.created_by = ? OR (e.is_private = 0 AND ${VISIBLE_TO_ME}) OR EXISTS (
+const EVENT_VISIBLE_TO_ME = `(${GROUPS_OFF} OR e.created_by = ? OR (e.is_private = 0 AND ${VISIBLE_TO_ME}) OR EXISTS (
   SELECT 1 FROM event_groups shared JOIN group_members mine ON mine.group_id = shared.group_id
   WHERE shared.event_id = e.id AND mine.user_id = ?))`;
 // One group's events (its view on the calendar, and its feed): its members' public events, and the private
@@ -215,7 +219,7 @@ const EVENT_IN_GROUP = `(${IN_GROUP} AND (e.is_private = 0 OR EXISTS (
 
 // Polls, for polls `p` joined to their creator `u`: the same rule as events, with poll_groups.
 // `viewer` as in visibleTo: '?' takes the user id four times.
-const pollVisibleTo = viewer => `(p.created_by = ${viewer} OR (p.is_private = 0 AND ${visibleTo(viewer)}) OR EXISTS (
+const pollVisibleTo = viewer => `(${GROUPS_OFF} OR p.created_by = ${viewer} OR (p.is_private = 0 AND ${visibleTo(viewer)}) OR EXISTS (
   SELECT 1 FROM poll_groups shared JOIN group_members mine ON mine.group_id = shared.group_id
   WHERE shared.poll_id = p.id AND mine.user_id = ${viewer}))`;
 
@@ -374,12 +378,12 @@ on('POST', '/free', ctx => {
  * The "Who sees it" fields of the event and poll forms (templates/share-with.html): { isPrivate, groupIds, error }.
  * A private event or poll needs at least one group, and only groups of its creator (`creatorGroups`) count:
  * any other id is dropped. A public one is shared with no group. `what` names it in the error.
- * While groups are off everything is public, whatever was posted.
+ * While groups are off the form has no Who sees it: a new one is public, and one being changed keeps `current`
+ * (its saved choice) for when groups are turned back on.
  */
-function readSharing(ctx, creatorGroups, what) {
-  // Groups off (Administration → Options): the form has no Who sees it, and everything is public.
+function readSharing(ctx, creatorGroups, what, current = { isPrivate: 0, groupIds: [] }) {
   if (!ctx.user.groups_enabled) {
-    return { isPrivate: 0, groupIds: [] };
+    return current;
   }
   const visibility = ctx.body.get('visibility');
   const postedGroupIds = ctx.body.getAll('group_ids').map(Number);
@@ -418,12 +422,13 @@ const sharedGroupIds = (kind, id) =>
  * The event form, in the shape of an events row so a rejected form re-renders with what was typed.
  * The optional fields arrive as '' when left empty: those become NULL (end_date: the start date).
  * `creatorGroups` are the groups of the event's creator: a private event can only be shared with those.
+ * `currentSharing`: an edited event's saved Who sees it, kept while groups are off (readSharing).
  */
-function readEventForm(ctx, creatorGroups) {
+function readEventForm(ctx, creatorGroups, currentSharing) {
   const colorText = ctx.body.get('color') || '';
   // The time inputs are only hidden when "All day" is ticked, so the browser still sends them: drop them.
   const allDay = ctx.body.get('all_day') === '1';
-  const sharing = readSharing(ctx, creatorGroups, 'event');
+  const sharing = readSharing(ctx, creatorGroups, 'event', currentSharing);
   const event = {
     title: cleanText(ctx.body.get('title'), 100),
     date: ctx.body.get('date') || '',
@@ -512,7 +517,8 @@ on('POST', '/events/(?<id>\\d+)', ctx => {
     return;
   }
   const groups = myGroups(existing.created_by);
-  const { event, errors } = readEventForm(ctx, groups);
+  const { event, errors } = readEventForm(ctx, groups,
+    { isPrivate: existing.is_private, groupIds: sharedGroupIds('event', existing.id) });
   event.id = existing.id;
   if (hasErrors(errors)) {
     return ctx.html(views.eventPage(ctx.user, { event, errors, groups }), 400);
@@ -701,7 +707,8 @@ on('POST', '/polls/(?<id>\\d+)/visibility', ctx => {
   if (!managesPoll(ctx.user, data.poll)) {
     return ctx.fail(403, 'Only its creator or an admin can change who sees this poll.');
   }
-  const sharing = readSharing(ctx, data.creatorGroups, 'poll');
+  const sharing = readSharing(ctx, data.creatorGroups, 'poll',
+    { isPrivate: data.poll.is_private, groupIds: data.groupIds });
   if (sharing.error) {
     const posted = { ...data, poll: { ...data.poll, is_private: sharing.isPrivate }, groupIds: sharing.groupIds };
     return rejectPoll(ctx, posted, 400, { visibility: sharing.error });
@@ -1211,11 +1218,11 @@ on('POST', '/profile/about', ctx => {
   if (!isValidColor(color)) {
     errors.color = 'Invalid color.';
   }
-  // Groups off: the page has no Account choice, and everyone stays public.
+  // Groups off: the page has no Account choice, and the saved one is kept for when groups come back.
   if (ctx.user.groups_enabled && privacy !== 'private' && privacy !== 'public') {
     errors.privacy = 'Pick private or public.';
   }
-  const isPrivate = (ctx.user.groups_enabled && privacy !== 'public') ? 1 : 0;
+  const isPrivate = ctx.user.groups_enabled ? (privacy === 'public' ? 0 : 1) : ctx.user.is_private;
   if (hasErrors(errors)) {
     // An invalid color cannot be drawn, so the slider goes back to the saved one.
     const about = { name, birthday, color: errors.color ? ctx.user.color : color, is_private: isPrivate };
@@ -1348,19 +1355,14 @@ on('POST', '/admin/options', ctx => {
     return;
   }
   const memberInvites = ctx.body.get('member_invites') === '1' ? 1 : 0;
-  const groupsOn = ctx.body.get('groups_enabled') === '1' ? 1 : 0;
+  // A hidden groups_enabled=0 comes before the checkbox (admin.html), so the field is always posted. A form
+  // without it (an admin page left open over an update) leaves groups as they are instead of turning them off.
+  const groupsOn = ctx.body.has('groups_enabled')
+    ? (ctx.body.getAll('groups_enabled').includes('1') ? 1 : 0)
+    : ctx.user.groups_enabled;
   tx(() => {
+    // Nothing else changes: while groups are off, GROUPS_OFF shows everyone and everything as public.
     run('UPDATE app_settings SET member_invites = ?, groups_enabled = ?', memberInvites, groupsOn);
-    // Groups off: every member, event and poll goes public, since no group is left to share them with.
-    // Groups and their members are kept (hidden), so turning groups back on brings them back; what went
-    // public stays public, and each member makes their account private again in Profile if they want.
-    if (!groupsOn) {
-      run('UPDATE users SET is_private = 0');
-      run('UPDATE events SET is_private = 0');
-      run('UPDATE polls SET is_private = 0');
-      run('DELETE FROM event_groups'); // a public event or poll is shared with no group
-      run('DELETE FROM poll_groups');
-    }
     if (!memberInvites) {
       // Turning it off takes effect now: the links members made and nobody used yet stop working too.
       run(`DELETE FROM invites WHERE used_at IS NULL AND user_id IS NULL
@@ -1445,8 +1447,8 @@ on('GET', '/feed/(?<token>[\\w-]+)/events\\.ics', ctx => {
   if (groupsEnabled() || !get('SELECT 1 FROM users WHERE feed_token = ?', ctx.params.token)) {
     return ctx.fail(404, 'Not found.');
   }
-  // is_private = 0 is already every event while groups are off; kept so the feed stays safe on its own
-  const items = all('SELECT * FROM events WHERE is_private = 0').map(event => ({
+  // GROUPS_OFF is already true here; kept so the feed stays safe on its own
+  const items = all(`SELECT * FROM events WHERE ${GROUPS_OFF}`).map(event => ({
     uid: 'event-' + event.id,
     date: event.date,
     endDate: event.end_date,

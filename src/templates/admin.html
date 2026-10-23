@@ -40,16 +40,18 @@
 <section class="panel panel-options">
   <h2>Options</h2>
   <form method="post" action="/admin/options">
+    {{! Always posted, so a form without it (an older page) leaves groups as they are (POST /admin/options). }}
+    <input type="hidden" name="groups_enabled" value="0">
     <label>
       {{! data-confirm-on / -off: app.js asks before saving, only when this box was ticked / unticked. }}
       <input type="checkbox" name="groups_enabled" value="1"{{#groupsEnabled}} checked{{/groupsEnabled}}
-        data-confirm-on="Turn groups on? Groups come back; members, events and polls stay public."
-        data-confirm-off="Turn groups off? Every member, event and poll becomes public. This cannot be undone.">
+        data-confirm-on="Turn groups on? Groups come back, and every private member, event and poll is private again."
+        data-confirm-off="Turn groups off? Every member, event and poll is shown to everyone until groups are back on.">
       Groups
     </label>
     <p class="hint">
-      Turning groups off makes every member, event and poll public, and hides groups and every public / private
-      choice. Turning them back on brings the groups back; everything stays public until its owner changes it.
+      Turning groups off shows every member, event and poll to everyone, and hides groups and every public / private
+      choice. Nothing is deleted: turning them back on brings back the groups and each private / public choice.
     </p>
     <label>
       <input type="checkbox" name="member_invites" value="1"{{#memberInvites}} checked{{/memberInvites}}>
@@ -64,7 +66,7 @@
   <h2>Logs</h2>
   <p class="hint"><a href="/admin/log" download>Download meshtime.log</a></p>
   <p class="hint">
-    <a href="/admin/errors" download>Download errors.log</a>: server errors and warnings, with their stack traces
+    <a href="/admin/errors" download>Download errors.log</a>
   </p>
   {{#log.length}}
   <div class="log-wrap">

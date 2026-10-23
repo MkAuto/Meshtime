@@ -95,6 +95,13 @@ test('formatEventWhen: one day, timed, multi-day, timed multi-day', () => {
     '3 Oct. 2026 18:00 – 5 Oct. 2026 14:00');
 });
 
+test('formatEventWhen on a 12-hour device: midnight and noon are 12', () => {
+  const f = event => formatEventWhen({ date: '2026-10-03', end_date: '2026-10-03', ...event }, 'd-mon-y', true);
+  assert.equal(f({ start_time: '00:30', end_time: '12:00' }), '3 Oct. 2026 12:30 AM–12:00 PM');
+  assert.equal(f({ end_date: '2026-10-05', start_time: '09:05', end_time: '23:59' }),
+    '3 Oct. 2026 9:05 AM – 5 Oct. 2026 11:59 PM');
+});
+
 test('eventLanes: overlapping bars stack, a lane is reused once free, one-day events get none', () => {
   const ev = (id, date, end_date) => ({ id, date, end_date });
   const lanes = eventLanes([

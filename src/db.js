@@ -160,7 +160,7 @@ CREATE TABLE IF NOT EXISTS credentials(
 CREATE TABLE IF NOT EXISTS app_settings(
   id INTEGER PRIMARY KEY CHECK(id = 1),
   member_invites INTEGER NOT NULL DEFAULT 0, -- 1: every member can create invite links in Settings
-  groups_enabled INTEGER NOT NULL DEFAULT 1); -- 0: no groups, everyone and everything public (POST /admin/options)
+  groups_enabled INTEGER NOT NULL DEFAULT 1); -- 0: no groups, everyone and everything seen as public (GROUPS_OFF in routes.js)
 INSERT OR IGNORE INTO app_settings(id) VALUES (1);
 
 -- outstanding WebAuthn challenges. Single-use and short-lived, so a captured login cannot be replayed.

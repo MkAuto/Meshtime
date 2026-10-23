@@ -1,3 +1,8 @@
+// The server writes times the way this device does, 19:00 or 7:00 PM (formatTime in lib.js): it reads this
+// cookie. Set on every page, the login page included, so it is there before any time is shown.
+const hour12 = new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions().hour12;
+document.cookie = `hour12=${hour12 ? 1 : 0}; Path=/; Max-Age=31536000; SameSite=Lax`;
+
 // Forms with data-confirm ask before submitting (CSP forbids inline onsubmit). Without JS they just submit.
 for (const form of document.querySelectorAll('form[data-confirm]')) {
   form.addEventListener('submit', event => {
