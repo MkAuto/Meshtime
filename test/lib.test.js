@@ -96,19 +96,19 @@ test('eventError accepts any year, birthdayIn places a birthday in a month', () 
 
 test('formatEventWhen: one day, timed, multi-day, timed multi-day', () => {
   const f = event => formatEventWhen({ date: '2026-10-03', end_date: '2026-10-03', ...event }, 'd-mon-y');
-  assert.equal(f({}), '3 Oct. 2026');
-  assert.equal(f({ start_time: '19:00' }), '3 Oct. 2026 19:00');
-  assert.equal(f({ start_time: '19:00', end_time: '22:00' }), '3 Oct. 2026 19:00–22:00');
-  assert.equal(f({ end_date: '2026-10-05' }), '3 Oct. 2026 – 5 Oct. 2026');
+  assert.equal(f({}), '3 Oct 2026');
+  assert.equal(f({ start_time: '19:00' }), '3 Oct 2026 19:00');
+  assert.equal(f({ start_time: '19:00', end_time: '22:00' }), '3 Oct 2026 19:00–22:00');
+  assert.equal(f({ end_date: '2026-10-05' }), '3 Oct 2026 – 5 Oct 2026');
   assert.equal(f({ end_date: '2026-10-05', start_time: '18:00', end_time: '14:00' }),
-    '3 Oct. 2026 18:00 – 5 Oct. 2026 14:00');
+    '3 Oct 2026 18:00 – 5 Oct 2026 14:00');
 });
 
 test('formatEventWhen on a 12-hour device: midnight and noon are 12', () => {
   const f = event => formatEventWhen({ date: '2026-10-03', end_date: '2026-10-03', ...event }, 'd-mon-y', true);
-  assert.equal(f({ start_time: '00:30', end_time: '12:00' }), '3 Oct. 2026 12:30 AM–12:00 PM');
+  assert.equal(f({ start_time: '00:30', end_time: '12:00' }), '3 Oct 2026 12:30 AM–12:00 PM');
   assert.equal(f({ end_date: '2026-10-05', start_time: '09:05', end_time: '23:59' }),
-    '3 Oct. 2026 9:05 AM – 5 Oct. 2026 11:59 PM');
+    '3 Oct 2026 9:05 AM – 5 Oct 2026 11:59 PM');
 });
 
 test('eventLanes: overlapping bars stack, a lane is reused once free, one-day events get none', () => {
@@ -148,15 +148,19 @@ test('isValidWeekStart: only Saturday, Sunday and Monday', () => {
 });
 
 test('formatDate: every format, the fallback, and non-dates left alone', () => {
-  assert.equal(formatDate('2026-09-29', 'd-mon-y'), '29 Sept. 2026');
-  assert.equal(formatDate('2026-01-05', 'd-mon-y'), '5 Jan. 2026');
-  assert.equal(formatDate('2026-05-01', 'd-mon-y'), '1 May 2026', 'short month names keep no period');
-  assert.equal(formatDate('2026-09-29', 'mon-d-y'), 'Sept. 29, 2026');
+  assert.equal(formatDate('2026-09-29', 'd-mon-y'), '29 Sep 2026');
+  assert.equal(formatDate('2026-01-05', 'd-mon-y'), '5 Jan 2026');
+  assert.equal(formatDate('2026-05-01', 'd-mon-y'), '1 May 2026');
+  assert.equal(formatDate('2026-09-29', 'mon-d-y'), 'Sep 29, 2026');
+  assert.equal(formatDate('2026-09-29', 'd-mon-y', 'fr'), '29 sept. 2026', 'month names follow the language');
+  assert.equal(formatDate('2026-07-14', 'd-mon-y', 'fr'), '14 juill. 2026', 'Quebec French: juill.');
+  assert.equal(formatDate('2026-09-29', 'dd/mm/yyyy', 'fr'), '29/09/2026', 'the pattern stays the member\'s');
   assert.equal(formatDate('2026-01-05', 'dd/mm/yyyy'), '05/01/2026');
   assert.equal(formatDate('2026-01-05', 'mm/dd/yyyy'), '01/05/2026');
   assert.equal(formatDate('2026-01-05', 'yyyy-mm-dd'), '2026-01-05');
-  assert.equal(formatDate('2026-09-29', 'nope'), '29 Sept. 2026', 'unknown format: default');
-  assert.equal(formatDate('2026-09-29', undefined), '29 Sept. 2026');
+  assert.equal(formatDate('2026-09-29', 'nope'), '29 Sep 2026', 'unknown format: default');
+  assert.equal(formatDate('2026-09-29', undefined), '29 Sep 2026');
+  assert.equal(formatDate('2026-09-29', 'd-mon-y', 'xx'), '29 Sep 2026', 'unknown language: English');
   assert.equal(formatDate('', 'd-mon-y'), '');
   assert.equal(isValidDateFormat('toString'), false, 'inherited keys are not formats');
 });

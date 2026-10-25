@@ -1,5 +1,5 @@
-<h1>Polls</h1>
-<p><a class="btn" href="/polls/new">New poll</a></p>
+<h1>{{t.polls.title}}</h1>
+<p><a class="btn" href="/polls/new">{{t.polls.new}}</a></p>
 <ul class="polls">
   {{#polls}}
   <li>
@@ -8,6 +8,6 @@
   </li>
   {{/polls}}
   {{^polls}}
-  <li class="hint">No polls yet.</li>
+  <li class="hint">{{t.polls.none}}</li>
   {{/polls}}
 </ul>

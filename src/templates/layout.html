@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{lang}}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -14,23 +14,27 @@
       hides the button. }}
   <header>
     {{#user}}
-    <button class="menu-btn" popovertarget="menu" aria-label="Menu">☰</button>
+    <button class="menu-btn" popovertarget="menu" aria-label="{{t.layout.menu}}">☰</button>
     {{/user}}
     <a href="/" class="brand">Meshtime</a>
     {{#user}}
     <nav id="menu" popover>
-      <a href="/">Calendar</a>
-      <a href="/polls">Polls</a>
+      <a href="/">{{t.layout.calendar}}</a>
+      <a href="/polls">{{t.layout.polls}}</a>
       {{#groupsEnabled}}
-      <a href="/groups">Groups{{#pending_invites}} ({{pending_invites}}){{/pending_invites}}</a>
+      <a href="/groups">{{t.layout.groups}}{{#pending_invites}} ({{pending_invites}}){{/pending_invites}}</a>
       {{/groupsEnabled}}
-      <a href="/profile">Profile</a>
-      <a href="/settings">Settings</a>
+      <a href="/profile">{{t.layout.profile}}</a>
+      <a href="/settings">{{t.layout.settings}}</a>
       {{#is_admin}}
-      <a href="/admin">Administration</a>
+      <a href="/admin">{{t.layout.admin}}</a>
       {{/is_admin}}
-      <form method="post" action="/logout"><button class="link">Log out ({{name}})</button></form>
+      <form method="post" action="/logout"><button class="link">{{logout}}</button></form>
+      {{> language-menu}}
     </nav>
+    {{/user}}
+    {{^user}}
+    {{> language-menu}}
     {{/user}}
   </header>
   <main>

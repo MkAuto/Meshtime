@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import {
   COLORS, DEFAULT_WEEK_START, WEEK_START_CHOICES, DATE_FORMATS, DEFAULT_DATE_FORMAT, DAY_PARTS, SLOTS,
-  DEFAULT_BUSY_MINUTES,
+  DEFAULT_BUSY_MINUTES, LANGUAGES,
 } from './lib.js';
 
 const dbPath = process.env.DB_PATH || './data/app.db';
@@ -55,7 +55,9 @@ CREATE TABLE IF NOT EXISTS users(
   -- Calendar Integration rules (src/sync.js): minutes of events that make a slot busy (BUSY_CHOICES in src/lib.js),
   busy_minutes INTEGER NOT NULL DEFAULT ${DEFAULT_BUSY_MINUTES},
   busy_slots TEXT NOT NULL DEFAULT '', -- always busy, "<weekday><slot>" space-separated, 0 = Sunday: '1am 1pm'
-  ignore_words TEXT NOT NULL DEFAULT ''); -- comma-separated: events whose title contains one are left out
+  ignore_words TEXT NOT NULL DEFAULT '', -- comma-separated: events whose title contains one are left out
+  -- the language the app is shown in (LANGUAGES in src/lib.js); NULL = the browser's (pickLanguage)
+  language TEXT);
 
 -- single-use links. user_id set => password reset for that user, otherwise a new-account invite.
 CREATE TABLE IF NOT EXISTS invites(
@@ -281,6 +283,11 @@ if (!userColumns.includes('default_group_id')) {
   db.exec('ALTER TABLE users ADD COLUMN default_group_id INTEGER REFERENCES member_groups(id) ON DELETE SET NULL');
 }
 
+// DBs created before languages existed: everyone follows their browser until they pick one.
+if (!userColumns.includes('language')) {
+  db.exec('ALTER TABLE users ADD COLUMN language TEXT');
+}
+
 // DBs created before Calendar Integration rules existed: the old fixed 2 h, nothing always busy, no word ignored.
 for (const [column, definition] of [
   ['busy_minutes', `INTEGER NOT NULL DEFAULT ${DEFAULT_BUSY_MINUTES}`],
@@ -320,6 +327,10 @@ if (!pollColumns.includes('is_private')) {
 // A format that is no longer offered goes back to the default.
 db.prepare(`UPDATE users SET date_format = ? WHERE date_format NOT IN (${Object.keys(DATE_FORMATS).map(() => '?')})`)
   .run(DEFAULT_DATE_FORMAT, ...Object.keys(DATE_FORMATS));
+
+// A language that is no longer offered goes back to following the browser.
+db.prepare(`UPDATE users SET language = NULL WHERE language NOT IN (${LANGUAGES.map(() => '?')})`)
+  .run(...LANGUAGES.map(language => language.code));
 
 // Members who picked a first day that is no longer offered go back to the Sunday default.
 db.exec(`UPDATE users SET week_start = ${DEFAULT_WEEK_START} WHERE week_start NOT IN (${WEEK_START_CHOICES})`);

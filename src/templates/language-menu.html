@@ -1,0 +1,17 @@
+{{! The language menu, at the end of the nav (a logged-out page's: the header's top right). Every language in its
+    own name, the current one ticked; picking one posts to /language, which saves it and comes back to `back`.
+    A details element, so it opens with no JS: a dropdown under the icon on wide screens, a list opening in place
+    in the phone menu. app.js folds it again on a click outside or Esc.
+    The icon is Material Symbols "translate" (Apache License 2.0). }}
+<details class="lang-menu">
+  <summary title="{{t.layout.language}}" aria-label="{{t.layout.language}}">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/></svg>
+    <span class="lang-label">{{t.layout.language}}</span>
+  </summary>
+  <form method="post" action="/language">
+    <input type="hidden" name="back" value="{{back}}">
+    {{#languages}}
+    <button name="lang" value="{{code}}" lang="{{code}}" class="link"{{#current}} aria-current="true"{{/current}}>{{name}}</button>
+    {{/languages}}
+  </form>
+</details>

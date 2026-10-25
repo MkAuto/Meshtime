@@ -9,6 +9,7 @@ A small self-hosted web app for a group of friends:
 - **Passkeys**: add one in Profile and log in with a fingerprint, face or device PIN instead of a password.
 - **Calendar feeds**: each member gets private ICS links to subscribe from Google Calendar, Apple Calendar or Outlook. No OAuth, no API keys.
 - **Calendar Integration**: connect the secret iCal link of your own Google, Outlook or iCloud calendar and your free days fill themselves in ([below](#calendar-integration)).
+- **English and French**: the language icon at the end of the menu (top right when logged out) switches it. Until you pick one, the app follows your browser's language ([below](#languages)).
 
 Two npm dependencies: [`mustache`](https://github.com/janl/mustache.js) for the HTML templates in `src/templates/`, and [`node-ical`](https://github.com/jens-maus/node-ical) to read the calendars connected in Calendar Integration, repeating events included. Everything else is Node built-ins (`node:http`, `node:sqlite`, `node:crypto`), passkeys included.
 
@@ -23,7 +24,7 @@ npm start        # http://localhost:3000, database in ./data/app.db
 On first start the console prints a one-time **admin invite link**. Open it, pick a name and password. Then go to **Administration → Create invite link** to invite friends (links last 7 days, single use). The Administration page is only shown to admins: members, invite links, *Options* (groups on / off, members may create invite links) and the logs to download. Profile holds your name, birthday, color, private / public, password and passkeys; Settings holds display preferences (*Customisation*), Calendar Integration, calendar feeds, and invite links while an admin allows members to create them.
 
 ```sh
-npm test         # date and event validation, poll ranking, ICS output, passkey verification, Calendar Integration, groups, logs, page rendering
+npm test         # date and event validation, poll ranking, ICS output, passkey verification, Calendar Integration, groups, logs, page rendering, translations
 ```
 
 ## Deploy with Docker + HTTPS
@@ -66,6 +67,20 @@ Once a calendar is connected, **Rules** (one set per member, for all their calen
 - **A timeframe is busy from**: how much of a part events must fill before it is taken, from *Any event* to *Whole slot (6h)*. 2h by default.
 - **Ignore events whose title contains**: comma-separated words, any case, matched anywhere in the title (`gym` also leaves out "Gymnastics"). Outlook links published as *Availability only* have no titles, so this does nothing for them.
 - **Always busy**: a weekday × morning / afternoon / evening grid, for work hours a work calendar does not show (it holds meetings, not "at work"). For a day off, click the day on the calendar: days set by hand win.
+
+## Languages
+
+The language icon at the end of the menu (top right of the login page) lists every language in its own name. A pick is saved on your account, and in a cookie so the login page keeps it after you log out. Until you pick one, pages follow your browser's language, and English when it speaks none of ours. A new account starts in the language its invite page was shown in.
+
+Month and weekday names come from Node's `Intl`, in each language's locale (`29 Sep 2026`, `29 sept. 2026`); the date format picked in *Customisation* keeps its order in every language. Calendar feeds are read by your calendar app, not your browser, so they use the language saved on your account (English if you never picked one). The logs stay in English.
+
+### Adding a language
+
+1. Copy `src/locales/en.json` to `src/locales/<code>.json` (`es.json`) and translate every value. Keep the keys, and keep each `{{name}}` placeholder as it is; a few texts hold a link or `<b>`, keep those tags too.
+2. Add one line to `LANGUAGES` in `src/lib.js`: its code, its name in itself, and the `Intl` locale for its month and weekday names, e.g. `{ code: 'es', name: 'Español', intl: 'es' }`.
+3. `npm test`: it fails on a missing or extra key, or a placeholder that does not match English's.
+
+A text missing from a language falls back to English, so a page never shows a raw key.
 
 ## Forgot password
 

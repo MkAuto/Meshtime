@@ -74,6 +74,7 @@ if (linkedPanel?.matches('details')) {
 
 // Copy buttons (data-copy: the text to copy) start hidden, since they need JS and a secure page (https or
 // localhost) for the clipboard. Without either, the link next to them can still be selected and copied.
+// data-copied / data-copy-failed: what the button says for a moment after, in the page's language.
 if (navigator.clipboard) {
   for (const button of document.querySelectorAll('button[data-copy]')) {
     button.hidden = false;
@@ -81,9 +82,9 @@ if (navigator.clipboard) {
       const label = button.textContent;
       try {
         await navigator.clipboard.writeText(button.dataset.copy);
-        button.textContent = 'Copied';
+        button.textContent = button.dataset.copied;
       } catch {
-        button.textContent = 'Copy failed';
+        button.textContent = button.dataset.copyFailed;
       }
       setTimeout(() => { button.textContent = label; }, 1500);
     });
@@ -218,19 +219,22 @@ const toBase64url = buffer => btoa(String.fromCharCode(...new Uint8Array(buffer)
 const fromBase64url = value =>
   Uint8Array.from(atob(value.replaceAll('-', '+').replaceAll('_', '/')), char => char.charCodeAt(0));
 
-/** Posts a form-encoded body and returns the parsed JSON, throwing the server's message on failure. */
+/** Posts a form-encoded body and returns the parsed JSON, throwing the server's message (or none) on failure. */
 async function postJson(url, fields = {}) {
   const response = await fetch(url, {
     method: 'POST', body: new URLSearchParams(fields), headers: { Accept: 'application/json' },
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || 'Something went wrong.');
+    throw new Error(data.error ?? '');
   }
   return data;
 }
 
-/** Reveals a hidden "<p><button><span class=err>" block and runs `action` when the button is clicked. */
+/**
+ * Reveals a hidden "<p><button><span class=err>" block and runs `action` when the button is clicked, with the texts
+ * the block carries in its data-* (the page's language): data-error is shown for an error that has no message.
+ */
 function onPasskeyButton(id, action) {
   const holder = document.getElementById(id);
   if (!holder || !window.PublicKeyCredential) {
@@ -245,11 +249,11 @@ function onPasskeyButton(id, action) {
     error.textContent = '';
     button.disabled = true;
     try {
-      await action();
+      await action(holder.dataset);
     } catch (err) {
       // NotAllowedError is the user dismissing the system prompt; that needs no error message.
       if (err.name !== 'NotAllowedError') {
-        error.textContent = err.message;
+        error.textContent = err.message || holder.dataset.error;
       }
     } finally {
       button.disabled = false;
@@ -281,9 +285,9 @@ if (navigator.clipboard && window.ClipboardItem) {
   }
 }
 
-onPasskeyButton('passkey-add',async () => {
+onPasskeyButton('passkey-add', async texts => {
   const options = await postJson('/profile/passkeys/options');
-  const label = prompt('Name this passkey', 'My device');
+  const label = prompt(texts.prompt, texts.defaultName);
   if (label === null) {
     return;
   }
@@ -303,7 +307,7 @@ onPasskeyButton('passkey-add',async () => {
   const response = credential.response;
   const publicKey = response.getPublicKey();
   if (!publicKey) {
-    throw new Error('This browser cannot export the passkey. Try another one.');
+    throw new Error(texts.noExport);
   }
 
   await postJson('/profile/passkeys', {
@@ -337,6 +341,21 @@ onPasskeyButton('passkey-login', async () => {
   });
   location.href = '/';
 });
+
+// The language menu (templates/language-menu.html) is a details element: a click outside it or Esc folds it.
+const languageMenu = document.querySelector('.lang-menu');
+if (languageMenu) {
+  document.addEventListener('click', event => {
+    if (!languageMenu.contains(event.target)) {
+      languageMenu.open = false;
+    }
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      languageMenu.open = false;
+    }
+  });
+}
 
 // The nav link of the page we are on gets .active (style.css draws it as a pill).
 document.querySelector(`nav a[href="${location.pathname}"]`)?.classList.add('active');

@@ -4,6 +4,41 @@ import { createHash, createPublicKey, verify } from 'node:crypto';
 
 export const BASE_URL = (process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, '');
 
+// ---- languages ----
+// Every language the app speaks: its code (users.language, the lang cookie, src/locales/<code>.json), its name in
+// itself (the language menu) and the Intl locale its month and weekday names come from. Adding one: a
+// src/locales/<code>.json and a line here (README, "Adding a language").
+export const LANGUAGES = [
+  { code: 'en', name: 'English', intl: 'en' },
+  { code: 'fr', name: 'Français', intl: 'fr-CA' },
+];
+export const DEFAULT_LANGUAGE = 'en';
+export const isValidLanguage = code => LANGUAGES.some(language => language.code === code);
+
+/**
+ * The language a request is shown in: the member's own pick (users.language), else the lang cookie (picked while
+ * logged out), else the first of the browser's languages we speak (Accept-Language: 'fr-CA,fr;q=0.9,en;q=0.8'),
+ * else English.
+ */
+export function pickLanguage(saved, cookie, acceptLanguage = '') {
+  // ponytail: q-values ignored, browsers already list their languages best first
+  const browser = acceptLanguage.split(',').map(tag => tag.split(';')[0].trim().split('-')[0].toLowerCase());
+  return [saved, cookie, ...browser].find(isValidLanguage) ?? DEFAULT_LANGUAGE;
+}
+
+// Month and weekday names in each language, from Intl, worked out once: 'Sep' / 'sept.', 'Sun' / 'dim.'.
+const intlNames = (intl, options, count, dateAt) => Array.from({ length: count },
+  (_, index) => new Intl.DateTimeFormat(intl, { ...options, timeZone: 'UTC' }).format(dateAt(index)));
+const NAMES = Object.fromEntries(LANGUAGES.map(({ code, intl }) => [code, {
+  months: intlNames(intl, { month: 'short' }, 12, index => Date.UTC(2000, index, 1)),
+  // 2023-01-01 was a Sunday: getUTCDay() order, so index == day number
+  weekdays: intlNames(intl, { weekday: 'short' }, 7, index => Date.UTC(2023, 0, 1 + index)),
+  monthYear: new Intl.DateTimeFormat(intl, { month: 'long', year: 'numeric', timeZone: 'UTC' }),  // October 2026
+  monthDay: new Intl.DateTimeFormat(intl, { month: 'short', day: 'numeric', timeZone: 'UTC' }),   // Nov 1, 1 nov.
+}]));
+/** The names of `lang`, English for an unknown one. */
+const namesIn = lang => NAMES[lang] ?? NAMES[DEFAULT_LANGUAGE];
+
 // Dates are plain 'YYYY-MM-DD' strings everywhere (DB, forms, URLs and ICS), worked on as UTC midnights.
 // Today is the date on the wall clock in TIME_ZONE, the same day Calendar Integration and the logs use.
 export const today = () => wallClock(new Date()).slice(0, 10);
@@ -32,11 +67,12 @@ export const birthdayRrule = birthday =>
   birthday.endsWith('-02-29') ? 'FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-1' : 'FREQ=YEARLY';
 
 export const TIME_ZONE = process.env.TZ || 'UTC';
-// Calendar Integration: minutes of events that make a slot busy (users.busy_minutes), as Settings lists them.
-// Every slot is 6 h, so 360 = only when events fill it; 1 = any event at all.
-export const BUSY_CHOICES = [[1, 'Any event'], [60, '1h'], [120, '2h'], [180, '3h'], [240, '4h'], [360, 'Whole slot (6h)']];
+// Calendar Integration: minutes of events that make a slot busy (users.busy_minutes), as Settings lists them
+// (their labels: settings.busyChoices in src/locales). Every slot is 6 h, so 360 = only when events fill it;
+// 1 = any event at all.
+export const BUSY_CHOICES = [1, 60, 120, 180, 240, 360];
 export const DEFAULT_BUSY_MINUTES = 120;
-export const isValidBusyMinutes = value => BUSY_CHOICES.some(([minutes]) => minutes === value);
+export const isValidBusyMinutes = value => BUSY_CHOICES.includes(value);
 const wallClockFormat = new Intl.DateTimeFormat('sv-SE', {
   timeZone: TIME_ZONE, hourCycle: 'h23',
   year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
@@ -51,31 +87,33 @@ export function addDays(isoDate, days) {
   return date.toISOString().slice(0, 10);
 }
 
-// Written out by hand: Intl's short months drop the period ("Sept" in en-GB, "Sep" in en-US).
-export const SHORT_MONTHS = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'June', 'July', 'Aug.', 'Sept.', 'Oct.', 'Nov.', 'Dec.'];
-
 const pad2 = number => String(number).padStart(2, '0');
 
 // How a member wants dates shown (users.date_format). Display only: storage, forms and URLs stay 'YYYY-MM-DD'.
+// The order is the member's pick in every language; only `mon`, the short month name, follows the language.
 export const DATE_FORMATS = {
-  'd-mon-y': (year, month, day) => `${day} ${SHORT_MONTHS[month - 1]} ${year}`,   // 29 Sept. 2026
-  'mon-d-y': (year, month, day) => `${SHORT_MONTHS[month - 1]} ${day}, ${year}`,  // Sept. 29, 2026
-  'dd/mm/yyyy': (year, month, day) => `${pad2(day)}/${pad2(month)}/${year}`,      // 29/09/2026
-  'mm/dd/yyyy': (year, month, day) => `${pad2(month)}/${pad2(day)}/${year}`,      // 09/29/2026
-  'yyyy-mm-dd': (year, month, day) => `${year}-${pad2(month)}-${pad2(day)}`,      // 2026-09-29
+  'd-mon-y': (year, month, day, mon) => `${day} ${mon} ${year}`,              // 29 Sep 2026, 29 sept. 2026
+  'mon-d-y': (year, month, day, mon) => `${mon} ${day}, ${year}`,             // Sep 29, 2026
+  'dd/mm/yyyy': (year, month, day) => `${pad2(day)}/${pad2(month)}/${year}`,  // 29/09/2026
+  'mm/dd/yyyy': (year, month, day) => `${pad2(month)}/${pad2(day)}/${year}`,  // 09/29/2026
+  'yyyy-mm-dd': (year, month, day) => `${year}-${pad2(month)}-${pad2(day)}`,  // 2026-09-29
 };
 
 export const DEFAULT_DATE_FORMAT = 'd-mon-y';
 export const isValidDateFormat = value => Object.hasOwn(DATE_FORMATS, value);
 
-export function formatDate(isoDate, format) {
+export function formatDate(isoDate, format, lang) {
   const match = /^(\d{4})-(\d\d)-(\d\d)$/.exec(isoDate ?? '');
   if (!match) {
     return isoDate;
   }
   const render = DATE_FORMATS[isValidDateFormat(format) ? format : DEFAULT_DATE_FORMAT];
-  return render(...match.slice(1).map(Number));
+  const [year, month, day] = match.slice(1).map(Number);
+  return render(year, month, day, namesIn(lang).months[month - 1]);
 }
+
+/** '2026-11-01' as the calendar labels a day of the month around: 'Nov 1', '1 nov.' */
+export const formatMonthDay = (isoDate, lang) => namesIn(lang).monthDay.format(new Date(isoDate + 'T00:00:00Z'));
 
 // ---- event times ----
 // Times are 'HH:MM' wall-clock strings with no timezone: whatever the group means by "19:00".
@@ -85,30 +123,31 @@ export const isValidTime = text => /^([01]\d|2[0-3]):[0-5]\d$/.test(text || '');
 /**
  * Why an event's when is unusable, or null when it is fine. endDate/times may be null.
  * `field` says which row of the event form the message goes under: 'start' (date + time) or 'end'.
+ * `message` is its key in src/locales.
  */
 export function eventError({ date, endDate, startTime, endTime }) {
   if (!isValidDate(date)) {
-    return { field: 'start', message: 'A valid start date is required.' };
+    return { field: 'start', message: 'errors.event.startDate' };
   }
   if (endDate && (!isValidDate(endDate) || endDate < date)) {
-    return { field: 'end', message: 'The end date must be on or after the start date.' };
+    return { field: 'end', message: 'errors.event.endDate' };
   }
   if (startTime && !isValidTime(startTime)) {
-    return { field: 'start', message: 'Invalid time.' };
+    return { field: 'start', message: 'errors.event.time' };
   }
   if (endTime && !isValidTime(endTime)) {
-    return { field: 'end', message: 'Invalid time.' };
+    return { field: 'end', message: 'errors.event.time' };
   }
   if (endTime && !startTime) {
-    return { field: 'start', message: 'An end time needs a start time.' };
+    return { field: 'start', message: 'errors.event.endNeedsStart' };
   }
   const multiDay = endDate && endDate !== date;
   // A timed event over several days has no sensible end without one (the ICS feed needs it).
   if (multiDay && startTime && !endTime) {
-    return { field: 'end', message: 'A timed event over several days needs an end time.' };
+    return { field: 'end', message: 'errors.event.multiDayEnd' };
   }
   if (!multiDay && endTime && endTime <= startTime) {
-    return { field: 'end', message: 'The end time must be after the start time.' };
+    return { field: 'end', message: 'errors.event.endAfterStart' };
   }
   return null;
 }
@@ -122,11 +161,11 @@ export function formatTime(time, hour12) {
   return `${hour % 12 || 12}${time.slice(2)} ${hour < 12 ? 'AM' : 'PM'}`;
 }
 
-/** '3 Oct. 2026 19:00–22:00', '3 Oct. 2026 – 5 Oct. 2026', ... in the member's date and time format. */
-export function formatEventWhen({ date, end_date, start_time, end_time }, format, hour12 = false) {
-  const start = formatDate(date, format) + (start_time ? ' ' + formatTime(start_time, hour12) : '');
+/** '3 Oct 2026 19:00–22:00', '3 Oct 2026 – 5 Oct 2026', ... in the member's date and time format and language. */
+export function formatEventWhen({ date, end_date, start_time, end_time }, format, hour12 = false, lang) {
+  const start = formatDate(date, format, lang) + (start_time ? ' ' + formatTime(start_time, hour12) : '');
   if (end_date && end_date !== date) {
-    return `${start} – ${formatDate(end_date, format)}${end_time ? ' ' + formatTime(end_time, hour12) : ''}`;
+    return `${start} – ${formatDate(end_date, format, lang)}${end_time ? ' ' + formatTime(end_time, hour12) : ''}`;
   }
   return end_time ? `${start}–${formatTime(end_time, hour12)}` : start;
 }
@@ -153,8 +192,6 @@ export function eventLanes(events) {
   return lanes;
 }
 
-// Weekday names in getUTCDay() order, so index == day number. weekStart rotates them.
-export const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const DEFAULT_WEEK_START = 0; // Sunday
 // The first days a member may pick, in the order Settings lists them: Saturday, Sunday, Monday.
 export const WEEK_START_CHOICES = [6, 0, 1];
@@ -162,11 +199,15 @@ export const WEEK_START_CHOICES = [6, 0, 1];
 export const isValidColor = value => Number.isInteger(value) && value >= 0 && value < COLORS;
 
 export const isValidWeekStart = value => WEEK_START_CHOICES.includes(value);
-export const weekdayNames = weekStart => [...WEEKDAYS.slice(weekStart), ...WEEKDAYS.slice(0, weekStart)];
+/** The short weekday names of `lang`, starting from weekStart (0 = Sunday): ['Mon', 'Tue', ...]. */
+export function weekdayNames(weekStart, lang) {
+  const { weekdays } = namesIn(lang);
+  return [...weekdays.slice(weekStart), ...weekdays.slice(0, weekStart)];
+}
 
 // Everything calendarPage needs to draw one month, given 'YYYY-MM'.
-// weekStart is the user's first day of the week (0 = Sunday .. 6 = Saturday).
-export function monthInfo(yearMonth, weekStart = DEFAULT_WEEK_START) {
+// weekStart is the user's first day of the week (0 = Sunday .. 6 = Saturday); `lang` names the month.
+export function monthInfo(yearMonth, weekStart = DEFAULT_WEEK_START, lang) {
   const [year, month] = yearMonth.split('-').map(Number);
   const firstDay = new Date(Date.UTC(year, month - 1, 1));
   const lastDay = new Date(Date.UTC(year, month, 0)); // day 0 of the next month
@@ -182,7 +223,7 @@ export function monthInfo(yearMonth, weekStart = DEFAULT_WEEK_START) {
     gridEnd: addDays(`${yearMonth}-${String(days).padStart(2, '0')}`, trail),
     prev: new Date(Date.UTC(year, month - 2, 1)).toISOString().slice(0, 7),
     next: new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 7),
-    label: firstDay.toLocaleString('en', { month: 'long', year: 'numeric', timeZone: 'UTC' }),
+    label: namesIn(lang).monthYear.format(firstDay),
   };
 }
 

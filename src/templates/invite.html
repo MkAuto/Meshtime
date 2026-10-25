@@ -3,12 +3,12 @@
 <form method="post" action="/invite/{{token}}" class="stack">
   {{^isReset}}
   <label>
-    Your name <input name="name" required maxlength="40" value="{{name}}" autocomplete="username" autofocus>
+    {{t.invite.yourName}} <input name="name" required maxlength="40" value="{{name}}" autocomplete="username" autofocus>
   </label>
   {{#errors.name}}<p class="err">{{errors.name}}</p>{{/errors.name}}
   {{/isReset}}
   <label>
-    Password (min {{minPassword}} characters)
+    {{passwordLabel}}
     <input name="password" type="password" required minlength="{{minPassword}}" autocomplete="new-password">
   </label>
   {{#errors.password}}<p class="err">{{errors.password}}</p>{{/errors.password}}

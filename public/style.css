@@ -78,6 +78,30 @@ nav a { color: var(--muted); text-decoration: none; font-weight: 500; font-size:
 nav a:hover { color: var(--fg); }
 nav a.active { color: var(--accent); background: var(--accent-soft); } /* app.js marks the current page */
 nav button.link { color: var(--muted); font-weight: 500; }
+/* The language menu (templates/language-menu.html): the icon at the end of the nav, or at the top right of a
+   logged-out page's header, opening a small list under it. In the phone menu it reads "icon Language" and its
+   list opens in place, under it. */
+.lang-menu { position: relative; margin: 0; }
+.lang-menu summary {
+  display: flex; align-items: center; gap: .4rem; list-style: none; cursor: pointer;
+  color: var(--muted); font-weight: 500; font-size: .95rem; padding: .3rem .6rem; border-radius: 999px;
+}
+.lang-menu summary::-webkit-details-marker { display: none; }
+.lang-menu summary:hover, .lang-menu[open] summary { color: var(--fg); }
+.lang-menu svg { width: 1.25rem; height: 1.25rem; fill: currentColor; }
+.lang-label { display: none; }
+.lang-menu form {
+  position: absolute; right: 0; top: calc(100% + .3rem); z-index: 10;
+  display: flex; flex-direction: column; min-width: 9rem; padding: .3rem;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow);
+}
+.lang-menu form button.link { text-align: left; padding: .35rem .7rem; border-radius: 8px; color: var(--fg); text-decoration: none; }
+.lang-menu form button.link:hover { background: var(--accent-soft); }
+.lang-menu button[aria-current]::after { content: " ✓"; color: var(--accent); }
+@media (max-width: 600px) {
+  nav .lang-label { display: inline; }
+  nav .lang-menu form { position: static; min-width: 0; padding: .2rem 0 0 1.6rem; background: none; border: 0; box-shadow: none; }
+}
 main { max-width: 900px; margin: 0 auto; padding: 1rem; }
 h1 { font: 700 2.2rem/1.1 var(--display); letter-spacing: -.02em; display: flex; align-items: center; gap: .6rem; margin: 1.2rem 0 .8rem; }
 /* the month arrows: round buttons */

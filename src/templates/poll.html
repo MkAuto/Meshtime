@@ -2,7 +2,7 @@
 <h1>{{title}}</h1>
 <p class="hint">{{status}}</p>
 {{#groupsEnabled}}
-<p class="hint">Who sees it: {{visibilityLabel}}</p>
+<p class="hint">{{visibilityLabel}}</p>
 {{/groupsEnabled}}
 {{#errors.answers}}<p class="err">{{errors.answers}}</p>{{/errors.answers}}
 <form method="post" action="/polls/{{id}}">
@@ -24,7 +24,7 @@
           <select name="v_{{date}}">
             {{^current}}<option value="" selected>—</option>{{/current}}
             {{#options}}
-            <option value="{{value}}"{{#selected}} selected{{/selected}}>{{value}}</option>
+            <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
             {{/options}}
           </select>
           {{/editable}}
@@ -34,7 +34,7 @@
       </tr>
       {{/rows}}
       <tr class="tot">
-        <td>yes / maybe / no</td>
+        <td>{{t.poll.totals}}</td>
         {{#totals}}
         <td>{{yes}} / {{maybe}} / {{no}}</td>
         {{/totals}}
@@ -42,7 +42,7 @@
     </tbody>
   </table>
   {{#isOpen}}
-  <button>Save my answers</button>
+  <button>{{t.poll.save}}</button>
   {{/isOpen}}
 </form>
 
@@ -51,25 +51,26 @@
   <h2>{{heading}}</h2>
   {{#errors.result}}<p class="err">{{errors.result}}</p>{{/errors.result}}
   {{#tied}}
-  <p class="hint">Tied on yes and no — pick the one you want.</p>
+  <p class="hint">{{t.poll.tied}}</p>
   {{/tied}}
-  {{#event}}
-  <p>Added to the calendar as <b>{{title}}</b> on {{date}}. <a href="/?m={{month}}">View</a></p>
-  {{/event}}
+  {{! addedAs holds bold, so it is not escaped here: pollPage escaped the title and date going into it. }}
+  {{#addedAs}}
+  <p>{{{addedAs}}} <a href="/?m={{eventMonth}}">{{t.poll.view}}</a></p>
+  {{/addedAs}}
   {{! Confirmed, but its event was made private since and I am not in its groups: only the poll's own date. }}
-  {{#confirmedDate}}
-  <p>Confirmed for {{confirmedDate}}.</p>
-  {{/confirmedDate}}
-  {{^event}}{{^confirmedDate}}
+  {{#confirmedFor}}
+  <p>{{confirmedFor}}</p>
+  {{/confirmedFor}}
+  {{^addedAs}}{{^confirmedFor}}
   <div class="row">
     {{#choices}}
     <form method="post" action="/polls/{{pollId}}/confirm">
       <input type="hidden" name="date" value="{{date}}">
-      <button>Add {{label}} to calendar</button>
+      <button>{{label}}</button>
     </form>
     {{/choices}}
   </div>
-  {{/confirmedDate}}{{/event}}
+  {{/confirmedFor}}{{/addedAs}}
 </section>
 {{/result}}
 
@@ -79,13 +80,13 @@
 {{#sharing}}
 <form method="post" action="/polls/{{id}}/visibility" class="stack">
   {{> share-with}}
-  <button>Save who sees it</button>
+  <button>{{t.poll.saveSharing}}</button>
 </form>
 {{/sharing}}
 {{/groupsEnabled}}
 
 {{#canClose}}
 <form method="post" action="/polls/{{id}}/close">
-  <p><button class="link danger">Close poll now</button></p>
+  <p><button class="link danger">{{t.poll.close}}</button></p>
 </form>
 {{/canClose}}

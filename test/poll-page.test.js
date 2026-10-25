@@ -9,7 +9,7 @@ test('pollPage: you first, then everyone A to Z', () => {
   const page = pollPage({ id: 3, name: 'Keven' }, { poll: { id: 1, title: 't' }, dates: ['2026-09-29'], members,
     votes: [], missing: [], complete: false, best: [], event: null });
   assert.deepEqual(page.match(/<tr><td>[^<]+/g).map(cell => cell.slice(8)), ['Keven (you)', 'bob', 'Élodie', 'Zoé']);
-  assert.match(page, /<th class="">29 Sept\. 2026<\/th>/);
+  assert.match(page, /<th class="">29 Sep 2026<\/th>/);
 });
 
 test('pollPage: Who sees it shows to everyone, the form only to its creator or an admin', () => {
@@ -37,10 +37,10 @@ test('pollPage: a confirmed poll whose event I may not see shows only its date',
     dates: ['2026-09-29'], members: [], votes: [], missing: [], complete: true, best: ['2026-09-29'],
   };
   const hidden = pollPage({ id: 2 }, { ...data, event: null });
-  assert.match(hidden, /Confirmed for 29 Sept\. 2026\./);
+  assert.match(hidden, /Confirmed for 29 Sep 2026\./);
   assert.doesNotMatch(hidden, /Added to the calendar|\/confirm"/, 'no event title, and nothing left to confirm');
   const shown = pollPage({ id: 2 }, { ...data, event: { title: 'Secret plan', date: '2026-12-24' } });
-  assert.match(shown, /Added to the calendar as <b>Secret plan<\/b> on 24 Dec\. 2026/);
+  assert.match(shown, /Added to the calendar as <b>Secret plan<\/b> on 24 Dec 2026/);
   assert.doesNotMatch(shown, /Confirmed for/);
 });
 

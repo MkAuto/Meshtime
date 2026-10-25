@@ -4,13 +4,18 @@ import { basename, join } from 'node:path';
 import Mustache from 'mustache';
 import packageJson from '../package.json' with { type: 'json' };
 import {
-  monthInfo, addDays, SHORT_MONTHS, formatDate, formatTime, formatEventWhen, eventLanes, dayClass, weekdayNames, today, wallClock,
-  BUSY_CHOICES, DEFAULT_BUSY_MINUTES, SLOTS, DATE_FORMATS, WEEKDAYS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_DATES, MIN_PASSWORD, randomColor,
+  monthInfo, addDays, formatDate, formatMonthDay, formatTime, formatEventWhen, eventLanes, dayClass, weekdayNames, today,
+  wallClock, BUSY_CHOICES, DEFAULT_BUSY_MINUTES, SLOTS, DATE_FORMATS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_DATES,
+  MIN_PASSWORD, LANGUAGES, DEFAULT_LANGUAGE, isValidLanguage, randomColor,
 } from './lib.js';
+import { t, dictionary, hasText, syncErrorText } from './i18n.js';
 
 // Each page is a Mustache template in src/templates/ (https://mustache.github.io/mustache.5.html).
 // The functions here only work out the values it shows; the markup lives in the template.
-// {{value}} is HTML-escaped, {{{value}}} is not (only used for the page body inside the layout).
+// {{value}} is HTML-escaped, {{{value}}} is not (only used for the page body inside the layout, and for the few
+// texts in src/locales that hold a link or bold: they are ours, never typed by a member).
+// Texts come from src/locales (src/i18n.js): every template gets its language's as `t`, {{t.settings.title}}.
+// A text with a value in it ({{name}}) is filled in here with t(), and given to the template ready to show.
 // All templates are read once at startup, keyed by file name, so any of them can be a {{> partial}}.
 const TEMPLATE_DIR = join(import.meta.dirname, 'templates');
 const templates = Object.fromEntries(readdirSync(TEMPLATE_DIR)
@@ -38,37 +43,11 @@ const SCRIPT_URL = versioned('app.js');
 /** "Ada Lovelace" -> "AL". Shown in calendar cells and as the color swatch. */
 const initials = name => name.trim().split(/\s+/).map(word => word[0]).join('').slice(0, 2).toUpperCase();
 
-// Confirmations, keyed by the ?msg= value the settings, profile and admin routes redirect with.
-const MESSAGES = {
-  rotated: 'Feed links rotated. Re-subscribe in your calendar apps.',
-  password: 'Password changed.',
-  invite: 'Link created (see below).',
-  invite_copied: 'Link created and copied: paste it to them.',
-  options: 'Options saved.',
-  about: 'Profile saved.',
-  customisation: 'Customisation saved.',
-  passkey: 'Passkey added.',
-  passkey_removed: 'Passkey removed.',
-  removed: 'Member removed. Their sessions, passkeys and feed links no longer work.',
-  group_created: 'Group created. Invite people below.',
-  invited: 'Invite sent. They join once they accept it.',
-  added: 'Member added to the group.',
-  joined: 'You joined the group.',
-  declined: 'Invite declined.',
-  left: 'You left the group.',
-  renamed: 'Group renamed.',
-  member_removed: 'Member removed from the group.',
-  invite_cancelled: 'Invite cancelled.',
-  group_deleted: 'Group deleted.',
-  calendar_added: 'Calendar connected. Your free days are filled in from it.',
-  calendar_removed: 'Calendar removed.',
-  calendar_synced: 'Calendars synced.',
-  calendar_saved: 'Calendar saved.',
-  calendar_rules: 'Rules saved. Your free days are worked out again with them.',
-};
-
-/** The value the notices partial shows for ?msg=. Form errors are shown under their fields instead. */
-const notices = msg => ({ notice: MESSAGES[msg] });
+/**
+ * The confirmation for ?msg= (notices.<msg> in src/locales: the settings, profile and admin routes redirect with
+ * one), for the notices partial. Form errors are shown under their fields instead.
+ */
+const notices = (msg, lang) => ({ notice: msg && hasText(`notices.${msg}`) ? t(lang, `notices.${msg}`) : undefined });
 
 /**
  * Is the groups feature on (Administration → Options)? Off, pages show no groups and no public / private choice.
@@ -76,52 +55,70 @@ const notices = msg => ({ notice: MESSAGES[msg] });
  */
 const groupsEnabled = user => user?.groups_enabled !== 0;
 
-/** Wraps a page's own HTML in the shell (head, header, nav). `user` is null on logged-out pages. */
-export function layout(title, user, body) {
+/**
+ * Wraps a page's own HTML in the shell (head, header, nav, language menu). `user` is null on logged-out pages.
+ * `visitor` is who the page is for: { lang, path }, the language it is in and the URL it was asked for (the
+ * language menu comes back to it). A member's own come with them (server.js); logged-out pages pass theirs.
+ */
+export function layout(title, user, body, visitor = user ?? {}) {
+  const lang = isValidLanguage(visitor.lang) ? visitor.lang : DEFAULT_LANGUAGE;
   return render('layout', {
     title, user, body, styleUrl: STYLE_URL, scriptUrl: SCRIPT_URL, groupsEnabled: groupsEnabled(user),
+    lang,
+    t: dictionary(lang),
+    logout: user && t(lang, 'layout.logout', { name: user.name }),
+    back: visitor.path ?? '/',
+    languages: LANGUAGES.map(({ code, name }) => ({ code, name, current: code === lang })),
   });
 }
 
-/** Renders template `name` with `values`, inside the shell. Every template gets groupsEnabled. */
-const page = (title, user, name, values) =>
-  layout(title, user, render(name, { ...values, groupsEnabled: groupsEnabled(user) }));
+/** Renders template `name` with `values`, inside the shell. Every template gets groupsEnabled and t. */
+const page = (title, user, name, values, visitor = user ?? {}) =>
+  layout(title, user, render(name, { ...values, groupsEnabled: groupsEnabled(user), t: dictionary(visitor.lang) }),
+    visitor);
 
 /** Options for a <select>: `selected` marks the current one. */
 const options = (entries, current) => entries.map(([value, label]) => ({ value, label, selected: value === current }));
 
-export const errorPage = (status, message, user) => page(`Error ${status}`, user, 'error', { status, message });
+/** The feed-link partial's values for one feed: its URL, its name, and the label of its box. */
+const feedLink = (lang, name, feed) => ({ name, feed, linkLabel: t(lang, 'feeds.linkFor', { name }) });
+
+/**
+ * `message` is a key in src/locales, or a text already in the visitor's language. `visitor` ({ lang, path }) is
+ * for when nobody is logged in; a member's own come with them.
+ */
+export const errorPage = (status, message, user, visitor = user ?? {}) =>
+  page(t(visitor.lang, 'error.title', { status }), user, 'error', { status, message: t(visitor.lang, message) },
+    visitor);
 
 // ---- auth pages ----
 
-export const loginPage = error => page('Log in', null, 'login', { error });
+export const loginPage = (lang, error) => page(t(lang, 'login.title'), null, 'login', { error }, { lang, path: '/login' });
 
 // One page for both invite kinds: resetName is set only for a password-reset link.
 // After a rejected form, `errors` ({ name, password }) shows under each field and `name` is kept.
-export function invitePage(token, resetName, { errors = {}, name = '' } = {}) {
-  return page(resetName ? 'Reset password' : 'Join', null, 'invite', {
+export function invitePage(lang, token, resetName, { errors = {}, name = '' } = {}) {
+  return page(t(lang, resetName ? 'invite.resetTitle' : 'invite.joinTitle'), null, 'invite', {
     token,
     errors,
     name,
     isReset: Boolean(resetName),
-    heading: resetName ? `Reset password for ${resetName}` : 'Create your account',
-    button: resetName ? 'Set password' : 'Create account',
+    heading: resetName ? t(lang, 'invite.resetHeading', { name: resetName }) : t(lang, 'invite.createHeading'),
+    button: t(lang, resetName ? 'invite.resetButton' : 'invite.createButton'),
     minPassword: MIN_PASSWORD,
-  });
+    passwordLabel: t(lang, 'invite.password', { min: MIN_PASSWORD }),
+  }, { lang, path: `/invite/${token}` });
 }
 
 // ---- calendar ----
 
-// free_days.part, as tooltips say it
-const PART_LABELS = { all: 'all day', am: 'morning', pm: 'afternoon', eve: 'evening' };
-// The long-press / double-click menu: each button posts its value as `part` to /free.
+// The long-press / double-click menu: each button posts its value as `part` to /free (labels: dayParts.choice).
 // auto: Calendar Integration decides the day again, only offered with a calendar connected.
-const PART_CHOICES = {
-  all: 'All day', am: 'Morning (AM)', pm: 'Afternoon (PM)', eve: 'Evening', none: 'Not free', auto: 'Automatic',
-};
+const PART_CHOICES = ['all', 'am', 'pm', 'eve', 'none', 'auto'];
 
-/** ['am', 'eve'] -> 'morning and evening' */
-const partsLabel = parts => parts.map(part => PART_LABELS[part]).join(' and ');
+/** ['am', 'eve'] -> 'morning and evening', as tooltips say free_days.part */
+const partsLabel = (parts, lang) =>
+  parts.map(part => t(lang, `dayParts.label.${part}`)).join(` ${t(lang, 'calendar.and')} `);
 
 /** ' colored cN' for an event with a bar color (events.color), '' for the default look. */
 const eventColor = event => event.color == null ? '' : ` colored c${event.color}`;
@@ -134,10 +131,12 @@ export function calendarPage(user, yearMonth, {
   free, mine, events, birthdays, today, members, error, group = null, groups = [], manualDays = null,
 }) {
   // manualDays: the dates I set by hand, or null without a calendar connected (no Automatic in the menu)
-  const month = monthInfo(yearMonth, user.week_start);
+  const { lang } = user;
+  const month = monthInfo(yearMonth, user.week_start, lang);
   const lanes = eventLanes(events);
-  const eventTooltip = event =>
-    `${event.title}, ${formatEventWhen(event, user.date_format, user.hour12)} (by ${event.creator})`;
+  const eventTooltip = event => t(lang, 'calendar.eventTooltip', {
+    title: event.title, when: formatEventWhen(event, user.date_format, user.hour12, lang), creator: event.creator,
+  });
 
   // Continuous (Settings → Customisation, on unless turned off): the first and last weeks are filled with the
   // days of the months around this one, like Google Calendar. Off: blank cells before day 1, nothing after.
@@ -193,25 +192,26 @@ export function calendarPage(user, yearMonth, {
 
     const dayStates = dayClass({ who: whoIsFree, members, mine: Boolean(myParts) });
     days.push({
-      // every day of the month before or after says which month it is ("Nov. 1"), so it is never mistaken
+      // every day of the month before or after says which month it is ("Nov 1"), so it is never mistaken
       // for a day of this one
-      day: inMonth ? day : `${SHORT_MONTHS[Number(date.slice(5, 7)) - 1]} ${day}`,
+      day: inMonth ? day : formatMonthDay(date, lang),
       date,
       classes: `day ${dayStates}${date === today ? ' today' : ''}${inMonth ? '' : ' outside'}`,
-      tooltip: myParts ? `You: ${partsLabel(myParts)}. Click to clear` : 'Click: I am free all day',
-      dateLabel: formatDate(date, user.date_format),
+      tooltip: myParts ? t(lang, 'calendar.dayMine', { parts: partsLabel(myParts, lang) }) : t(lang, 'calendar.dayFree'),
+      dateLabel: formatDate(date, user.date_format, lang),
       // what the menu marks as current: my parts or 'none', and 'auto' when the calendar decides the day
       parts: [...(myParts ?? ['none']), ...(manualDays && !manualDays.has(date) ? ['auto'] : [])].join(' '),
       // Settings → Customisation can leave my own initials out; the day still counts me as free
       free: whoIsFree.filter(member => !(member.isMe && user.hide_own_initials)).map(member => ({
         color: member.color,
-        tooltip: `${member.name}, ${partsLabel(member.parts)}`,
+        tooltip: t(lang, 'calendar.memberTooltip', { name: member.name, parts: partsLabel(member.parts, lang) }),
         initials: initials(member.name),
         // the small am / pm / eve next to the initials, a second one stacked under the first
-        slots: member.parts.includes('all') ? [] : member.parts,
+        slots: member.parts.includes('all') ? [] : member.parts.map(part => t(lang, `dayParts.short.${part}`)),
       })),
       bars: barValues,
-      birthdays: birthdays.filter(member => member.date === date),
+      birthdays: birthdays.filter(member => member.date === date)
+        .map(member => ({ color: member.color, label: t(lang, 'calendar.birthday', { name: member.name }) })),
       oneDay: dayEvents.filter(event => !lanes.has(event.id)).map(event => ({
         classes: `ev${eventColor(event)}`,
         tooltip: eventTooltip(event),
@@ -233,20 +233,20 @@ export function calendarPage(user, yearMonth, {
     // "Make default" is offered only when the view on screen is not already the default
     isDefaultView: (group ? group.id : null) === (user.default_group_id ?? null),
     groupChoices: groups.map(choice => ({ value: choice.id, label: choice.name, selected: choice.id === group?.id })),
-    weekdays: weekdayNames(user.week_start),
+    weekdays: weekdayNames(user.week_start, lang),
     padding: Array.from({ length: leadingBlanks }, () => ({})),
     days,
-    partChoices: Object.entries(PART_CHOICES)
-      .filter(([value]) => value !== 'auto' || manualDays)
-      .map(([value, label]) => ({ value, label, classes: value === 'none' ? 'danger' : '' })),
+    partChoices: PART_CHOICES
+      .filter(value => value !== 'auto' || manualDays)
+      .map(value => ({ value, label: t(lang, `dayParts.choice.${value}`), classes: value === 'none' ? 'danger' : '' })),
     // the list under the calendar is this month's only, even when the grid shows days around it
     events: events
       .filter(event => event.date <= `${yearMonth}-31` && event.end_date >= `${yearMonth}-01`)
       .map(event => ({
         id: event.id,
         title: event.title,
-        creator: event.creator,
-        when: formatEventWhen(event, user.date_format, user.hour12),
+        by: t(lang, 'common.by', { name: event.creator }),
+        when: formatEventWhen(event, user.date_format, user.hour12, lang),
         classes: event.end_date < today ? 'past' : '', // its last day is before today
         canEdit: event.created_by === user.id || Boolean(user.is_admin),
       })),
@@ -259,20 +259,26 @@ export function calendarPage(user, yearMonth, {
 // `invites` are the ones waiting for my answer. errors[groupId] shows in that group, errors.create in New group.
 // `base` is BASE_URL, for each group's private calendar feed link. `invitedName`: who an invite just went to.
 export function groupsPage(user, { groups, invites, base, msg, invitedName, errors = {} }) {
-  return page('Groups', user, 'groups', {
-    ...(msg === 'invited' && invitedName ? { notice: `Invite sent to ${invitedName}.` } : notices(msg)),
-    invites,
+  const { lang } = user;
+  return page(t(lang, 'groups.title'), user, 'groups', {
+    ...(msg === 'invited' && invitedName ? { notice: t(lang, 'groups.invitedTo', { name: invitedName }) }
+      : notices(msg, lang)),
+    invites: invites.map(invite => ({
+      ...invite,
+      from: invite.invited_by && t(lang, 'groups.from', { name: invite.invited_by }),
+    })),
     createError: errors.create,
     newGroupColor: randomColor(),
     isAdmin: Boolean(user.is_admin),
     groups: groups.map(group => ({
       id: group.id,
-      name: group.name,
+      ...feedLink(lang, group.name, groupFeedUrl(base, user, group.id)),
       color: group.color,
-      feed: groupFeedUrl(base, user, group.id),
-      creator: group.creator ?? 'a removed member',
+      ownedBy: t(lang, 'groups.ownedBy', { name: group.creator ?? t(lang, 'groups.removedMember') }),
       error: errors[group.id],
       canManage: group.canManage,
+      confirmDelete: t(lang, 'groups.confirmDelete', { name: group.name }),
+      confirmLeave: t(lang, 'groups.confirmLeave', { name: group.name }),
       members: group.members.map(member => ({
         groupId: group.id,
         id: member.id,
@@ -281,14 +287,15 @@ export function groupsPage(user, { groups, invites, base, msg, invitedName, erro
         initials: initials(member.name),
         // managers remove the others; they leave with Leave like everyone else
         removable: group.canManage && member.id !== user.id,
+        confirmRemove: t(lang, 'groups.confirmRemove', { name: member.name }),
       })),
       invited: group.invited.map(person => ({ ...person, groupId: group.id })),
       // "Next event", or "Last event" when none is coming; still "Next event" (with a placeholder) for none at all
-      eventHeading: group.headlineEvent?.isLast ? 'Last event' : 'Next event',
+      eventHeading: t(lang, group.headlineEvent?.isLast ? 'groups.lastEvent' : 'groups.nextEvent'),
       headlineEvent: group.headlineEvent && {
         title: group.headlineEvent.title,
-        when: formatEventWhen(group.headlineEvent, user.date_format, user.hour12),
-        creator: group.headlineEvent.creator,
+        when: formatEventWhen(group.headlineEvent, user.date_format, user.hour12, lang),
+        by: t(lang, 'common.by', { name: group.headlineEvent.creator }),
         // the group's own calendar view, on the event's month
         calendarUrl: `/?m=${group.headlineEvent.date.slice(0, 7)}&g=${group.id}`,
       },
@@ -318,8 +325,9 @@ const sharingValues = (isPrivate, groupIds = [], groups = []) => ({
 // ({ title, start, end, color }: each shows under that part of the form).
 // `groups` are the event creator's groups: the ones a private event can be shared with.
 export function eventPage(user, { event, errors = {}, groups = [] }) {
+  const { lang } = user;
   const editing = Boolean(event.id);
-  const heading = editing ? 'Edit event' : 'New event';
+  const heading = t(lang, editing ? 'event.editTitle' : 'event.newTitle');
   const savedColor = String(event.color ?? '');
   const colorChoice = (value, label) => ({
     value,
@@ -334,8 +342,9 @@ export function eventPage(user, { event, errors = {}, groups = [] }) {
     editing,
     id: event.id,
     action: editing ? `/events/${event.id}` : '/events',
-    button: editing ? 'Save' : 'Add event',
+    button: t(lang, editing ? 'common.save' : 'event.add'),
     title: event.title ?? '',
+    confirmDelete: t(lang, 'event.confirmDelete', { title: event.title ?? '' }),
     date: event.date ?? '',
     // A saved event is all day when it has no start time; a rejected form keeps the box as posted.
     allDay: event.allDay ?? !event.start_time,
@@ -343,7 +352,10 @@ export function eventPage(user, { event, errors = {}, groups = [] }) {
     // A one-day event shows no end date, so moving its start date does not leave the end behind.
     endDate: event.end_date && event.end_date !== event.date ? event.end_date : '',
     endTime: event.end_time ?? '',
-    colors: [colorChoice('', 'Default'), ...Array.from({ length: COLORS }, (_, i) => colorChoice(i, `Color ${i + 1}`))],
+    colors: [
+      colorChoice('', t(lang, 'event.defaultColor')),
+      ...Array.from({ length: COLORS }, (_, i) => colorChoice(i, t(lang, 'event.colorN', { n: i + 1 }))),
+    ],
     ...sharingValues(event.is_private, event.groupIds, groups),
     month: (event.date || today()).slice(0, 7),
   });
@@ -352,13 +364,14 @@ export function eventPage(user, { event, errors = {}, groups = [] }) {
 // ---- polls ----
 
 export function pollsPage(user, polls) {
+  const { lang } = user;
   const status = poll => {
     if (!poll.closed_at) {
-      return `open · ${poll.voters}/${poll.members} answered`;
+      return t(lang, 'polls.open', { voters: poll.voters, members: poll.members });
     }
-    return poll.chosen_date ? `✓ ${formatDate(poll.chosen_date, user.date_format)}` : 'closed';
+    return poll.chosen_date ? `✓ ${formatDate(poll.chosen_date, user.date_format, lang)}` : t(lang, 'polls.closed');
   };
-  return page('Polls', user, 'polls', {
+  return page(t(lang, 'polls.title'), user, 'polls', {
     polls: polls.map(poll => ({ id: poll.id, title: poll.title, status: status(poll) })),
   });
 }
@@ -366,10 +379,11 @@ export function pollsPage(user, polls) {
 // After a rejected form, `errors` ({ title, dates, visibility }) shows under each field, and `title` and
 // `sharing` (who sees it, as posted) are kept. `groups` are mine: the ones a private poll can be shared with.
 export const newPollPage = (user, { errors = {}, title = '', groups = [], sharing = {} } = {}) =>
-  page('New poll', user, 'new-poll', {
+  page(t(user.lang, 'newPoll.title'), user, 'new-poll', {
     errors,
     title,
     maxDates: MAX_DATES,
+    datesLegend: t(user.lang, 'newPoll.dates', { max: MAX_DATES }),
     ...sharingValues(sharing.isPrivate, sharing.groupIds, groups),
   });
 
@@ -379,13 +393,14 @@ export const newPollPage = (user, { errors = {}, title = '', groups = [], sharin
 export function pollPage(user, {
   poll, dates, members, votes, missing, complete, best, event, groupIds = [], creatorGroups = [], errors = {},
 }) {
+  const { lang } = user;
   const answers = {}; // user_id -> { date: answer }
   for (const vote of votes) {
     (answers[vote.user_id] ??= {})[vote.date] = vote.answer;
   }
   const myAnswers = answers[user.id] || {};
   const countAnswer = (date, answer) => votes.filter(vote => vote.date === date && vote.answer === answer).length;
-  const formatted = date => formatDate(date, user.date_format);
+  const formatted = date => formatDate(date, user.date_format, lang);
 
   const isOpen = !poll.closed_at;
   const canManage = poll.created_by === user.id || Boolean(user.is_admin);
@@ -395,35 +410,43 @@ export function pollPage(user, {
   const sortedMembers = members.toSorted((a, b) =>
     (b.id === user.id) - (a.id === user.id) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 
-  let status = 'Poll closed.';
+  let status = t(lang, 'poll.closed');
   if (isOpen) {
-    status = complete ? 'Everyone has answered.' : `Waiting for: ${missing.join(', ')}`;
+    status = complete ? t(lang, 'poll.everyoneAnswered') : t(lang, 'poll.waitingFor', { names: missing.join(', ') });
   }
 
   const rows = sortedMembers.map(member => {
     const isMe = member.id === user.id;
     return {
-      name: member.name + (isMe ? ' (you)' : ''),
+      name: isMe ? t(lang, 'poll.you', { name: member.name }) : member.name,
       cells: dates.map(date => {
         const answer = answers[member.id]?.[date];
         return {
           date,
           editable: isMe && isOpen,
           current: myAnswers[date] ?? null,
-          options: ANSWERS.map(value => ({ value, selected: myAnswers[date] === value })),
+          options: ANSWERS.map(value => ({
+            value, label: t(lang, `poll.answers.${value}`), selected: myAnswers[date] === value,
+          })),
           answerClass: answer || 'none',
-          answerText: answer || '–',
+          answerText: answer ? t(lang, `poll.answers.${answer}`) : '–',
         };
       }),
     };
   });
 
   const result = showResult && {
-    heading: `Best date${best.length > 1 ? 's' : ''}: ${best.map(formatted).join(', ')}`,
+    heading: t(lang, best.length > 1 ? 'poll.bestDates' : 'poll.bestDate', { dates: best.map(formatted).join(', ') }),
     tied: best.length > 1,
-    event: event && { title: event.title, date: formatted(event.date), month: event.date.slice(0, 7) },
-    confirmedDate: !event && poll.chosen_date ? formatted(poll.chosen_date) : null,
-    choices: best.map(date => ({ pollId: poll.id, date, label: formatted(date) })),
+    // a text with bold in it, so shown unescaped: the values going into it are escaped here
+    addedAs: event && t(lang, 'poll.addedAs', {
+      title: Mustache.escape(event.title), date: Mustache.escape(formatted(event.date)),
+    }),
+    eventMonth: event && event.date.slice(0, 7),
+    confirmedFor: !event && poll.chosen_date ? t(lang, 'poll.confirmedFor', { date: formatted(poll.chosen_date) }) : null,
+    choices: best.map(date => ({
+      pollId: poll.id, date, label: t(lang, 'poll.addToCalendar', { date: formatted(date) }),
+    })),
   };
 
   return page(poll.title, user, 'poll', {
@@ -433,7 +456,7 @@ export function pollPage(user, {
     status,
     isOpen,
     canClose: isOpen && canManage,
-    visibilityLabel: poll.is_private ? 'Private: only the groups it is shared with' : 'Public',
+    visibilityLabel: t(lang, 'poll.whoSees', { label: t(lang, poll.is_private ? 'poll.private' : 'poll.public') }),
     // the creator (or an admin) can change who sees it, as on the event page
     sharing: canManage && sharingValues(poll.is_private, groupIds, creatorGroups),
     columns: dates.map(date => ({ label: formatted(date), classes: showResult && best.includes(date) ? 'best' : '' })),
@@ -460,26 +483,31 @@ const groupFeedUrl = (base, user, groupId) => `${base}/feed/${user.feed_token}/g
 // `invites`: my own open invite links, listed under Invite someone while admins allow it (user.member_invites).
 // `calendarLinks`: my calendar_links rows, listed under Calendar Integration.
 export function settingsPage(user, { base, groups = [], invites = [], calendarLinks = [], msg, errors = {} }) {
+  const { lang } = user;
   const birthdaysFeed = `${base}/feed/${user.feed_token}/birthdays.ics`;
   const allEventsFeed = `${base}/feed/${user.feed_token}/events.ics`;
+  const weekdays = weekdayNames(0, lang); // by day number
 
-  return page('Settings', user, 'settings', {
-    ...notices(msg),
+  return page(t(lang, 'settings.title'), user, 'settings', {
+    ...notices(msg, lang),
     errors,
     memberInvites: Boolean(user.member_invites),
     invites: invites.map(invite => ({ url: `${base}/invite/${invite.token}` })),
     // Calendar Integration rules (users.busy_minutes, busy_slots, ignore_words; src/sync.js)
-    busyChoices: options(BUSY_CHOICES, user.busy_minutes ?? DEFAULT_BUSY_MINUTES),
+    busyChoices: options(BUSY_CHOICES.map(minutes => [minutes, t(lang, `settings.busyChoices.${minutes}`)]),
+      user.busy_minutes ?? DEFAULT_BUSY_MINUTES),
     ignoreWords: user.ignore_words,
-    slotNames: SLOTS.map(slot => slot.toUpperCase()),
+    slotNames: SLOTS.map(slot => t(lang, `dayParts.short.${slot}`).toUpperCase()),
     // Always busy: a row per weekday in my week's order, a checkbox per slot, valued '1am' for Monday morning
-    busyGrid: weekdayNames(user.week_start).map((name, index) => {
+    busyGrid: weekdayNames(user.week_start, lang).map((name, index) => {
       const day = (user.week_start + index) % 7;
       const busySlots = (user.busy_slots ?? '').split(' ');
       return {
         name,
         slots: SLOTS.map(slot => ({
-          value: day + slot, label: `${name} ${slot.toUpperCase()}`, checked: busySlots.includes(day + slot),
+          value: day + slot,
+          label: `${name} ${t(lang, `dayParts.short.${slot}`).toUpperCase()}`,
+          checked: busySlots.includes(day + slot),
         })),
       };
     }),
@@ -489,23 +517,25 @@ export function settingsPage(user, { base, groups = [], invites = [], calendarLi
         id: link.id,
         // the label, or the link's host: the full secret address is not shown again
         name: link.label || new URL(link.url).host,
-        synced: synced
-          && `${formatDate(synced.slice(0, 10), user.date_format)} ${formatTime(synced.slice(11), user.hour12)}`,
-        error: link.last_error,
+        synced: synced && t(lang, 'settings.synced', {
+          when: `${formatDate(synced.slice(0, 10), user.date_format, lang)} ${formatTime(synced.slice(11), user.hour12)}`,
+        }),
+        error: link.last_error && syncErrorText(lang, link.last_error),
         countFree: Boolean(link.count_free),
       };
     }),
-    version: packageJson.version, // shown under the title; bump it in package.json
-    birthdays: { name: 'Birthdays', feed: birthdaysFeed, webcal: webcal(birthdaysFeed) },
+    // shown under the title; bump it in package.json
+    versionLabel: t(lang, 'settings.version', { version: packageJson.version }),
+    birthdays: { ...feedLink(lang, t(lang, 'feeds.birthdays'), birthdaysFeed), webcal: webcal(birthdaysFeed) },
     // only offered while groups are off, when there are no group feeds (the route refuses it otherwise)
-    allEvents: { name: 'All events', feed: allEventsFeed, webcal: webcal(allEventsFeed) },
+    allEvents: { ...feedLink(lang, t(lang, 'feeds.allEvents'), allEventsFeed), webcal: webcal(allEventsFeed) },
     groupFeeds: groups.map(group => {
       const feed = groupFeedUrl(base, user, group.id);
-      return { name: group.name, feed, webcal: webcal(feed) };
+      return { ...feedLink(lang, group.name, feed), webcal: webcal(feed) };
     }),
-    weekStarts: options(WEEK_START_CHOICES.map(day => [day, WEEKDAYS[day]]), user.week_start),
+    weekStarts: options(WEEK_START_CHOICES.map(day => [day, weekdays[day]]), user.week_start),
     // Each format is shown as today's date written that way.
-    dateFormats: options(Object.keys(DATE_FORMATS).map(key => [key, formatDate(today(), key)]), user.date_format),
+    dateFormats: options(Object.keys(DATE_FORMATS).map(key => [key, formatDate(today(), key, lang)]), user.date_format),
     showBirthdays: Boolean(user.show_birthdays),
     hideFreeBorder: Boolean(user.hide_free_border),
     hideOwnInitials: Boolean(user.hide_own_initials),
@@ -518,8 +548,9 @@ export function settingsPage(user, { base, groups = [], invites = [], calendarLi
 // After a rejected form, `errors` shows under each field ({ name, birthday, color } in About me,
 // { current, password } in Security), and `about` holds the About me values as they were typed.
 export function profilePage(user, { passkeys, msg, errors = {}, about = user }) {
-  return page('Profile', user, 'profile', {
-    ...notices(msg),
+  const { lang } = user;
+  return page(t(lang, 'profile.title'), user, 'profile', {
+    ...notices(msg, lang),
     errors,
     name: about.name,
     birthday: about.birthday ?? '',
@@ -529,10 +560,11 @@ export function profilePage(user, { passkeys, msg, errors = {}, about = user }) 
     maxColor: COLORS - 1,
     initials: initials(about.name || user.name),
     minPassword: MIN_PASSWORD,
+    newPasswordLabel: t(lang, 'profile.newPassword', { min: MIN_PASSWORD }),
     passkeys: passkeys.map(passkey => ({
       id: passkey.id,
       label: passkey.label,
-      added: formatDate(passkey.created_at.slice(0, 10), user.date_format),
+      added: t(lang, 'profile.added', { date: formatDate(passkey.created_at.slice(0, 10), user.date_format, lang) }),
     })),
   });
 }
@@ -541,21 +573,27 @@ export function profilePage(user, { passkeys, msg, errors = {}, about = user }) 
 
 // `errors.members` after a rejected member action: shown under the Members title.
 export function adminPage(user, { base, invites, members, log, msg, errors = {} }) {
-  return page('Administration', user, 'admin', {
-    ...notices(msg),
+  const { lang } = user;
+  return page(t(lang, 'admin.title'), user, 'admin', {
+    ...notices(msg, lang),
     errors,
-    members: members.map(member => ({ ...member, isMe: member.id === user.id })),
+    members: members.map(member => ({
+      ...member,
+      isMe: member.id === user.id,
+      confirmRemove: t(lang, 'admin.confirmRemove', { name: member.name }),
+    })),
     memberInvites: Boolean(user.member_invites),
     invites: invites.map(invite => ({
       // a member's own link (Settings, when Options allows it) says whose it is
-      label: invite.user_name ? `Reset for ${invite.user_name}`
-        : invite.created_by && invite.created_by !== user.id ? `Invite from ${invite.creator}` : 'Invite',
+      label: invite.user_name ? t(lang, 'admin.resetFor', { name: invite.user_name })
+        : invite.created_by && invite.created_by !== user.id ? t(lang, 'admin.inviteFrom', { name: invite.creator })
+          : t(lang, 'admin.invite'),
       url: `${base}/invite/${invite.token}`,
     })),
     // Newest first. Times are stored as local ISO strings: the date part is formatted, the clock kept.
     log: log.toReversed().map(entry => ({
       number: entry.number,
-      time: `${formatDate(entry.time.slice(0, 10), user.date_format)} ${entry.time.slice(11, 19)}`,
+      time: `${formatDate(entry.time.slice(0, 10), user.date_format, lang)} ${entry.time.slice(11, 19)}`,
       ip: entry.ip,
       user: entry.user,
       known: entry.known,

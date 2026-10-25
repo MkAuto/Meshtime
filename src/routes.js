@@ -4,10 +4,11 @@ import * as views from './views.js';
 import { logEvent, tailLog, LOG_PATH, ERROR_LOG_PATH } from './log.js';
 import { createReadStream, existsSync } from 'node:fs';
 import { fetchCalendar, syncUser, freePartsAround } from './sync.js';
+import { t, syncErrorText } from './i18n.js';
 import {
   isValidDate, isValidMonth, monthInfo, isValidWeekStart, isValidDateFormat, isValidColor, eventError,
   bestDates, buildIcs, birthdayIn, birthdayRrule, today, randomColor, ANSWERS, MAX_DATES, MIN_PASSWORD, BASE_URL,
-  RP_ID, SLOTS, MAX_SLOTS_PER_DAY, toggleSlot, isValidBusyMinutes,
+  RP_ID, SLOTS, MAX_SLOTS_PER_DAY, toggleSlot, isValidBusyMinutes, isValidLanguage,
 } from './lib.js';
 
 export const routes = [];
@@ -16,6 +17,9 @@ export const routes = [];
 // like (?<id>\d+) arrive as ctx.params.id. Public routes skip the login check in server.js.
 const on = (method, path, handler, isPublic = false) =>
   routes.push({ method, path: new RegExp(`^${path}$`), handler, public: isPublic });
+
+// Every message a member reads is in their language (ctx.lang, server.js): ctx.fail takes a key in src/locales,
+// form errors are translated here with t(ctx.lang, key), as they go into the page. The log stays in English.
 
 /** Form values are untrusted: trim and cap the length before anything else touches them. */
 const cleanText = (value, maxLength) => (value ?? '').toString().trim().slice(0, maxLength);
@@ -39,7 +43,7 @@ const backToMonth = ctx => {
   return '/?m=' + postedMonth(ctx) + '&g=' + (group ? group.id : '');
 };
 
-const TOO_MANY = 'Too many attempts. Try again in 15 minutes.';
+const TOO_MANY = 'errors.tooMany';
 const BANNED = 'banned (too many attempts)'; // the log's name for a login the rate limit refused
 
 /** Is the groups feature on (Administration → Options)? For routes with no logged-in ctx.user to ask. */
@@ -54,7 +58,7 @@ const startSession = (ctx, userId) => {
 };
 
 // ---- auth ----
-on('GET', '/login', ctx => ctx.user ? ctx.redirect('/') : ctx.html(views.loginPage()), true);
+on('GET', '/login', ctx => ctx.user ? ctx.redirect('/') : ctx.html(views.loginPage(ctx.lang)), true);
 
 on('POST', '/login', async ctx => {
   const name = cleanText(ctx.body.get('name'), 40);
@@ -62,14 +66,14 @@ on('POST', '/login', async ctx => {
   const log = action => logEvent({ ip: ctx.ip, user: user?.name ?? name, known: Boolean(user), action });
   if (!auth.loginAllowed(ctx.ip, name)) {
     log(BANNED);
-    return ctx.html(views.loginPage(TOO_MANY), 429);
+    return ctx.html(views.loginPage(ctx.lang, t(ctx.lang, TOO_MANY)), 429);
   }
   // Hash even for an unknown name, so the response time does not reveal which names exist.
   const passwordOk = await auth.verifyPassword(ctx.body.get('password') || '', user?.password_hash ?? auth.DUMMY_HASH);
   if (!user || !passwordOk) {
     log('login failed (password)');
     auth.loginFailed(ctx.ip, name);
-    return ctx.html(views.loginPage('Wrong name or password.'), 401);
+    return ctx.html(views.loginPage(ctx.lang, t(ctx.lang, 'errors.wrongLogin')), 401);
   }
   log('login ok (password)');
   startSession(ctx, user.id);
@@ -97,7 +101,7 @@ on('POST', '/login/passkey/options', ctx => {
     return ctx.json({ challenge: auth.createChallenge(), rpId: RP_ID });
   }
   logEvent({ ip: ctx.ip, action: BANNED }); // no passkey chosen yet, so no user to name
-  ctx.json({ error: TOO_MANY }, 429);
+  ctx.json({ error: t(ctx.lang, TOO_MANY) }, 429);
 }, true);
 
 on('POST', '/login/passkey', ctx => {
@@ -108,7 +112,7 @@ on('POST', '/login/passkey', ctx => {
   const log = action => logEvent({ ip: ctx.ip, user: logName, known: Boolean(owner), action });
   if (!auth.loginAllowed(ctx.ip, credentialId)) {
     log(BANNED);
-    return ctx.json({ error: TOO_MANY }, 429);
+    return ctx.json({ error: t(ctx.lang, TOO_MANY) }, 429);
   }
   const challenge = ctx.body.get('challenge') || '';
 
@@ -124,21 +128,21 @@ on('POST', '/login/passkey', ctx => {
   if (!user) {
     log('login failed (passkey)');
     auth.loginFailed(ctx.ip, credentialId); // passkey attempts share the password login's rate limit
-    return ctx.json({ error: 'That passkey is not recognised.' }, 401);
+    return ctx.json({ error: t(ctx.lang, 'errors.passkeyUnknown') }, 401);
   }
   log('login ok (passkey)');
   ctx.setCookie('sid', auth.createSession(user.id), auth.SESSION_SECONDS);
   ctx.json({ ok: true }); // the client navigates; a 303 here would make fetch load the page for nothing
 }, true);
 
-const INVITE_GONE = 'This link is invalid, used, or expired.';
+const INVITE_GONE = 'errors.inviteGone';
 
 on('GET', '/invite/(?<token>[\\w-]+)', ctx => {
   const invite = auth.getInvite(ctx.params.token);
   if (!invite) {
     return ctx.fail(410, INVITE_GONE);
   }
-  ctx.html(views.invitePage(invite.token, invite.user_name));
+  ctx.html(views.invitePage(ctx.lang, invite.token, invite.user_name));
 }, true);
 
 // One form, two jobs: with invite.user_id it resets that user's password, otherwise it creates an account.
@@ -153,22 +157,22 @@ on('POST', '/invite/(?<token>[\\w-]+)', async ctx => {
   const isReset = Boolean(invite.user_id);
   const errors = {};
   if (!isReset && !name) {
-    errors.name = 'Name is required.';
+    errors.name = t(ctx.lang, 'errors.nameRequired');
   } else if (!isReset && get('SELECT 1 FROM users WHERE name = ?', name)) {
-    errors.name = 'That name is already taken.';
+    errors.name = t(ctx.lang, 'errors.nameTaken');
   }
   if (password.length < MIN_PASSWORD) {
-    errors.password = `Password must be at least ${MIN_PASSWORD} characters.`;
+    errors.password = t(ctx.lang, 'errors.passwordShort', { min: MIN_PASSWORD });
   }
   if (hasErrors(errors)) {
-    return ctx.html(views.invitePage(invite.token, invite.user_name, { errors, name }), 400);
+    return ctx.html(views.invitePage(ctx.lang, invite.token, invite.user_name, { errors, name }), 400);
   }
 
   const passwordHash = await auth.hashPassword(password);
   const userId = tx(() => {
     // Consumed inside the transaction: two submissions of the same link cannot both succeed.
     if (!auth.consumeInvite(invite.token)) {
-      throw Object.assign(new Error('invite gone'), { status: 410 });
+      throw Object.assign(new Error(INVITE_GONE), { status: 410 });
     }
     if (isReset) {
       run('UPDATE users SET password_hash = ? WHERE id = ?', passwordHash, invite.user_id);
@@ -179,10 +183,11 @@ on('POST', '/invite/(?<token>[\\w-]+)', async ctx => {
       return invite.user_id;
     }
     // Joining while groups are off: public, like every event and poll made then (there is no choice to make).
-    return run(`INSERT INTO users(name, password_hash, feed_token, is_admin, created_at, color, is_private)
-                VALUES (?,?,?,?,?,?,?)`,
-      name, passwordHash, auth.token(), invite.is_admin, now(), randomColor(), groupsEnabled() ? 1 : 0)
-      .lastInsertRowid;
+    // The language this page was in becomes theirs, so their calendar feeds speak it from the start.
+    return run(`INSERT INTO users(name, password_hash, feed_token, is_admin, created_at, color, is_private, language)
+                VALUES (?,?,?,?,?,?,?,?)`,
+      name, passwordHash, auth.token(), invite.is_admin, now(), randomColor(), groupsEnabled() ? 1 : 0,
+      ctx.lang ?? null).lastInsertRowid;
   });
   logEvent({ ip: ctx.ip, user: isReset ? invite.user_name : name, known: true,
     action: isReset ? 'password reset by link' : `account created by invite${invite.is_admin ? ' (admin)' : ''}` });
@@ -370,7 +375,7 @@ on('POST', '/free', async ctx => {
   const date = ctx.body.get('date');
   const part = ctx.body.get('part');
   if (!isValidDate(date)) {
-    return showCalendar(ctx, postedMonth(ctx), { status: 400, error: 'Invalid date.' });
+    return showCalendar(ctx, postedMonth(ctx), { status: 400, error: t(ctx.lang, 'errors.invalidDate') });
   }
 
   // No longer set by hand. It keeps what it shows until the sync rewrites it: at once inside the sync's window
@@ -397,7 +402,7 @@ on('POST', '/free', async ctx => {
     const current = get('SELECT part, part2 FROM free_days WHERE user_id = ? AND date = ?', ctx.user.id, date);
     const parts = toggleSlot(current ? freeParts(current) : [], part);
     if (parts === null) {
-      const error = `You can be free at most ${MAX_SLOTS_PER_DAY} times in a day. Take one off first.`;
+      const error = t(ctx.lang, 'errors.tooManySlots', { max: MAX_SLOTS_PER_DAY });
       return showCalendar(ctx, postedMonth(ctx), { status: 400, error });
     }
     if (parts.length === 0) {
@@ -406,7 +411,7 @@ on('POST', '/free', async ctx => {
       setDay(...parts);
     }
   } else {
-    return showCalendar(ctx, postedMonth(ctx), { status: 400, error: 'Invalid part of the day.' });
+    return showCalendar(ctx, postedMonth(ctx), { status: 400, error: t(ctx.lang, 'errors.invalidPart') });
   }
   // set by hand: the calendar sync (src/sync.js) leaves this day alone from now on
   run('INSERT OR IGNORE INTO manual_days(user_id, date) VALUES (?, ?)', ctx.user.id, date);
@@ -429,14 +434,14 @@ function readSharing(ctx, creatorGroups, what, current = { isPrivate: 0, groupId
   const visibility = ctx.body.get('visibility');
   const postedGroupIds = ctx.body.getAll('group_ids').map(Number);
   if (visibility !== 'public' && visibility !== 'private') {
-    return { isPrivate: 0, groupIds: postedGroupIds, error: 'Pick public or private.' };
+    return { isPrivate: 0, groupIds: postedGroupIds, error: t(ctx.lang, 'errors.pickVisibility') };
   }
   if (visibility === 'public') {
     return { isPrivate: 0, groupIds: [] };
   }
   const creatorGroupIds = new Set(creatorGroups.map(group => group.id));
   const groupIds = [...new Set(postedGroupIds)].filter(groupId => creatorGroupIds.has(groupId));
-  const error = groupIds.length === 0 ? `A private ${what} needs at least one group to share it with.` : undefined;
+  const error = groupIds.length === 0 ? t(ctx.lang, `errors.privateNeedsGroup.${what}`) : undefined;
   return { isPrivate: 1, groupIds, error };
 }
 
@@ -484,19 +489,19 @@ function readEventForm(ctx, creatorGroups, currentSharing) {
   };
   const errors = {};
   if (!event.title) {
-    errors.title = 'A title is required.';
+    errors.title = t(ctx.lang, 'errors.titleRequired');
   }
   const whenError = eventError({
     date: event.date, endDate: event.end_date, startTime: event.start_time, endTime: event.end_time,
   });
   if (whenError) {
-    errors[whenError.field] = whenError.message;
+    errors[whenError.field] = t(ctx.lang, whenError.message);
   }
   if (!allDay && !event.start_time) {
-    errors.start ??= 'Pick a start time, or tick All day.';
+    errors.start ??= t(ctx.lang, 'errors.pickStartTime');
   }
   if (event.color !== null && !isValidColor(event.color)) {
-    errors.color = 'Invalid color.';
+    errors.color = t(ctx.lang, 'errors.invalidColor');
   }
   if (sharing.error) {
     errors.visibility = sharing.error;
@@ -509,10 +514,10 @@ function readEventForm(ctx, creatorGroups, currentSharing) {
 const editableEvent = ctx => {
   const event = get('SELECT * FROM events WHERE id = ?', Number(ctx.params.id));
   if (!event) {
-    return ctx.fail(404, 'Event not found.');
+    return ctx.fail(404, 'errors.eventNotFound');
   }
   if (event.created_by !== ctx.user.id && !ctx.user.is_admin) {
-    return ctx.fail(403, 'Only its creator or an admin can change this event.');
+    return ctx.fail(403, 'errors.eventForbidden');
   }
   return event;
 };
@@ -665,10 +670,10 @@ on('POST', '/polls/new', ctx => {
   const sharing = readSharing(ctx, groups, 'poll');
   const errors = {};
   if (!title) {
-    errors.title = 'A title is required.';
+    errors.title = t(ctx.lang, 'errors.titleRequired');
   }
   if (!dates.length || dates.length > MAX_DATES || !dates.every(isValidDate)) {
-    errors.dates = `Propose 1 to ${MAX_DATES} valid dates.`;
+    errors.dates = t(ctx.lang, 'errors.pollDates', { max: MAX_DATES });
   }
   if (sharing.error) {
     errors.visibility = sharing.error;
@@ -692,7 +697,7 @@ on('POST', '/polls/new', ctx => {
 on('GET', '/polls/(?<id>\\d+)', ctx => {
   const data = loadPoll(Number(ctx.params.id), ctx.user);
   if (!data) {
-    return ctx.fail(404, 'Poll not found.');
+    return ctx.fail(404, 'errors.pollNotFound');
   }
   ctx.html(views.pollPage(ctx.user, data));
 });
@@ -706,10 +711,10 @@ on('POST', '/polls/(?<id>\\d+)', ctx => {
   const pollId = Number(ctx.params.id);
   const data = loadPoll(pollId, ctx.user);
   if (!data) {
-    return ctx.fail(404, 'Poll not found.');
+    return ctx.fail(404, 'errors.pollNotFound');
   }
   if (data.poll.closed_at) {
-    return rejectPoll(ctx, data, 409, { answers: 'This poll is closed: your answers were not saved.' });
+    return rejectPoll(ctx, data, 409, { answers: t(ctx.lang, 'errors.pollClosed') });
   }
 
   tx(() => {
@@ -729,7 +734,7 @@ on('POST', '/polls/(?<id>\\d+)/close', ctx => {
   const pollId = Number(ctx.params.id);
   const data = loadPoll(pollId, ctx.user);
   if (!data) {
-    return ctx.fail(404, 'Poll not found.');
+    return ctx.fail(404, 'errors.pollNotFound');
   }
   if (managesPoll(ctx.user, data.poll)) {
     run('UPDATE polls SET closed_at = ? WHERE id = ? AND closed_at IS NULL', now(), pollId);
@@ -743,10 +748,10 @@ on('POST', '/polls/(?<id>\\d+)/visibility', ctx => {
   const pollId = Number(ctx.params.id);
   const data = loadPoll(pollId, ctx.user);
   if (!data) {
-    return ctx.fail(404, 'Poll not found.');
+    return ctx.fail(404, 'errors.pollNotFound');
   }
   if (!managesPoll(ctx.user, data.poll)) {
-    return ctx.fail(403, 'Only its creator or an admin can change who sees this poll.');
+    return ctx.fail(403, 'errors.pollForbidden');
   }
   const sharing = readSharing(ctx, data.creatorGroups, 'poll',
     { isPrivate: data.poll.is_private, groupIds: data.groupIds });
@@ -770,14 +775,14 @@ on('POST', '/polls/(?<id>\\d+)/confirm', ctx => {
   const data = loadPoll(pollId, ctx.user);
   const date = ctx.body.get('date');
   if (!data) {
-    return ctx.fail(404, 'Poll not found.');
+    return ctx.fail(404, 'errors.pollNotFound');
   }
   if (!data.complete && !data.poll.closed_at) {
-    return rejectPoll(ctx, data, 409, { answers: 'Not everyone has answered yet.' });
+    return rejectPoll(ctx, data, 409, { answers: t(ctx.lang, 'errors.notEveryoneAnswered') });
   }
   // Only a winning date may be confirmed; the form offers exactly these, so this is the server-side twin.
   if (!data.best.includes(date)) {
-    return rejectPoll(ctx, data, 400, { result: 'Not one of the best dates.' });
+    return rejectPoll(ctx, data, 400, { result: t(ctx.lang, 'errors.notBestDate') });
   }
 
   tx(() => {
@@ -800,7 +805,7 @@ on('POST', '/polls/(?<id>\\d+)/confirm', ctx => {
 // Registers a /groups route: while an admin has groups turned off they answer 404, like a page that is not there.
 const onGroups = (method, path, handler) => on(method, path, ctx => {
   if (!ctx.user.groups_enabled) {
-    return ctx.fail(404, 'Groups are turned off.');
+    return ctx.fail(404, 'errors.groupsOff');
   }
   return handler(ctx);
 });
@@ -887,10 +892,10 @@ function showGroups(ctx, { status = 200, errors = {} } = {}) {
 function groupForMember(ctx) {
   const group = get('SELECT * FROM member_groups WHERE id = ?', Number(ctx.params.id));
   if (!group) {
-    return ctx.fail(404, 'Group not found.');
+    return ctx.fail(404, 'errors.groupNotFound');
   }
   if (!get('SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?', group.id, ctx.user.id)) {
-    return ctx.fail(403, 'You are not in this group.');
+    return ctx.fail(403, 'errors.notInGroup');
   }
   return group;
 }
@@ -899,10 +904,10 @@ function groupForMember(ctx) {
 function groupForManager(ctx) {
   const group = get('SELECT * FROM member_groups WHERE id = ?', Number(ctx.params.id));
   if (!group) {
-    return ctx.fail(404, 'Group not found.');
+    return ctx.fail(404, 'errors.groupNotFound');
   }
   if (!managesGroup(ctx.user, group)) {
-    return ctx.fail(403, 'Only its creator or an admin can change this group.');
+    return ctx.fail(403, 'errors.groupForbidden');
   }
   return group;
 }
@@ -916,20 +921,20 @@ function invitee(ctx, group) {
   if (ctx.body.has('user_id')) {
     target = get('SELECT id, name FROM users WHERE id = ?', Number(ctx.body.get('user_id')));
     if (!target) {
-      return { error: 'Pick someone to invite.' };
+      return { error: t(ctx.lang, 'errors.pickInvitee') };
     }
   } else {
     const name = (ctx.body.get('name') || '').trim();
     if (!name) {
-      return { error: 'Type the name of who to invite.' };
+      return { error: t(ctx.lang, 'errors.typeInvitee') };
     }
     target = get('SELECT id, name FROM users WHERE name = ?', name); // names are unique, ignoring case
     if (!target) {
-      return { error: `No member called ${name}.` };
+      return { error: t(ctx.lang, 'errors.noSuchMember', { name }) };
     }
   }
   if (get('SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?', group.id, target.id)) {
-    return { error: `${target.name} is already in this group.` };
+    return { error: t(ctx.lang, 'errors.alreadyInGroup', { name: target.name }) };
   }
   return { target };
 }
@@ -941,7 +946,7 @@ onGroups('GET', '/groups', ctx => showGroups(ctx));
 onGroups('POST', '/groups', ctx => {
   const name = cleanText(ctx.body.get('name'), GROUP_NAME_MAX);
   if (!name) {
-    return showGroups(ctx, { status: 400, errors: { create: 'A group needs a name.' } });
+    return showGroups(ctx, { status: 400, errors: { create: t(ctx.lang, 'errors.groupNameRequired') } });
   }
   // The color the New group panel was showing; a missing or bad one (an old page, a forged form) gets a fresh one.
   const postedColor = Number(ctx.body.get('color') ?? NaN);
@@ -978,7 +983,7 @@ onGroups('POST', '/groups/(?<id>\\d+)/add', ctx => {
     return;
   }
   if (!ctx.user.is_admin) {
-    return ctx.fail(403, 'Only admins can add members directly.');
+    return ctx.fail(403, 'errors.adminsOnlyAdd');
   }
   const { target, error } = invitee(ctx, group);
   if (error) {
@@ -998,7 +1003,7 @@ onGroups('POST', '/groups/(?<id>\\d+)/(?<answer>accept|decline)', ctx => {
   const group = get(`SELECT g.* FROM group_invites i JOIN member_groups g ON g.id = i.group_id
                      WHERE i.group_id = ? AND i.user_id = ?`, groupId, ctx.user.id);
   if (!group) {
-    return ctx.fail(404, 'That invite is no longer waiting.');
+    return ctx.fail(404, 'errors.inviteNotWaiting');
   }
   const accepted = ctx.params.answer === 'accept';
   tx(() => {
@@ -1033,7 +1038,7 @@ onGroups('POST', '/groups/(?<id>\\d+)/rename', ctx => {
   }
   const name = cleanText(ctx.body.get('name'), GROUP_NAME_MAX);
   if (!name) {
-    return showGroups(ctx, { status: 400, errors: { [group.id]: 'A group needs a name.' } });
+    return showGroups(ctx, { status: 400, errors: { [group.id]: t(ctx.lang, 'errors.groupNameRequired') } });
   }
   run('UPDATE member_groups SET name = ? WHERE id = ?', name, group.id);
   ctx.redirect('/groups?msg=renamed');
@@ -1047,7 +1052,7 @@ onGroups('POST', '/groups/(?<id>\\d+)/members/(?<userId>\\d+)/remove', ctx => {
   }
   const memberId = Number(ctx.params.userId);
   if (memberId === ctx.user.id) {
-    return showGroups(ctx, { status: 400, errors: { [group.id]: 'Use Leave to leave the group yourself.' } });
+    return showGroups(ctx, { status: 400, errors: { [group.id]: t(ctx.lang, 'errors.useLeave') } });
   }
   // A removed creator hands the group over like one who leaves (an admin can remove the creator).
   const removed = tx(() => {
@@ -1107,7 +1112,7 @@ on('POST', '/settings/rotate-feed', ctx => {
 // button when it is off; this check is what actually stops a forged post. Never an admin or reset link.
 on('POST', '/settings/invite', ctx => {
   if (!ctx.user.member_invites) {
-    return ctx.fail(403, 'An admin has turned off invite links for members.');
+    return ctx.fail(403, 'errors.memberInvitesOff');
   }
   const inviteToken = auth.createInvite({ createdBy: ctx.user.id });
   logUser(ctx, 'invite link created');
@@ -1128,12 +1133,12 @@ on('POST', '/settings/calendars', async ctx => {
   const label = cleanText(ctx.body.get('label'), 60);
   const countFree = ctx.body.get('count_free') === '1' ? 1 : 0;
   if (!/^https:\/\/[^\s]+$/i.test(url)) {
-    return showSettings(ctx, { status: 400, errors: { calendar: 'Paste an https:// or webcal:// link.' } });
+    return showSettings(ctx, { status: 400, errors: { calendar: t(ctx.lang, 'errors.calendarLink') } });
   }
   try {
     await fetchCalendar(url);
   } catch (err) {
-    return showSettings(ctx, { status: 400, errors: { calendar: err.message } });
+    return showSettings(ctx, { status: 400, errors: { calendar: syncErrorText(ctx.lang, err.message) } });
   }
   tx(() => {
     // the first calendar: days already marked by hand stay as they are
@@ -1153,10 +1158,10 @@ on('POST', '/settings/calendars', async ctx => {
 function calendarLinkForOwner(ctx) {
   const link = get('SELECT id, user_id FROM calendar_links WHERE id = ?', Number(ctx.params.id));
   if (!link) {
-    return ctx.fail(404, 'Calendar not found.');
+    return ctx.fail(404, 'errors.calendarNotFound');
   }
   if (link.user_id !== ctx.user.id && !ctx.user.is_admin) {
-    return ctx.fail(403, 'Only its owner or an admin can change this calendar.');
+    return ctx.fail(403, 'errors.calendarForbidden');
   }
   return link;
 }
@@ -1203,7 +1208,7 @@ const BUSY_SLOT = new RegExp(`^[0-6](${SLOTS.join('|')})$`);
 on('POST', '/settings/calendars/rules', async ctx => {
   const busyMinutes = Number(ctx.body.get('busy_minutes'));
   if (!isValidBusyMinutes(busyMinutes)) {
-    return showSettings(ctx, { status: 400, errors: { rules: 'Invalid busy threshold.' } });
+    return showSettings(ctx, { status: 400, errors: { rules: t(ctx.lang, 'errors.busyThreshold') } });
   }
   const busySlots = [...new Set(ctx.body.getAll('busy').filter(value => BUSY_SLOT.test(value)))].sort().join(' ');
   const ignoreWords = cleanText(ctx.body.get('ignore_words'), 500).split(',')
@@ -1224,10 +1229,10 @@ on('POST', '/settings/customisation', ctx => {
   const continuousCalendar = ctx.body.get('continuous_calendar') === '1' ? 1 : 0; // unchecked: blank cells
   const errors = {};
   if (!isValidWeekStart(weekStart)) {
-    errors.weekStart = 'Invalid first day of the week.';
+    errors.weekStart = t(ctx.lang, 'errors.weekStart');
   }
   if (!isValidDateFormat(dateFormat)) {
-    errors.dateFormat = 'Invalid date format.';
+    errors.dateFormat = t(ctx.lang, 'errors.dateFormat');
   }
   if (hasErrors(errors)) {
     return showSettings(ctx, { status: 400, errors });
@@ -1264,21 +1269,21 @@ on('POST', '/profile/about', ctx => {
   const privacy = ctx.body.get('privacy'); // 'private' | 'public'
   const errors = {};
   if (!name) {
-    errors.name = 'Name is required.';
+    errors.name = t(ctx.lang, 'errors.nameRequired');
   } else if (get('SELECT 1 FROM users WHERE name = ? AND id != ?', name, ctx.user.id)) {
-    errors.name = 'That name is already taken.';
+    errors.name = t(ctx.lang, 'errors.nameTaken');
   }
   if (birthday && !isValidDate(birthday)) {
-    errors.birthday = 'Invalid date.';
+    errors.birthday = t(ctx.lang, 'errors.invalidDate');
   } else if (birthday > today()) {
-    errors.birthday = 'Your birthday cannot be in the future.';
+    errors.birthday = t(ctx.lang, 'errors.birthdayFuture');
   }
   if (!isValidColor(color)) {
-    errors.color = 'Invalid color.';
+    errors.color = t(ctx.lang, 'errors.invalidColor');
   }
   // Groups off: the page has no Account choice, and the saved one is kept for when groups come back.
   if (ctx.user.groups_enabled && privacy !== 'private' && privacy !== 'public') {
-    errors.privacy = 'Pick private or public.';
+    errors.privacy = t(ctx.lang, 'errors.pickPrivacy');
   }
   const isPrivate = ctx.user.groups_enabled ? (privacy === 'public' ? 0 : 1) : ctx.user.is_private;
   if (hasErrors(errors)) {
@@ -1299,10 +1304,10 @@ on('POST', '/profile/password', async ctx => {
   const newPassword = ctx.body.get('password') || '';
   const errors = {};
   if (!(await auth.verifyPassword(ctx.body.get('current') || '', ctx.user.password_hash))) {
-    errors.current = 'Current password is wrong.';
+    errors.current = t(ctx.lang, 'errors.currentPasswordWrong');
   }
   if (newPassword.length < MIN_PASSWORD) {
-    errors.password = `New password must be at least ${MIN_PASSWORD} characters.`;
+    errors.password = t(ctx.lang, 'errors.newPasswordShort', { min: MIN_PASSWORD });
   }
   if (hasErrors(errors)) {
     return showProfile(ctx, { status: 400, errors });
@@ -1328,7 +1333,7 @@ on('POST', '/profile/passkeys/options', ctx => ctx.json({
 
 on('POST', '/profile/passkeys', ctx => {
   const challenge = ctx.body.get('challenge') || '';
-  const label = cleanText(ctx.body.get('label'), 40) || 'Passkey';
+  const label = cleanText(ctx.body.get('label'), 40) || t(ctx.lang, 'profile.defaultLabel');
   const added = auth.consumeChallenge(challenge) && auth.addCredential({
     userId: ctx.user.id,
     id: ctx.body.get('id') || '',
@@ -1340,7 +1345,7 @@ on('POST', '/profile/passkeys', ctx => {
     challenge,
   });
   logUser(ctx, added ? `passkey added ${JSON.stringify(label)}` : 'passkey add failed');
-  added ? ctx.json({ ok: true }) : ctx.json({ error: 'That passkey could not be verified.' }, 400);
+  added ? ctx.json({ ok: true }) : ctx.json({ error: t(ctx.lang, 'errors.passkeyUnverified') }, 400);
 });
 
 // A plain form, so removing a passkey works with JS off.
@@ -1356,7 +1361,7 @@ on('POST', '/profile/passkeys/delete', ctx => {
 // Everything admin-only lives under /admin. The guard is here, not in the view, so a future
 // admin tool only has to be added to this section to inherit it.
 
-const requireAdmin = ctx => ctx.user.is_admin || ctx.fail(403, 'Admins only.');
+const requireAdmin = ctx => ctx.user.is_admin || ctx.fail(403, 'errors.adminsOnly');
 
 /** The administration page. errors.members goes under the Members title (a rejected member action). */
 const showAdmin = (ctx, { status = 200, errors = {} } = {}) => ctx.html(views.adminPage(ctx.user, {
@@ -1396,7 +1401,7 @@ on('POST', '/admin/invite', ctx => {
   const userId = ctx.body.get('user_id') ? Number(ctx.body.get('user_id')) : null;
   const target = userId && get('SELECT name FROM users WHERE id = ?', userId);
   if (userId && !target) {
-    return showAdmin(ctx, { status: 400, errors: { members: 'That member no longer exists.' } });
+    return showAdmin(ctx, { status: 400, errors: { members: t(ctx.lang, 'errors.memberGone') } });
   }
   const inviteToken = auth.createInvite({ createdBy: ctx.user.id, userId }); // userId set => password-reset link
   logUser(ctx, target ? `admin: reset link created for ${JSON.stringify(target.name)}` : 'admin: invite link created');
@@ -1444,11 +1449,11 @@ on('POST', '/admin/members/(?<id>\\d+)/delete', ctx => {
   }
   const memberId = Number(ctx.params.id);
   if (memberId === ctx.user.id) {
-    return showAdmin(ctx, { status: 400, errors: { members: 'You cannot remove yourself.' } });
+    return showAdmin(ctx, { status: 400, errors: { members: t(ctx.lang, 'errors.removeSelf') } });
   }
   const member = get('SELECT name FROM users WHERE id = ?', memberId);
   if (!member) {
-    return showAdmin(ctx, { status: 404, errors: { members: 'That member no longer exists.' } });
+    return showAdmin(ctx, { status: 404, errors: { members: t(ctx.lang, 'errors.memberGone') } });
   }
   tx(() => {
     const groupIds = all('SELECT group_id FROM group_members WHERE user_id = ?', memberId).map(row => row.group_id);
@@ -1467,20 +1472,22 @@ on('POST', '/admin/members/(?<id>\\d+)/delete', ctx => {
 });
 
 // ---- ICS feeds: the only unauthenticated data routes; the token in the URL is the credential ----
+// A feed is read by a calendar app's server, not the member's browser, so it speaks its owner's language
+// (users.language), English while they never picked one.
 const ICS_HEADERS = { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'private, no-cache' };
 
 // One feed per group: its members' public events and the private ones shared with it; nobody else's.
 // The token is the subscriber's own, so the link dies when they leave the group or rotate their links.
 on('GET', '/feed/(?<token>[\\w-]+)/groups/(?<id>\\d+)\\.ics', ctx => {
   if (!groupsEnabled()) {
-    return ctx.fail(404, 'Not found.');
+    return ctx.fail(404, 'errors.feedNotFound');
   }
   const group = get(`SELECT g.id, g.name FROM users u
                      JOIN group_members m ON m.user_id = u.id
                      JOIN member_groups g ON g.id = m.group_id
                      WHERE u.feed_token = ? AND g.id = ?`, ctx.params.token, Number(ctx.params.id));
   if (!group) {
-    return ctx.fail(404, 'Not found.');
+    return ctx.fail(404, 'errors.feedNotFound');
   }
   const host = new URL(BASE_URL).host;
 
@@ -1502,8 +1509,9 @@ on('GET', '/feed/(?<token>[\\w-]+)/groups/(?<id>\\d+)\\.ics', ctx => {
 // Every event, in one feed: only while groups are off (Administration → Options), when there are no group
 // feeds and everything is public. With groups on it answers 404, so it can never leak a private event.
 on('GET', '/feed/(?<token>[\\w-]+)/events\\.ics', ctx => {
-  if (groupsEnabled() || !get('SELECT 1 FROM users WHERE feed_token = ?', ctx.params.token)) {
-    return ctx.fail(404, 'Not found.');
+  const owner = get('SELECT language FROM users WHERE feed_token = ?', ctx.params.token);
+  if (groupsEnabled() || !owner) {
+    return ctx.fail(404, 'errors.feedNotFound');
   }
   // GROUPS_OFF is already true here; kept so the feed stays safe on its own
   const items = all(`SELECT * FROM events WHERE ${GROUPS_OFF}`).map(event => ({
@@ -1515,23 +1523,59 @@ on('GET', '/feed/(?<token>[\\w-]+)/events\\.ics', ctx => {
     summary: event.title,
     stamp: event.created_at,
   }));
-  ctx.text(buildIcs({ name: 'Meshtime · All events', host: new URL(BASE_URL).host, items }), 200, ICS_HEADERS);
+  const name = `Meshtime · ${t(owner.language, 'feeds.allEvents')}`;
+  ctx.text(buildIcs({ name, host: new URL(BASE_URL).host, items }), 200, ICS_HEADERS);
 }, true);
 
 // One yearly recurring all-day event per member who gave a birthday, starting on the birthday itself:
 // the subscriber's own and their groups' members' (BIRTHDAY_VISIBLE_TO_ME).
 on('GET', '/feed/(?<token>[\\w-]+)/birthdays\\.ics', ctx => {
-  const viewer = get('SELECT id FROM users WHERE feed_token = ?', ctx.params.token);
+  const viewer = get('SELECT id, language FROM users WHERE feed_token = ?', ctx.params.token);
   if (!viewer) {
-    return ctx.fail(404, 'Not found.');
+    return ctx.fail(404, 'errors.feedNotFound');
   }
   const items = all(`SELECT u.id, u.name, u.birthday, u.created_at FROM users u
                      WHERE u.birthday IS NOT NULL AND ${BIRTHDAY_VISIBLE_TO_ME}`, viewer.id, viewer.id).map(member => ({
     uid: 'birthday-' + member.id,
     date: member.birthday,
     rrule: birthdayRrule(member.birthday),
-    summary: `🎉 ${member.name}'s birthday`,
+    summary: `🎉 ${t(viewer.language, 'calendar.birthday', { name: member.name })}`,
     stamp: member.created_at,
   }));
-  ctx.text(buildIcs({ name: 'Meshtime · Birthdays', host: new URL(BASE_URL).host, items }), 200, ICS_HEADERS);
+  const name = `Meshtime · ${t(viewer.language, 'feeds.birthdays')}`;
+  ctx.text(buildIcs({ name, host: new URL(BASE_URL).host, items }), 200, ICS_HEADERS);
+}, true);
+
+// ---- language: the menu at the end of the nav (src/templates/language-menu.html) ----
+
+/**
+ * Where the language menu sends someone back to: `back`, the page it was picked on, kept on this site. A page that
+ * answered a form (a rejected /profile/about) has no GET route of its own: the nearest page above it then
+ * (/profile). Anything else, or another site, goes to the calendar.
+ */
+function backPath(back) {
+  const url = URL.parse(back ?? '/', 'http://meshtime.invalid');
+  if (url?.host !== 'meshtime.invalid') {
+    return '/';
+  }
+  let path = url.pathname;
+  while (path !== '/' && !routes.some(route => route.method === 'GET' && route.path.test(path))) {
+    path = path.slice(0, path.lastIndexOf('/')) || '/';
+  }
+  return path === url.pathname ? path + url.search : path;
+}
+
+const LANGUAGE_COOKIE_SECONDS = 365 * 24 * 60 * 60; // a year, like app.js's hour12 cookie
+
+// Saved on the account when logged in, and in a cookie either way, so the login page keeps it after logging out.
+on('POST', '/language', ctx => {
+  const lang = ctx.body.get('lang');
+  if (!isValidLanguage(lang)) {
+    return ctx.fail(400, 'errors.invalidLanguage');
+  }
+  if (ctx.user) {
+    run('UPDATE users SET language = ? WHERE id = ?', lang, ctx.user.id);
+  }
+  ctx.setCookie('lang', lang, LANGUAGE_COOKIE_SECONDS);
+  ctx.redirect(backPath(ctx.body.get('back')));
 }, true);

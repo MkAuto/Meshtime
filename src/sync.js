@@ -133,25 +133,28 @@ export function freePartsByDay(calendars, fromDate, toDate, {
 export const withoutFreeEvents = calendar =>
   Object.fromEntries(Object.entries(calendar).filter(([, event]) => event.transparency !== 'TRANSPARENT'));
 
-/** Downloads and parses one secret iCal link. Throws an Error whose message can be shown to the member. */
+/**
+ * Downloads and parses one secret iCal link. Throws an Error whose message can be shown to the member: our own are a
+ * key in src/locales, with the HTTP status after a space for sync.httpStatus (syncErrorText in src/i18n.js reads
+ * them); node-ical's are its own text.
+ */
 export async function fetchCalendar(url) {
   let response;
   try {
     response = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), redirect: 'follow' });
   } catch (err) {
     // the cause (DNS, TLS, timeout...) is kept for errors.log; the member only sees the message
-    throw new Error('Could not reach that link.', { cause: err });
+    throw new Error('sync.unreachable', { cause: err });
   }
   if (!response.ok) {
-    throw new Error(`The calendar answered ${response.status}. Check that the link is the secret iCal address.`);
+    throw new Error(`sync.httpStatus ${response.status}`);
   }
   if (Number(response.headers.get('content-length')) > MAX_CALENDAR_BYTES) {
-    throw new Error('That calendar is too big (over 5 MB).');
+    throw new Error('sync.tooBig');
   }
   const text = await response.text();
   if (text.length > MAX_CALENDAR_BYTES || !text.includes('BEGIN:VCALENDAR')) {
-    throw new Error(text.length > MAX_CALENDAR_BYTES ? 'That calendar is too big (over 5 MB).'
-      : 'That link is not an iCal calendar.');
+    throw new Error(text.length > MAX_CALENDAR_BYTES ? 'sync.tooBig' : 'sync.notIcal');
   }
   return ical.sync.parseICS(text);
 }

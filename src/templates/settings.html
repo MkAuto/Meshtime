@@ -1,17 +1,17 @@
 {{! Each panel is a details element: collapsing is native, needs no JS and works with JS off.
     All open on load; data-remember: app.js reopens each the way you last left it (in this browser),
     except a panel showing an error, which always stays open. }}
-<h1>Settings</h1>
-<p class="hint">Version {{version}}</p>
+<h1>{{t.settings.title}}</h1>
+<p class="hint">{{versionLabel}}</p>
 {{> notices}}
 <details class="panel panel-custom" open data-remember="settings-customisation">
-  <summary><h2>Customisation</h2></summary>
+  <summary><h2>{{t.settings.customisation}}</h2></summary>
   <form method="post" action="/settings/customisation">
     {{! Two sections: everything about how the calendar looks, then how dates are written (style.css
         uppercases the headings). }}
-    <h3>Calendar</h3>
+    <h3>{{t.settings.calendar}}</h3>
     <label>
-      First day of the week
+      {{t.settings.weekStart}}
       <select name="week_start">
         {{#weekStarts}}
         <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
@@ -22,68 +22,68 @@
     <br>
     <label>
       <input type="checkbox" name="continuous_calendar" value="1"{{#continuousCalendar}} checked{{/continuousCalendar}}>
-      Continuous calendar: fill the first and last weeks with the days of the months around
+      {{t.settings.continuous}}
     </label>
     <br>
     <label>
       <input type="checkbox" name="show_birthdays" value="1"{{#showBirthdays}} checked{{/showBirthdays}}>
-      Show birthdays on my calendar
+      {{t.settings.showBirthdays}}
     </label>
     <br>
     <label>
       <input type="checkbox" name="hide_free_border" value="1"{{#hideFreeBorder}} checked{{/hideFreeBorder}}>
-      Disable border of free days
+      {{t.settings.hideFreeBorder}}
     </label>
     <br>
     <label>
       <input type="checkbox" name="hide_own_initials" value="1"{{#hideOwnInitials}} checked{{/hideOwnInitials}}>
-      Hide my own initials on the calendar
+      {{t.settings.hideOwnInitials}}
     </label>
-    <h3>Date format</h3>
-    <select name="date_format" aria-label="Date format">
+    <h3>{{t.settings.dateFormat}}</h3>
+    <select name="date_format" aria-label="{{t.settings.dateFormat}}">
       {{#dateFormats}}
       <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
       {{/dateFormats}}
     </select>
     {{#errors.dateFormat}}<p class="err">{{errors.dateFormat}}</p>{{/errors.dateFormat}}
-    <p><button>Save</button></p>
+    <p><button>{{t.common.save}}</button></p>
   </form>
 </details>
 
 {{! Calendar Integration: my own calendars, read every hour to fill in my free days (src/sync.js). }}
 <details class="panel panel-integration" open data-remember="settings-integration">
-  <summary><h2>Calendar Integration</h2></summary>
-  <label class="hint"> Update next 60 days every hour, Manual days have priority
+  <summary><h2>{{t.settings.integration}}</h2></summary>
+  <label class="hint"> {{t.settings.integrationHint}}
   </label>
-  <h3>Active Integration</h3>
+  <h3>{{t.settings.activeIntegration}}</h3>
   {{#calendarLinks.length}}
   <ul>
     {{#calendarLinks}}
     <li>
       <b>{{name}}</b>
-      {{#synced}}<span class="hint">synced {{synced}}</span>{{/synced}}
+      {{#synced}}<span class="hint">{{synced}}</span>{{/synced}}
       {{#error}}<span class="err">{{error}}</span>{{/error}}
       {{! data-autosubmit: ticking saves at once; the button is only there with JS off (app.js). }}
       <form method="post" action="/settings/calendars/{{id}}" class="inline" data-autosubmit>
         <label>
           <input type="checkbox" name="count_free" value="1"{{#countFree}} checked{{/countFree}}>
-          Count events shown as Free
+          {{t.settings.countFree}}
         </label>
-        <button>Save</button>
+        <button>{{t.common.save}}</button>
       </form>
       <form method="post" action="/settings/calendars/{{id}}/delete" class="inline">
-        <button class="danger">Remove</button>
+        <button class="danger">{{t.settings.remove}}</button>
       </form>
     </li>
     {{/calendarLinks}}
   </ul>
-  <form method="post" action="/settings/calendars/sync"><button>Sync now</button></form>
+  <form method="post" action="/settings/calendars/sync"><button>{{t.settings.syncNow}}</button></form>
   {{! Rules: mine, for all my calendars (users row). Only once one is connected: without, nothing syncs. }}
   <form method="post" action="/settings/calendars/rules" class="stack">
-    <h3>Rules</h3>
+    <h3>{{t.settings.rules}}</h3>
     <label>
-      A timeframe is busy from
-      <span class="hint">6h to 12h (AM) | 12h to 18h (PM) | 18h to 24h (EVE)</span>
+      {{t.settings.busyFrom}}
+      <span class="hint">{{t.settings.busyHint}}</span>
       <select name="busy_minutes">
         {{#busyChoices}}
         <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
@@ -91,12 +91,12 @@
       </select>
     </label>
     <label>
-      Ignore events whose title contains
-      <span class="hint">Comma-separated. Does nothing for Outlook "Availability only" links</span>
-      <input name="ignore_words" maxlength="500" value="{{ignoreWords}}" placeholder="gym, lunch">
+      {{t.settings.ignoreWords}}
+      <span class="hint">{{t.settings.ignoreHint}}</span>
+      <input name="ignore_words" maxlength="500" value="{{ignoreWords}}" placeholder="{{t.settings.ignorePlaceholder}}">
     </label>
     <fieldset>
-      <legend>Always busy (work hours…)</legend>
+      <legend>{{t.settings.alwaysBusy}}</legend>
       <table class="busy-grid">
         <tr><th></th>{{#slotNames}}<th>{{.}}</th>{{/slotNames}}</tr>
         {{#busyGrid}}
@@ -110,43 +110,40 @@
       </table>
     </fieldset>
     {{#errors.rules}}<p class="err">{{errors.rules}}</p>{{/errors.rules}}
-    <p><button>Save rules</button></p>
+    <p><button>{{t.settings.saveRules}}</button></p>
   </form>
   {{/calendarLinks.length}}
   <form method="post" action="/settings/calendars" class="stack">
-    <h3>Add a calendar</h3>
-    <label>Secret iCal link <input name="url" required placeholder="https://… .ics"></label>
-    <label>Name (optional) <input name="label" maxlength="60" placeholder="Work"></label>
+    <h3>{{t.settings.addCalendar}}</h3>
+    <label>{{t.settings.secretLink}} <input name="url" required placeholder="https://… .ics"></label>
+    <label>{{t.settings.nameOptional}} <input name="label" maxlength="60" placeholder="{{t.settings.namePlaceholder}}"></label>
     <label class="check">
       <input type="checkbox" name="count_free" value="1">
-      Count events shown as Free (otherwise only Busy events count)
+      {{t.settings.countFreeLong}}
     </label>
     {{#errors.calendar}}<p class="err">{{errors.calendar}}</p>{{/errors.calendar}}
-    <p><button>Connect</button></p>
+    <p><button>{{t.settings.connect}}</button></p>
   </form>
   <details id="integration-help" data-remember="settings-integration-help">
-    <summary>Where to find the link</summary>
+    <summary>{{t.settings.whereLink}}</summary>
     <ul>
-      <li>
-        <b>Google Calendar</b> (web): Settings → your calendar under "Settings for my calendars" →
-        Integrate calendar → <i>Secret address in iCal format</i>.
-      </li>
-      <li><b>Outlook</b> (web): Settings → Calendar → Shared calendars → Publish a calendar → ICS link.</li>
-      <li><b>Apple iCloud</b>: Calendar → share icon next to the calendar → Public Calendar → copy the link.</li>
+      <li>{{{t.settings.whereGoogle}}}</li>
+      <li>{{{t.settings.whereOutlook}}}</li>
+      <li>{{{t.settings.whereApple}}}</li>
     </ul>
   </details>
 </details>
 
 <details class="panel panel-feeds" open data-remember="settings-feeds">
-  <summary><h2>Calendar feeds</h2></summary>
-  <label class="hint">Private link: anyone who has it can read it. Rotating it requires re-subscribing.</label>
+  <summary><h2>{{t.settings.feeds}}</h2></summary>
+  <label class="hint">{{t.settings.feedsHint}}</label>
   <ul class="feeds">
-    {{! A section, so feed-link finds this feed's feed and name the same way it does for each group's. }}
+    {{! A section, so feed-link finds this feed's feed and linkLabel the same way it does for each group's. }}
     {{#birthdays}}
     <li>
-      <b>Birthdays</b> (repeat every year)<br>
+      <b>{{name}}</b> ({{t.settings.repeatYearly}})<br>
       {{> feed-link}}
-      <a href="{{webcal}}">webcal link (Apple / Outlook desktop)</a>
+      <a href="{{webcal}}">{{t.settings.webcal}}</a>
     </li>
     {{/birthdays}}
     {{! One feed per group I am in: that group's events only (members' events, no outsiders). None while
@@ -154,56 +151,47 @@
     {{#groupsEnabled}}
     {{#groupFeeds}}
     <li>
-      <b>{{name}}</b> (group events)<br>
+      <b>{{name}}</b> ({{t.settings.groupEvents}})<br>
       {{> feed-link}}
-      <a href="{{webcal}}">webcal link (Apple / Outlook desktop)</a>
+      <a href="{{webcal}}">{{t.settings.webcal}}</a>
     </li>
     {{/groupFeeds}}
     {{^groupFeeds}}
-    <li class="hint">Group events: each <a href="/groups">group</a> you are in gets its own feed here.</li>
+    <li class="hint">{{{t.settings.groupFeedsHint}}}</li>
     {{/groupFeeds}}
     {{/groupsEnabled}}
     {{! Groups off (Administration → Options): one feed with every event instead of one per group. }}
     {{^groupsEnabled}}
     {{#allEvents}}
     <li>
-      <b>All events</b><br>
+      <b>{{name}}</b><br>
       {{> feed-link}}
-      <a href="{{webcal}}">webcal link (Apple / Outlook desktop)</a>
+      <a href="{{webcal}}">{{t.settings.webcal}}</a>
     </li>
     {{/allEvents}}
     {{/groupsEnabled}}
   </ul>
   <details id="subscribe-help" data-remember="settings-subscribe-help">
-    <summary>How to subscribe</summary>
+    <summary>{{t.settings.howSubscribe}}</summary>
     <ul>
-      <li>
-        <b>Google Calendar</b> (web): Other calendars → + → From URL → paste the https link.
-        Google refreshes every 12–24 h and cannot be forced.
-      </li>
-      <li>
-        <b>Apple Calendar</b>: click the webcal link, or File → New Calendar Subscription.
-        Choose a short auto-refresh interval.
-      </li>
-      <li>
-        <b>Outlook</b> (web): Add calendar → Subscribe from web → paste the https link.
-        Refreshes every few hours.
-      </li>
+      <li>{{{t.settings.subscribeGoogle}}}</li>
+      <li>{{{t.settings.subscribeApple}}}</li>
+      <li>{{{t.settings.subscribeOutlook}}}</li>
     </ul>
   </details>
   {{! Rotating changes the token in every feed link: birthdays, each group's, and All events. }}
-  <form method="post" action="/settings/rotate-feed"><button class="danger">Rotate all feed links</button></form>
+  <form method="post" action="/settings/rotate-feed"><button class="danger">{{t.settings.rotate}}</button></form>
 </details>
 
 {{! Only while an admin allows it (Administration → Options); /settings/invite refuses otherwise.
     data-copy-link: app.js copies the new link as it is created (it is listed below without JS). }}
 {{#memberInvites}}
 <details class="panel panel-invites" open data-remember="settings-invite">
-  <summary><h2>Invite someone</h2></summary>
-  <p class="hint">A link to create an account: valid 7 days, single use. Send it only to who you mean to invite.</p>
-  <form method="post" action="/settings/invite" data-copy-link><button>Create invite link</button></form>
+  <summary><h2>{{t.settings.invite}}</h2></summary>
+  <p class="hint">{{t.settings.inviteHint}}</p>
+  <form method="post" action="/settings/invite" data-copy-link><button>{{t.settings.createInvite}}</button></form>
   {{#invites.length}}
-  <h3>My open links</h3>
+  <h3>{{t.settings.myLinks}}</h3>
   <ul>
     {{#invites}}
     <li><code>{{url}}</code></li>

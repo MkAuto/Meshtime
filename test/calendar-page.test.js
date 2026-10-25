@@ -43,8 +43,8 @@ test('calendarPage: the continuous calendar fills the first and last weeks with 
   // November 2026: Sunday 1st to Monday 30th, so Tuesday Dec 1 to Saturday Dec 5 finish the last week
   const continuous = calendarPage(user, '2026-11', month);
   assert.match(continuous, /<div class="day [^"]* outside">\s*<form[^>]*>\s*<input [^>]*value="2026-12-01"/);
-  assert.match(continuous, /<span class="num">Dec\. 1<\/span>/, 'a day of the next month says which month');
-  assert.match(continuous, /<span class="num">Dec\. 5<\/span>/, 'every one of them, not only the 1st');
+  assert.match(continuous, /<span class="num">Dec 1<\/span>/, 'a day of the next month says which month');
+  assert.match(continuous, /<span class="num">Dec 5<\/span>/, 'every one of them, not only the 1st');
   assert.match(continuous, /<span class="num">30<\/span>/, 'the days of this month do not');
   assert.match(continuous, /value="2026-12-05"/);
   assert.doesNotMatch(continuous, /value="2026-12-06"/, 'only to the end of the week');

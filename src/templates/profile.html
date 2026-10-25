@@ -1,66 +1,70 @@
 {{! Both panels start open. data-remember: app.js reopens each the way you last left it (in this browser),
     except a panel showing an error, which always stays open. }}
-<h1>Profile</h1>
+<h1>{{t.profile.title}}</h1>
 {{> notices}}
 <details class="panel panel-profile" open data-remember="profile-about">
-  <summary><h2>About me</h2></summary>
+  <summary><h2>{{t.profile.about}}</h2></summary>
   <form method="post" action="/profile/about">
-    <h3>Name</h3>
-    <input name="name" required maxlength="40" value="{{name}}" aria-label="Name" autocomplete="username">
+    <h3>{{t.profile.name}}</h3>
+    <input name="name" required maxlength="40" value="{{name}}" aria-label="{{t.profile.name}}" autocomplete="username">
     {{#errors.name}}<p class="err">{{errors.name}}</p>{{/errors.name}}
-    <h3>Birthday</h3>
-    <input type="date" name="birthday" value="{{birthday}}" max="{{today}}" aria-label="Birthday">
+    <h3>{{t.profile.birthday}}</h3>
+    <input type="date" name="birthday" value="{{birthday}}" max="{{today}}" aria-label="{{t.profile.birthday}}">
     {{#errors.birthday}}<p class="err">{{errors.birthday}}</p>{{/errors.birthday}}
-    <h3>My color</h3>
+    <h3>{{t.profile.color}}</h3>
     <div class="row">
-      <b class="c{{color}} swatch" id="swatch" title="Preview">{{initials}}</b>
-      <input type="range" name="color" class="hue" min="0" max="{{maxColor}}" value="{{color}}" aria-label="Color">
+      <b class="c{{color}} swatch" id="swatch" title="{{t.profile.preview}}">{{initials}}</b>
+      <input type="range" name="color" class="hue" min="0" max="{{maxColor}}" value="{{color}}" aria-label="{{t.profile.colorLabel}}">
     </div>
     {{#errors.color}}<p class="err">{{errors.color}}</p>{{/errors.color}}
     {{! Groups off (Administration → Options): everyone is public, there is nothing to choose. }}
     {{#groupsEnabled}}
-    <h3>Account</h3>
+    <h3>{{t.profile.account}}</h3>
     <div class="row">
-      <label><input type="radio" name="privacy" value="private" {{#isPrivate}}checked{{/isPrivate}}> Private</label>
-      <label><input type="radio" name="privacy" value="public" {{^isPrivate}}checked{{/isPrivate}}> Public</label>
+      <label><input type="radio" name="privacy" value="private" {{#isPrivate}}checked{{/isPrivate}}> {{t.profile.private}}</label>
+      <label><input type="radio" name="privacy" value="public" {{^isPrivate}}checked{{/isPrivate}}> {{t.profile.public}}</label>
     </div>
-    <p class="hint">In private mode, only group members can see your free time slots and events.</p>
+    <p class="hint">{{t.profile.privateHint}}</p>
     {{#errors.privacy}}<p class="err">{{errors.privacy}}</p>{{/errors.privacy}}
     {{/groupsEnabled}}
-    <p><button>Save</button></p>
+    <p><button>{{t.common.save}}</button></p>
   </form>
 </details>
 
 <details class="panel panel-security" open data-remember="profile-security">
-  <summary><h2>Security</h2></summary>
-  <h3>Change password</h3>
+  <summary><h2>{{t.profile.security}}</h2></summary>
+  <h3>{{t.profile.changePassword}}</h3>
   <form method="post" action="/profile/password" class="stack">
-    <label>Current password <input name="current" type="password" required autocomplete="current-password"></label>
+    <label>{{t.profile.currentPassword}} <input name="current" type="password" required autocomplete="current-password"></label>
     {{#errors.current}}<p class="err">{{errors.current}}</p>{{/errors.current}}
     <label>
-      New password (min {{minPassword}})
+      {{newPasswordLabel}}
       <input name="password" type="password" required minlength="{{minPassword}}" autocomplete="new-password">
     </label>
     {{#errors.password}}<p class="err">{{errors.password}}</p>{{/errors.password}}
-    <button>Change password</button>
+    <button>{{t.profile.changePassword}}</button>
   </form>
-  <h3>Passkeys</h3>
+  <h3>{{t.profile.passkeys}}</h3>
   <p class="hint">
-    Log in with your fingerprint, face or device PIN instead of typing a password. Your password keeps working.
+    {{t.profile.passkeysHint}}
   </p>
   <ul>
     {{#passkeys}}
     <li>
-      {{label}} <small class="hint">added {{added}}</small>
+      {{label}} <small class="hint">{{added}}</small>
       <form method="post" action="/profile/passkeys/delete" class="inline">
-        <input type="hidden" name="id" value="{{id}}"><button class="link danger">remove</button>
+        <input type="hidden" name="id" value="{{id}}"><button class="link danger">{{t.common.remove}}</button>
       </form>
     </li>
     {{/passkeys}}
     {{^passkeys}}
-    <li class="hint">No passkeys yet.</li>
+    <li class="hint">{{t.profile.noPasskeys}}</li>
     {{/passkeys}}
   </ul>
-  <p id="passkey-add" hidden><button class="btn">Add a passkey</button> <span class="err"></span></p>
-  <noscript class="hint">Adding a passkey needs JavaScript.</noscript>
+  {{! The data-* texts are what app.js asks and shows while adding a passkey. }}
+  <p id="passkey-add" hidden data-error="{{t.errors.generic}}" data-prompt="{{t.profile.passkeyPrompt}}"
+    data-default-name="{{t.profile.passkeyDefault}}" data-no-export="{{t.profile.cannotExport}}">
+    <button class="btn">{{t.profile.addPasskey}}</button> <span class="err"></span>
+  </p>
+  <noscript class="hint">{{t.profile.needsJs}}</noscript>
 </details>
