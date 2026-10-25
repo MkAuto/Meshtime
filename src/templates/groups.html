@@ -36,7 +36,8 @@
   <h3>{{eventHeading}}</h3>
   {{#headlineEvent}}
   <p>
-    <b>{{title}}</b> — {{when}} <small class="hint">{{by}}</small>
+    <b>{{title}}</b> — {{when}}{{#place}} · <a href="{{url}}" target="_blank" rel="noopener">{{name}}</a>{{/place}}
+    <small class="hint">{{by}}</small>
     · <a href="{{calendarUrl}}">{{t.groups.seeOnCalendar}}</a>
   </p>
   {{/headlineEvent}}

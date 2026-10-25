@@ -148,7 +148,12 @@ CREATE TABLE IF NOT EXISTS events(
   poll_id INTEGER UNIQUE REFERENCES polls(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL,
   -- 0: public, 1: private
-  is_private INTEGER NOT NULL DEFAULT 0);
+  is_private INTEGER NOT NULL DEFAULT 0,
+  location TEXT, -- where, as typed; NULL = not given
+  -- how often it comes back (REPEATS in src/lib.js); NULL = never. repeat_until: the last date one may start,
+  -- NULL = forever
+  repeats TEXT,
+  repeat_until TEXT);
 
 -- the groups a private event is shared with (none for a public event). Groups its creator is in.
 CREATE TABLE IF NOT EXISTS event_groups(
@@ -249,7 +254,6 @@ const appSettingColumns = db.prepare('PRAGMA table_info(app_settings)').all().ma
 if (!appSettingColumns.includes('groups_enabled')) {
   db.exec('ALTER TABLE app_settings ADD COLUMN groups_enabled INTEGER NOT NULL DEFAULT 1');
 }
-
 // DBs created before the date-format setting existed: everyone gets the default.
 if (!userColumns.includes('date_format')) {
   db.exec(`ALTER TABLE users ADD COLUMN date_format TEXT NOT NULL DEFAULT '${DEFAULT_DATE_FORMAT}'`);
@@ -319,6 +323,13 @@ if (!eventColumns.includes('color')) {
 // DBs created before private events existed: every event stays public.
 if (!eventColumns.includes('is_private')) {
   db.exec('ALTER TABLE events ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0');
+}
+
+// DBs created before locations and repeating events existed: no place given, and every event happens once.
+for (const column of ['location', 'repeats', 'repeat_until']) {
+  if (!eventColumns.includes(column)) {
+    db.exec(`ALTER TABLE events ADD COLUMN ${column} TEXT`);
+  }
 }
 
 // DBs created before private polls existed: every poll stays public.

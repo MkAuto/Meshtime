@@ -129,7 +129,8 @@
   <ul class="events">
     {{#events}}
     <li class="{{classes}}">
-      {{when}} — <b>{{title}}</b> <small class="hint">{{by}}</small>
+      {{when}}{{#place}} · <a href="{{url}}" target="_blank" rel="noopener">{{name}}</a>{{/place}} — <b>{{title}}</b>
+      <small class="hint">{{by}}</small>
       {{#canEdit}}<a href="/events/{{id}}">{{t.calendar.edit}}</a>{{/canEdit}}
     </li>
     {{/events}}

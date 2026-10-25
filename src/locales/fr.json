@@ -100,7 +100,23 @@
     "defaultColor": "Par défaut",
     "colorN": "Couleur {{n}}",
     "confirmDelete": "Supprimer {{title}}?",
-    "delete": "Supprimer l'événement"
+    "confirmDeleteAll": "Supprimer {{title}} et toutes ses répétitions?",
+    "allRepeats": "Il se répète : les changements s'appliquent à toutes ses répétitions.",
+    "delete": "Supprimer l'événement",
+    "location": "Lieu",
+    "locationPlaceholder": "Salle d'escalade, 123 rue Principale",
+    "clearLocation": "Effacer",
+    "repeat": "Répétition",
+    "until": "jusqu'au",
+    "repeatUntil": "Répéter jusqu'au",
+    "repeats": {
+      "none": "Ne se répète pas",
+      "weekly": "Chaque semaine",
+      "biweekly": "Toutes les 2 semaines",
+      "monthly": "Chaque mois",
+      "yearly": "Chaque année"
+    },
+    "repeatsUntil": "{{repeats}} jusqu'au {{date}}"
   },
   "shareWith": {
     "legend": "Qui le voit",
@@ -422,7 +438,10 @@
       "time": "Heure invalide.",
       "endNeedsStart": "Une heure de fin a besoin d'une heure de début.",
       "multiDayEnd": "Un événement avec une heure sur plusieurs jours a besoin d'une heure de fin.",
-      "endAfterStart": "L'heure de fin doit être après l'heure de début."
+      "endAfterStart": "L'heure de fin doit être après l'heure de début.",
+      "repeat": "Répétition invalide.",
+      "repeatUntil": "Les répétitions doivent finir le jour du début ou plus tard.",
+      "repeatTooLong": "Un événement répété doit finir avant de revenir."
     }
   },
   "sync": {

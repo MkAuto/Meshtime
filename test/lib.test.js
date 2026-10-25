@@ -2,7 +2,7 @@ import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   isValidDate, birthdayIn, isValidTime, eventError, formatEventWhen, eventLanes, isValidWeekStart,
-  formatDate, isValidDateFormat, bestDates, dayClass, monthInfo, weekdayNames, toggleSlot, today,
+  formatDate, isValidDateFormat, bestDates, dayClass, monthInfo, weekdayNames, toggleSlot, today, occurrences,
 } from '../src/lib.js';
 
 const thisYear = new Date().getUTCFullYear();
@@ -120,7 +120,45 @@ test('eventLanes: overlapping bars stack, a lane is reused once free, one-day ev
     ev(4, '2026-10-03', '2026-10-04'), // lane 0 still busy on the 3rd: its end day counts
     ev(5, '2026-10-04', '2026-10-06'), // lane 0 free again
   ]);
-  assert.deepEqual([...lanes], [[1, 0], [2, 1], [4, 2], [5, 0]]);
+  assert.deepEqual([...lanes].map(([event, lane]) => [event.id, lane]), [[1, 0], [2, 1], [4, 2], [5, 0]]);
+});
+
+test('occurrences: each time a repeating event comes back in the window, at its own dates', () => {
+  const ev = event => ({ id: 1, start_time: null, end_date: event.date, repeats: null, repeat_until: null, ...event });
+  const dates = (events, from, to) => occurrences(events, from, to).map(event => `${event.date}..${event.end_date}`);
+  const monday = ev({ date: '2026-10-05', repeats: 'weekly' });
+  assert.deepEqual(dates([monday], '2026-10-01', '2026-11-04'),
+    ['2026-10-05..2026-10-05', '2026-10-12..2026-10-12', '2026-10-19..2026-10-19', '2026-10-26..2026-10-26',
+      '2026-11-02..2026-11-02']);
+  assert.deepEqual(dates([{ ...monday, repeat_until: '2026-10-19' }], '2026-10-13', '2026-11-04'),
+    ['2026-10-19..2026-10-19'], 'until its last date, and only inside the window');
+  assert.deepEqual(dates([ev({ date: '2026-09-25', end_date: '2026-09-27', repeats: 'biweekly' })],
+    '2026-09-27', '2026-10-31'), ['2026-09-25..2026-09-27', '2026-10-09..2026-10-11', '2026-10-23..2026-10-25'],
+  'a weekend every 2 weeks, the first one ending inside the window');
+  assert.deepEqual(dates([ev({ date: '2026-01-31', repeats: 'monthly' })], '2026-01-01', '2026-05-31'),
+    ['2026-01-31..2026-01-31', '2026-03-31..2026-03-31', '2026-05-31..2026-05-31'], 'no 31st, none that month');
+  assert.deepEqual(dates([ev({ date: '2028-02-29', repeats: 'yearly' })], '2028-01-01', '2033-01-01'),
+    ['2028-02-29..2028-02-29', '2032-02-29..2032-02-29']);
+  assert.deepEqual(dates([ev({ date: '2026-10-05' })], '2026-10-06', '2026-10-31'), [], 'a one-time event outside');
+
+  const sorted = occurrences([ev({ id: 2, date: '2026-10-12', start_time: '09:00' }), { ...monday, id: 3 }],
+    '2026-10-12', '2026-10-12');
+  assert.deepEqual(sorted.map(event => event.id), [3, 2], 'all-day first');
+  assert.equal(new Set(eventLanes(occurrences([{ ...monday, end_date: '2026-10-06' }], '2026-10-01', '2026-10-31'))
+    .values()).size, 1, 'every occurrence its own lane entry, all in the top lane');
+});
+
+test('eventError: repeats', () => {
+  const d = '2026-10-03';
+  assert.equal(eventError({ date: d, repeats: 'weekly', repeatUntil: '2026-12-31' }), null);
+  assert.equal(eventError({ date: d, endDate: '2026-10-09', repeats: 'weekly' }), null, '7 days, back on day 8');
+  assert.equal(eventError({ date: d, repeats: 'daily' })?.message, 'errors.event.repeat');
+  assert.equal(eventError({ date: d, repeats: 'weekly', repeatUntil: '2026-10-02' })?.message,
+    'errors.event.repeatUntil');
+  assert.equal(eventError({ date: d, endDate: '2026-10-10', repeats: 'weekly' })?.message,
+    'errors.event.repeatTooLong');
+  assert.equal(eventError({ date: d, endDate: '2026-10-31', repeats: 'monthly' })?.message,
+    'errors.event.repeatTooLong');
 });
 
 test('monthInfo: pad and weekday header follow the chosen first day', () => {

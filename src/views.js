@@ -7,6 +7,7 @@ import {
   monthInfo, addDays, formatDate, formatMonthDay, formatTime, formatEventWhen, eventLanes, dayClass, weekdayNames, today,
   wallClock, BUSY_CHOICES, DEFAULT_BUSY_MINUTES, SLOTS, DATE_FORMATS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_DATES,
   SYNC_DAYS_CHOICES, DEFAULT_SYNC_DAYS, MIN_PASSWORD, LANGUAGES, DEFAULT_LANGUAGE, isValidLanguage, randomColor,
+  REPEATS,
 } from './lib.js';
 import { t, dictionary, hasText, syncErrorText } from './i18n.js';
 
@@ -125,6 +126,24 @@ const eventColor = event => event.color == null ? '' : ` colored c${event.color}
 
 const MS_PER_DAY = 864e5;
 
+/** An event's when and how it repeats, as tooltips and lists show it: '3 Oct 2026 19:00 · Every week'. */
+function eventDetails(event, user) {
+  const { lang, date_format: format } = user;
+  const repeats = event.repeats && t(lang, `event.repeats.${event.repeats}`);
+  return [
+    formatEventWhen(event, format, user.hour12, lang),
+    event.repeat_until
+      ? t(lang, 'event.repeatsUntil', { repeats, date: formatDate(event.repeat_until, format, lang) })
+      : repeats,
+  ].filter(Boolean).join(' · ');
+}
+
+// An event's location, linked to a map search for it (lists): Google Maps' universal link opens its app on a
+// phone, the website elsewhere. ponytail: Google only.
+const place = location => location && {
+  name: location, url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`,
+};
+
 // `error` is set when a /free post was rejected: it shows under the month title.
 // `group` is the one group shown on its own (null: everyone I can see); `groups` fills the selector.
 export function calendarPage(user, yearMonth, {
@@ -135,7 +154,8 @@ export function calendarPage(user, yearMonth, {
   const month = monthInfo(yearMonth, user.week_start, lang);
   const lanes = eventLanes(events);
   const eventTooltip = event => t(lang, 'calendar.eventTooltip', {
-    title: event.title, when: formatEventWhen(event, user.date_format, user.hour12, lang), creator: event.creator,
+    title: event.title, when: [eventDetails(event, user), event.location].filter(Boolean).join(' · '),
+    creator: event.creator,
   });
 
   // Continuous (Settings → Customisation, on unless turned off): the first and last weeks are filled with the
@@ -169,8 +189,8 @@ export function calendarPage(user, yearMonth, {
     // Multi-day events sit in their lane; a lane with nothing today stays as a gap.
     const bars = [];
     for (const event of dayEvents) {
-      if (lanes.has(event.id)) {
-        bars[lanes.get(event.id)] = event;
+      if (lanes.has(event)) {
+        bars[lanes.get(event)] = event;
       }
     }
     const barValues = Array.from(bars, event => {
@@ -212,7 +232,7 @@ export function calendarPage(user, yearMonth, {
       bars: barValues,
       birthdays: birthdays.filter(member => member.date === date)
         .map(member => ({ color: member.color, label: t(lang, 'calendar.birthday', { name: member.name }) })),
-      oneDay: dayEvents.filter(event => !lanes.has(event.id)).map(event => ({
+      oneDay: dayEvents.filter(event => !lanes.has(event)).map(event => ({
         classes: `ev${eventColor(event)}`,
         tooltip: eventTooltip(event),
         label: label(event),
@@ -246,7 +266,8 @@ export function calendarPage(user, yearMonth, {
         id: event.id,
         title: event.title,
         by: t(lang, 'common.by', { name: event.creator }),
-        when: formatEventWhen(event, user.date_format, user.hour12, lang),
+        when: eventDetails(event, user),
+        place: place(event.location),
         classes: event.end_date < today ? 'past' : '', // its last day is before today
         canEdit: event.created_by === user.id || Boolean(user.is_admin),
       })),
@@ -294,7 +315,8 @@ export function groupsPage(user, { groups, invites, base, msg, invitedName, erro
       eventHeading: t(lang, group.headlineEvent?.isLast ? 'groups.lastEvent' : 'groups.nextEvent'),
       headlineEvent: group.headlineEvent && {
         title: group.headlineEvent.title,
-        when: formatEventWhen(group.headlineEvent, user.date_format, user.hour12, lang),
+        when: eventDetails(group.headlineEvent, user),
+        place: place(group.headlineEvent.location),
         by: t(lang, 'common.by', { name: group.headlineEvent.creator }),
         // the group's own calendar view, on the event's month
         calendarUrl: `/?m=${group.headlineEvent.date.slice(0, 7)}&g=${group.id}`,
@@ -344,7 +366,9 @@ export function eventPage(user, { event, errors = {}, groups = [] }) {
     action: editing ? `/events/${event.id}` : '/events',
     button: t(lang, editing ? 'common.save' : 'event.add'),
     title: event.title ?? '',
-    confirmDelete: t(lang, 'event.confirmDelete', { title: event.title ?? '' }),
+    // a repeating event is one row: editing or deleting it changes every time it comes back
+    confirmDelete: t(lang, event.repeats ? 'event.confirmDeleteAll' : 'event.confirmDelete', { title: event.title ?? '' }),
+    allRepeats: editing && Boolean(event.repeats),
     date: event.date ?? '',
     // A saved event is all day when it has no start time; a rejected form keeps the box as posted.
     allDay: event.allDay ?? !event.start_time,
@@ -352,6 +376,11 @@ export function eventPage(user, { event, errors = {}, groups = [] }) {
     // A one-day event shows no end date, so moving its start date does not leave the end behind.
     endDate: event.end_date && event.end_date !== event.date ? event.end_date : '',
     endTime: event.end_time ?? '',
+    location: event.location ?? '',
+    // '' (does not repeat) first, then every REPEATS key
+    repeatChoices: options(['', ...Object.keys(REPEATS)]
+      .map(value => [value, t(lang, `event.repeats.${value || 'none'}`)]), event.repeats ?? ''),
+    repeatUntil: event.repeat_until ?? '',
     colors: [
       colorChoice('', t(lang, 'event.defaultColor')),
       ...Array.from({ length: COLORS }, (_, i) => colorChoice(i, t(lang, 'event.colorN', { n: i + 1 }))),

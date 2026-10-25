@@ -65,3 +65,14 @@ test('calendarPage: events from the days around show in the grid, not in the mon
   assert.match(page, /title="Crag day[^"]*">Crag day<\/span>/, 'in its cell');
   assert.match(page, /<li class="hint">No events this month\.<\/li>/);
 });
+
+test('calendarPage: a location links to a map search for it, encoded in the link and escaped as text', () => {
+  const user = { id: 1, feed_token: 'tok', week_start: 0, show_birthdays: 1, color: 3 };
+  const event = { id: 9, title: 'Brunch', date: '2026-10-11', end_date: '2026-10-11', creator: 'Bob', created_by: 2,
+    location: 'Café <b>&</b> Co' };
+  const page = calendarPage(user, '2026-10',
+    { free: new Map(), mine: new Map(), events: [event], birthdays: [], today: '2026-10-04', members: 1 });
+  assert.match(page, new RegExp('11 Oct 2026 · <a href="https://www.google.com/maps/search/\\?api=1&amp;query='
+    + 'Caf%C3%A9%20%3Cb%3E%26%3C%2Fb%3E%20Co" target="_blank" rel="noopener">Café &lt;b&gt;&amp;&lt;/b&gt; Co</a>'));
+  assert.doesNotMatch(page, /<b>&<\/b>/);
+});

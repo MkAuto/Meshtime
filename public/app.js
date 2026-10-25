@@ -197,6 +197,18 @@ if (eventForm) {
   });
 }
 
+// Event form: the location box's clear button empties it (style.css shows it only while there is text). Without JS
+// it stays hidden, as it could do nothing.
+const clearPlace = document.querySelector('.place-clear');
+if (clearPlace) {
+  const box = document.getElementById('location');
+  clearPlace.hidden = false;
+  clearPlace.addEventListener('click', () => {
+    box.value = '';
+    box.focus();
+  });
+}
+
 const dates = document.querySelector('.dates');
 if (dates) {
   const rows = () => dates.querySelectorAll('input');

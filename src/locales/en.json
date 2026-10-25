@@ -100,7 +100,23 @@
     "defaultColor": "Default",
     "colorN": "Color {{n}}",
     "confirmDelete": "Delete {{title}}?",
-    "delete": "Delete event"
+    "confirmDeleteAll": "Delete {{title}} and every time it repeats?",
+    "allRepeats": "It repeats: changes apply to every time it comes back.",
+    "delete": "Delete event",
+    "location": "Location",
+    "locationPlaceholder": "Climbing gym, 123 Main St",
+    "clearLocation": "Clear",
+    "repeat": "Repeat",
+    "until": "until",
+    "repeatUntil": "Repeat until",
+    "repeats": {
+      "none": "Does not repeat",
+      "weekly": "Every week",
+      "biweekly": "Every 2 weeks",
+      "monthly": "Every month",
+      "yearly": "Every year"
+    },
+    "repeatsUntil": "{{repeats}} until {{date}}"
   },
   "shareWith": {
     "legend": "Who sees it",
@@ -422,7 +438,10 @@
       "time": "Invalid time.",
       "endNeedsStart": "An end time needs a start time.",
       "multiDayEnd": "A timed event over several days needs an end time.",
-      "endAfterStart": "The end time must be after the start time."
+      "endAfterStart": "The end time must be after the start time.",
+      "repeat": "Invalid repeat.",
+      "repeatUntil": "The repeats must end on or after the start date.",
+      "repeatTooLong": "A repeating event must end before it comes back."
     }
   },
   "sync": {

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fold, buildIcs, birthdayRrule } from '../src/lib.js';
+import { fold, buildIcs, birthdayRrule, eventRrule } from '../src/lib.js';
 
 test('fold keeps every line within 75 octets, UTF-8 aware', () => {
   const folded = fold('SUMMARY:' + 'é'.repeat(100));
@@ -56,6 +56,21 @@ test('buildIcs: yearly birthday RRULE', () => {
   assert.ok(ics.includes(
     'DTSTART;VALUE=DATE:20000229\r\nDTEND;VALUE=DATE:20000301\r\nRRULE:FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-1\r\n'));
   assert.ok(ics.includes('DTSTART;VALUE=DATE:19900517\r\nDTEND;VALUE=DATE:19900518\r\nRRULE:FREQ=YEARLY\r\n'));
+});
+
+test('a repeating event is one VEVENT with its RRULE, UNTIL the same kind of value as DTSTART; LOCATION escaped', () => {
+  assert.equal(eventRrule({ repeats: null }), null);
+  assert.equal(eventRrule({ repeats: 'biweekly' }), 'FREQ=WEEKLY;INTERVAL=2');
+  assert.equal(eventRrule({ repeats: 'monthly', repeat_until: '2026-12-31' }), 'FREQ=MONTHLY;UNTIL=20261231');
+  assert.equal(eventRrule({ repeats: 'weekly', repeat_until: '2026-12-31', start_time: '19:00' }),
+    'FREQ=WEEKLY;UNTIL=20261231T235900');
+  const ics = buildIcs({ name: 'G', host: 'h', items: [{
+    uid: 'event-1', date: '2026-10-05', startTime: '19:00', summary: 'Climb', location: 'Gym; Main St, 2nd floor',
+    rrule: eventRrule({ repeats: 'yearly' }), stamp: '2026-01-01T00:00:00Z',
+  }] });
+  assert.ok(ics.includes('DTSTART:20261005T190000\r\nRRULE:FREQ=YEARLY\r\nLOCATION:Gym\\; Main St\\, 2nd floor\r\n'));
+  assert.doesNotMatch(buildIcs({ name: 'G', host: 'h', items: [{ uid: 'x', date: '2026-10-05', summary: 's',
+    stamp: '2026-01-01T00:00:00Z' }] }), /LOCATION|RRULE/, 'neither when not given');
 });
 
 // Security review: a lone CR in a member's text must not start a new line in the feed.

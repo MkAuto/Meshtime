@@ -2,6 +2,7 @@
     and the server ignores any times sent with it. "Who sees it" is the share-with partial. }}
 <h1>{{heading}}</h1>
 <p class="hint">{{t.event.hint}}</p>
+{{#allRepeats}}<p class="hint">{{t.event.allRepeats}}</p>{{/allRepeats}}
 <form method="post" action="{{action}}" class="stack">
   <label>
     {{t.event.title}}
@@ -28,6 +29,35 @@
     </span>
   </label>
   {{#errors.end}}<p class="err">{{errors.end}}</p>{{/errors.end}}
+  {{! The box looks like a map search: a pin, and a clear button that app.js shows (it stays hidden without JS).
+      Icons: Material Icons (Apache 2.0). }}
+  <div class="place-picker">
+    <label for="location">{{t.event.location}}</label>
+    <div class="place-box">
+      <svg class="place-pin" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
+      <input id="location" name="location" maxlength="200" value="{{location}}"
+             placeholder="{{t.event.locationPlaceholder}}">
+      <button type="button" class="place-clear" aria-label="{{t.event.clearLocation}}" title="{{t.event.clearLocation}}" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+      </button>
+    </div>
+  </div>
+  {{! "Does not repeat" hides the end date (style.css); the server drops it then. }}
+  <label>
+    {{t.event.repeat}}
+    <span class="row">
+      <select name="repeats" id="repeats">
+        {{#repeatChoices}}
+        <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
+        {{/repeatChoices}}
+      </select>
+      <span class="repeat-until">
+        {{t.event.until}}
+        <input type="date" name="repeat_until" aria-label="{{t.event.repeatUntil}}" value="{{repeatUntil}}">
+      </span>
+    </span>
+  </label>
+  {{#errors.repeat}}<p class="err">{{errors.repeat}}</p>{{/errors.repeat}}
   <fieldset class="colors">
     <legend>{{t.event.color}}</legend>
     {{#colors}}

@@ -7,7 +7,8 @@ import { fetchCalendar, syncUser, freePartsAround } from './sync.js';
 import { t, syncErrorText } from './i18n.js';
 import {
   isValidDate, isValidMonth, monthInfo, isValidWeekStart, isValidDateFormat, isValidColor, eventError,
-  bestDates, buildIcs, birthdayIn, birthdayRrule, today, addDays, DEFAULT_SYNC_DAYS, randomColor, ANSWERS, MAX_DATES, MIN_PASSWORD, BASE_URL,
+  bestDates, buildIcs, birthdayIn, birthdayRrule, today, addDays, DEFAULT_SYNC_DAYS, randomColor, occurrences,
+  eventRrule, ANSWERS, MAX_DATES, MIN_PASSWORD, BASE_URL,
   RP_ID, SLOTS, MAX_SLOTS_PER_DAY, toggleSlot, isValidBusyMinutes, isValidSyncDays, isValidLanguage,
 } from './lib.js';
 
@@ -281,23 +282,25 @@ function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
     : { sql: VISIBLE_TO_ME, params: [me, me], eventSql: EVENT_VISIBLE_TO_ME, eventParams: [me, me, me, me],
         birthdaySql: BIRTHDAY_VISIBLE_TO_ME, birthdayParams: [me, me] };
 
-  // Every event shown that touches those weeks, including ones that started before or end after them.
-  // All-day ones first.
-  const events = all(`SELECT e.*, u.name AS creator FROM events e
-                      JOIN users u ON u.id = e.created_by
-                      WHERE e.date <= ? AND e.end_date >= ? AND ${audience.eventSql}
-                      ORDER BY e.date, e.start_time IS NOT NULL, e.start_time, e.id`,
-                      gridEnd, gridStart, ...audience.eventParams);
+  // Every event shown that touches those weeks, including ones that started before or end after them, and each
+  // time a repeating one comes back in them (occurrences). All-day ones first.
+  const events = occurrences(all(`SELECT e.*, u.name AS creator FROM events e
+                                  JOIN users u ON u.id = e.created_by
+                                  WHERE e.date <= ? AND (e.end_date >= ? OR e.repeats IS NOT NULL)
+                                    AND ${audience.eventSql}`,
+                                  gridEnd, gridStart, ...audience.eventParams), gridStart, gridEnd);
 
   // A private event this view does not show (another group's) takes up its groups' members: here they are
   // only free around it, by their Calendar Integration rules. My own days stay as I set them, for the day menu.
   const shownEventIds = new Set(events.map(event => event.id));
   const hiddenEvents = new Map(); // user id -> the hidden events they are in
-  for (const row of all(`SELECT DISTINCT e.id, e.title, e.date, e.end_date, e.start_time, e.end_time, m.user_id
-                         FROM events e JOIN event_groups shared ON shared.event_id = e.id
-                         JOIN group_members m ON m.group_id = shared.group_id
-                         WHERE e.is_private = 1 AND e.date <= ? AND e.end_date >= ? AND m.user_id != ?`,
-                         gridEnd, gridStart, me)) {
+  for (const row of occurrences(all(`SELECT DISTINCT e.id, e.title, e.date, e.end_date, e.start_time, e.end_time,
+                                       e.repeats, e.repeat_until, m.user_id
+                                     FROM events e JOIN event_groups shared ON shared.event_id = e.id
+                                     JOIN group_members m ON m.group_id = shared.group_id
+                                     WHERE e.is_private = 1 AND e.date <= ?
+                                       AND (e.end_date >= ? OR e.repeats IS NOT NULL) AND m.user_id != ?`,
+                                     gridEnd, gridStart, me), gridStart, gridEnd)) {
     if (!shownEventIds.has(row.id)) {
       hiddenEvents.set(row.user_id, [...hiddenEvents.get(row.user_id) ?? [], row]);
     }
@@ -483,6 +486,10 @@ function readEventForm(ctx, creatorGroups, currentSharing) {
     end_time: allDay ? null : ctx.body.get('end_time') || null,
     color: colorText === '' ? null : Number(colorText),
     is_private: sharing.isPrivate,
+    location: cleanText(ctx.body.get('location'), 200) || null,
+    repeats: ctx.body.get('repeats') || null,
+    // the end date input stays in the form while "Does not repeat" hides it: dropped then
+    repeat_until: (ctx.body.get('repeats') && ctx.body.get('repeat_until')) || null,
     // not columns: the box as it was posted, and the groups ticked (only kept for a private event)
     allDay,
     groupIds: sharing.groupIds,
@@ -493,6 +500,7 @@ function readEventForm(ctx, creatorGroups, currentSharing) {
   }
   const whenError = eventError({
     date: event.date, endDate: event.end_date, startTime: event.start_time, endTime: event.end_time,
+    repeats: event.repeats, repeatUntil: event.repeat_until,
   });
   if (whenError) {
     errors[whenError.field] = t(ctx.lang, whenError.message);
@@ -539,10 +547,10 @@ on('POST', '/events', ctx => {
   }
   tx(() => {
     const eventId = run(`INSERT INTO events(title, date, end_date, start_time, end_time, color, is_private,
-                                            created_by, created_at)
-                         VALUES (?,?,?,?,?,?,?,?,?)`,
+                                            location, repeats, repeat_until, created_by, created_at)
+                         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       event.title, event.date, event.end_date, event.start_time, event.end_time, event.color, event.is_private,
-      ctx.user.id, now()).lastInsertRowid;
+      event.location, event.repeats, event.repeat_until, ctx.user.id, now()).lastInsertRowid;
     saveShares('event', eventId, event.groupIds);
   });
   ctx.redirect('/?m=' + event.date.slice(0, 7));
@@ -570,10 +578,11 @@ on('POST', '/events/(?<id>\\d+)', ctx => {
     return ctx.html(views.eventPage(ctx.user, { event, errors, groups }), 400);
   }
   tx(() => {
-    run(`UPDATE events SET title = ?, date = ?, end_date = ?, start_time = ?, end_time = ?, color = ?, is_private = ?
+    run(`UPDATE events SET title = ?, date = ?, end_date = ?, start_time = ?, end_time = ?, color = ?, is_private = ?,
+                           location = ?, repeats = ?, repeat_until = ?
          WHERE id = ?`,
       event.title, event.date, event.end_date, event.start_time, event.end_time, event.color, event.is_private,
-      existing.id);
+      event.location, event.repeats, event.repeat_until, existing.id);
     saveShares('event', existing.id, event.groupIds);
   });
   ctx.redirect('/?m=' + event.date.slice(0, 7));
@@ -914,23 +923,23 @@ const deleteGroupIfEmpty = groupId =>
     groupId, groupId);
 
 // A group's own events: the private ones shared with it (event_groups). Public events are left out: they
-// belong to everyone who sees their creator, not to this group. For a group id and today's date.
+// belong to everyone who sees their creator, not to this group. Takes the group id.
 const GROUP_EVENT_SQL = `SELECT e.*, u.name AS creator FROM events e
                          JOIN event_groups shared ON shared.event_id = e.id AND shared.group_id = ?
                          JOIN users u ON u.id = e.created_by`;
 
 /**
- * The group's next event: the first one not over yet (one running today counts). With none coming,
- * its most recent past one, flagged isLast. Undefined when the group never had an event.
+ * The group's next event: the first one not over yet (one running today counts), a repeating one at its next
+ * time. With none coming, its most recent past one, flagged isLast. Undefined when the group never had an event.
  */
 function groupHeadlineEvent(groupId) {
-  const next = get(`${GROUP_EVENT_SQL} WHERE e.end_date >= ?
-                    ORDER BY e.date, e.start_time IS NOT NULL, e.start_time, e.id LIMIT 1`, groupId, today());
+  // 4 years ahead: far enough for an event that only comes back on February 29
+  const times = occurrences(all(GROUP_EVENT_SQL, groupId), '0000-01-01', addDays(today(), 4 * 366));
+  const next = times.find(event => event.end_date >= today());
   if (next) {
     return next;
   }
-  const last = get(`${GROUP_EVENT_SQL} WHERE e.end_date < ?
-                    ORDER BY e.end_date DESC, e.date DESC, e.start_time DESC, e.id DESC LIMIT 1`, groupId, today());
+  const last = times.reduce((latest, event) => (latest && latest.end_date > event.end_date ? latest : event), null);
   return last && { ...last, isLast: true };
 }
 
@@ -1554,6 +1563,19 @@ on('POST', '/admin/members/(?<id>\\d+)/delete', ctx => {
 // (users.language), English while they never picked one.
 const ICS_HEADERS = { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'private, no-cache' };
 
+/** An events row as buildIcs takes it: a repeating one is one VEVENT with its RRULE, the calendar app repeats it. */
+const feedItem = event => ({
+  uid: 'event-' + event.id,
+  date: event.date,
+  endDate: event.end_date,
+  startTime: event.start_time,
+  endTime: event.end_time,
+  summary: event.title,
+  location: event.location,
+  rrule: eventRrule(event),
+  stamp: event.created_at,
+});
+
 // One feed per group: its members' public events and the private ones shared with it; nobody else's.
 // The token is the subscriber's own, so the link dies when they leave the group or rotate their links.
 on('GET', '/feed/(?<token>[\\w-]+)/groups/(?<id>\\d+)\\.ics', ctx => {
@@ -1570,16 +1592,7 @@ on('GET', '/feed/(?<token>[\\w-]+)/groups/(?<id>\\d+)\\.ics', ctx => {
   const host = new URL(BASE_URL).host;
 
   const items = all(`SELECT e.* FROM events e JOIN users u ON u.id = e.created_by WHERE ${EVENT_IN_GROUP}`,
-    group.id, group.id)
-    .map(event => ({
-    uid: 'event-' + event.id,
-    date: event.date,
-    endDate: event.end_date,
-    startTime: event.start_time,
-    endTime: event.end_time,
-    summary: event.title,
-    stamp: event.created_at,
-  }));
+    group.id, group.id).map(feedItem);
 
   ctx.text(buildIcs({ name: `Meshtime · ${group.name}`, host, items }), 200, ICS_HEADERS);
 }, true);
@@ -1592,15 +1605,7 @@ on('GET', '/feed/(?<token>[\\w-]+)/events\\.ics', ctx => {
     return ctx.fail(404, 'errors.feedNotFound');
   }
   // GROUPS_OFF is already true here; kept so the feed stays safe on its own
-  const items = all(`SELECT * FROM events WHERE ${GROUPS_OFF}`).map(event => ({
-    uid: 'event-' + event.id,
-    date: event.date,
-    endDate: event.end_date,
-    startTime: event.start_time,
-    endTime: event.end_time,
-    summary: event.title,
-    stamp: event.created_at,
-  }));
+  const items = all(`SELECT * FROM events WHERE ${GROUPS_OFF}`).map(feedItem);
   const name = `Meshtime · ${t(owner.language, 'feeds.allEvents')}`;
   ctx.text(buildIcs({ name, host: new URL(BASE_URL).host, items }), 200, ICS_HEADERS);
 }, true);

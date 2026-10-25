@@ -153,6 +153,25 @@ button.danger:not(.link) { background: var(--card); border-color: var(--line); c
 .stack label.check { display: flex; align-items: center; gap: .4rem; }
 /* Event form: an all-day event has no times, so its time inputs are hidden. */
 form:has(#all-day:checked) input[type=time] { display: none; }
+/* ...and one that does not repeat has no end to its repeats. */
+form:has(#repeats option[value=""]:checked) .repeat-until { display: none; }
+.repeat-until { display: inline-flex; align-items: center; gap: .4rem; }
+/* The location box looks like a map search: a pin on the left, the clear button (app.js) on the right. */
+.place-picker { display: grid; gap: .2rem; }
+.place-box { position: relative; }
+.place-box input { width: 100%; padding-left: 2.2rem; padding-right: 2.6rem; }
+.place-pin {
+  position: absolute; left: .6rem; top: 50%; translate: 0 -50%; width: 1.25rem; height: 1.25rem;
+  fill: var(--muted); pointer-events: none;
+}
+.place-clear {
+  position: absolute; right: .3rem; top: 50%; translate: 0 -50%; display: grid; place-items: center;
+  width: 2rem; height: 2rem; padding: 0; background: none; border: none; border-radius: 50%; box-shadow: none;
+  color: var(--muted);
+}
+.place-clear[hidden], .place-box input:placeholder-shown ~ .place-clear { display: none; }
+.place-clear:hover { background: var(--accent-soft); }
+.place-clear svg { width: 1.2rem; height: 1.2rem; fill: currentColor; }
 /* Who sees it (share-with.html): the group list only matters, and only shows, for a private event or poll. */
 form:not(:has(#visibility-private:checked)) .share-groups { display: none; }
 .visibility, .share-groups { display: grid; gap: .3rem; }

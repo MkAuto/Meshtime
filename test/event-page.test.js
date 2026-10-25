@@ -52,3 +52,19 @@ test('eventPage: editing shows the saved values and color, and offers delete', (
   assert.match(eventPage({ id: 1 }, { event: { ...event, end_date: event.date } }),
     /name="end_date" aria-label="End date" value=""/);
 });
+
+test('eventPage: location and repeat; editing a repeating event says it changes every time it comes back', () => {
+  const fresh = eventPage({ id: 1 }, { event: { date: '2026-10-03' } });
+  assert.match(fresh, /<option value="" selected>Does not repeat<\/option>/);
+  assert.match(fresh, /name="location" maxlength="200" value=""/);
+  assert.doesNotMatch(fresh, /every time it comes back/);
+
+  const event = { id: 7, title: 'Climb', date: '2026-10-05', end_date: '2026-10-05', location: 'Gym',
+    repeats: 'biweekly', repeat_until: '2026-12-21' };
+  const page = eventPage({ id: 1 }, { event });
+  assert.match(page, /name="location" maxlength="200" value="Gym"/);
+  assert.match(page, /<option value="biweekly" selected>Every 2 weeks<\/option>/);
+  assert.match(page, /name="repeat_until" aria-label="Repeat until" value="2026-12-21"/);
+  assert.match(page, /It repeats: changes apply to every time it comes back\./);
+  assert.match(page, /data-confirm="Delete Climb and every time it repeats\?"/);
+});

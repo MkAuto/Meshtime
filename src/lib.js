@@ -130,9 +130,20 @@ export const isValidTime = text => /^([01]\d|2[0-3]):[0-5]\d$/.test(text || '');
  * `field` says which row of the event form the message goes under: 'start' (date + time) or 'end'.
  * `message` is its key in src/locales.
  */
-export function eventError({ date, endDate, startTime, endTime }) {
+export function eventError({ date, endDate, startTime, endTime, repeats = null, repeatUntil = null }) {
   if (!isValidDate(date)) {
     return { field: 'start', message: 'errors.event.startDate' };
+  }
+  if (repeats && !Object.hasOwn(REPEATS, repeats)) {
+    return { field: 'repeat', message: 'errors.event.repeat' };
+  }
+  if (repeats && repeatUntil && (!isValidDate(repeatUntil) || repeatUntil < date)) {
+    return { field: 'repeat', message: 'errors.event.repeatUntil' };
+  }
+  // each one must end before the next starts: a week-long event cannot come back every week
+  const { days, months } = REPEATS[repeats] ?? {};
+  if (repeats && isValidDate(endDate) && daysBetween(date, endDate) >= (days ?? 28 * months)) {
+    return { field: 'repeat', message: 'errors.event.repeatTooLong' };
   }
   if (endDate && (!isValidDate(endDate) || endDate < date)) {
     return { field: 'end', message: 'errors.event.endDate' };
@@ -176,9 +187,10 @@ export function formatEventWhen({ date, end_date, start_time, end_time }, format
 }
 
 /**
- * Event id -> lane (0 = top row) for every multi-day event, so its bar sits at the same height on each
+ * Event -> lane (0 = top row) for every multi-day event, so its bar sits at the same height on each
  * day it covers. Greedy: each event takes the lowest lane whose last event ended before it starts.
  * `events` must be sorted by start date. One-day events get no lane; they are listed under the bars.
+ * Keyed by the event object, not its id: the occurrences of a repeating event share one id.
  */
 export function eventLanes(events) {
   const lanes = new Map();
@@ -192,9 +204,62 @@ export function eventLanes(events) {
       lane = laneEnds.length;
     }
     laneEnds[lane] = event.end_date;
-    lanes.set(event.id, lane);
+    lanes.set(event, lane);
   }
   return lanes;
+}
+
+// ---- repeating events ----
+// events.repeats: how often an event comes back (NULL: never), until events.repeat_until if set (the last date
+// one may start). Its own date..end_date is the first; every other one is the same length, moved by a step.
+// A month without that day (the 31st, February 29) has none, as RRULE does.
+export const REPEATS = {
+  weekly: { days: 7, rrule: 'FREQ=WEEKLY' },
+  biweekly: { days: 14, rrule: 'FREQ=WEEKLY;INTERVAL=2' },
+  monthly: { months: 1, rrule: 'FREQ=MONTHLY' },
+  yearly: { months: 12, rrule: 'FREQ=YEARLY' },
+};
+
+const daysBetween = (from, to) => (Date.parse(to) - Date.parse(from)) / 864e5;
+
+/** The start of occurrence `n` (0 = the event's own date), or null when that month has no such day. */
+function occurrenceDate(date, { days, months }, n) {
+  if (days) {
+    return addDays(date, days * n);
+  }
+  const [year, month, day] = date.split('-').map(Number);
+  const moved = new Date(Date.UTC(year, month - 1 + months * n, day));
+  return moved.getUTCDate() === day ? moved.toISOString().slice(0, 10) : null;
+}
+
+/**
+ * Every occurrence of `events` that touches from..to, each a copy of its event at its own date and end_date,
+ * sorted like the calendar lists them: by day, all-day first, then by start time. One that does not repeat is
+ * its own only occurrence.
+ * ponytail: walks each repeating event from its first date, fine for years of weekly events; jump straight to
+ * `from` if a group ever has thousands.
+ */
+export function occurrences(events, from, to) {
+  const found = [];
+  for (const event of events) {
+    const repeat = REPEATS[event.repeats];
+    const length = daysBetween(event.date, event.end_date);
+    for (let n = 0; ; n++) {
+      const date = repeat ? occurrenceDate(event.date, repeat, n) : event.date;
+      if (date > to || (repeat && event.repeat_until && date > event.repeat_until)) {
+        break;
+      }
+      const endDate = date && addDays(date, length);
+      if (date && endDate >= from) {
+        found.push({ ...event, date, end_date: endDate });
+      }
+      if (!repeat) {
+        break;
+      }
+    }
+  }
+  return found.sort((a, b) => a.date.localeCompare(b.date) || Boolean(a.start_time) - Boolean(b.start_time)
+    || (a.start_time ?? '').localeCompare(b.start_time ?? '') || a.id - b.id);
 }
 
 export const DEFAULT_WEEK_START = 0; // Sunday
@@ -337,7 +402,17 @@ export function fold(line) {
 // one zone; otherwise add TZID=America/Toronto and a VTIMEZONE block.
 const icsLocalTime = (date, time) => date.replaceAll('-', '') + 'T' + time.replace(':', '') + '00';
 
-// items: [{ uid, date 'YYYY-MM-DD', endDate?, startTime?, endTime?, summary, stamp (ISO) }]
+/** The RRULE of a repeating events row (REPEATS), null for one that does not repeat. UNTIL is the same kind of
+ *  value as DTSTART (RFC 5545): a date for an all-day event, a floating time at the end of that day otherwise. */
+export function eventRrule({ repeats, repeat_until: until, start_time: startTime }) {
+  if (!REPEATS[repeats]) {
+    return null;
+  }
+  const end = until && (startTime ? icsLocalTime(until, '23:59') : until.replaceAll('-', ''));
+  return REPEATS[repeats].rrule + (end ? `;UNTIL=${end}` : '');
+}
+
+// items: [{ uid, date 'YYYY-MM-DD', endDate?, startTime?, endTime?, summary, location?, rrule?, stamp (ISO) }]
 export function buildIcs({ name, host, items }) {
   const lines = [
     'BEGIN:VCALENDAR',
@@ -365,6 +440,9 @@ export function buildIcs({ name, host, items }) {
     }
     if (item.rrule) {
       lines.push('RRULE:' + item.rrule);
+    }
+    if (item.location) {
+      lines.push('LOCATION:' + escapeIcsText(item.location));
     }
     lines.push('SUMMARY:' + escapeIcsText(item.summary), 'END:VEVENT');
   }
