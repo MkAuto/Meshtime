@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import {
   COLORS, DEFAULT_WEEK_START, WEEK_START_CHOICES, DATE_FORMATS, DEFAULT_DATE_FORMAT, DAY_PARTS, SLOTS,
-  DEFAULT_BUSY_MINUTES, LANGUAGES,
+  DEFAULT_BUSY_MINUTES, DEFAULT_SYNC_DAYS, LANGUAGES,
 } from './lib.js';
 
 const dbPath = process.env.DB_PATH || './data/app.db';
@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS users(
   busy_minutes INTEGER NOT NULL DEFAULT ${DEFAULT_BUSY_MINUTES},
   busy_slots TEXT NOT NULL DEFAULT '', -- always busy, "<weekday><slot>" space-separated, 0 = Sunday: '1am 1pm'
   ignore_words TEXT NOT NULL DEFAULT '', -- comma-separated: events whose title contains one are left out
+  sync_days INTEGER NOT NULL DEFAULT ${DEFAULT_SYNC_DAYS}, -- days from today it fills (SYNC_DAYS_CHOICES)
   -- the language the app is shown in (LANGUAGES in src/lib.js); NULL = the browser's (pickLanguage)
   language TEXT);
 
@@ -293,6 +294,7 @@ for (const [column, definition] of [
   ['busy_minutes', `INTEGER NOT NULL DEFAULT ${DEFAULT_BUSY_MINUTES}`],
   ['busy_slots', `TEXT NOT NULL DEFAULT ''`],
   ['ignore_words', `TEXT NOT NULL DEFAULT ''`],
+  ['sync_days', `INTEGER NOT NULL DEFAULT ${DEFAULT_SYNC_DAYS}`],
 ]) {
   if (!userColumns.includes(column)) {
     db.exec(`ALTER TABLE users ADD COLUMN ${column} ${definition}`);

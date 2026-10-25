@@ -6,7 +6,7 @@ import packageJson from '../package.json' with { type: 'json' };
 import {
   monthInfo, addDays, formatDate, formatMonthDay, formatTime, formatEventWhen, eventLanes, dayClass, weekdayNames, today,
   wallClock, BUSY_CHOICES, DEFAULT_BUSY_MINUTES, SLOTS, DATE_FORMATS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_DATES,
-  MIN_PASSWORD, LANGUAGES, DEFAULT_LANGUAGE, isValidLanguage, randomColor,
+  SYNC_DAYS_CHOICES, DEFAULT_SYNC_DAYS, MIN_PASSWORD, LANGUAGES, DEFAULT_LANGUAGE, isValidLanguage, randomColor,
 } from './lib.js';
 import { t, dictionary, hasText, syncErrorText } from './i18n.js';
 
@@ -493,9 +493,11 @@ export function settingsPage(user, { base, groups = [], invites = [], calendarLi
     errors,
     memberInvites: Boolean(user.member_invites),
     invites: invites.map(invite => ({ url: `${base}/invite/${invite.token}` })),
-    // Calendar Integration rules (users.busy_minutes, busy_slots, ignore_words; src/sync.js)
+    // Calendar Integration rules (users.busy_minutes, busy_slots, ignore_words, sync_days; src/sync.js)
     busyChoices: options(BUSY_CHOICES.map(minutes => [minutes, t(lang, `settings.busyChoices.${minutes}`)]),
       user.busy_minutes ?? DEFAULT_BUSY_MINUTES),
+    syncDaysChoices: options(SYNC_DAYS_CHOICES.map(days => [days, t(lang, `settings.syncDaysChoices.${days}`)]),
+      user.sync_days ?? DEFAULT_SYNC_DAYS),
     ignoreWords: user.ignore_words,
     slotNames: SLOTS.map(slot => t(lang, `dayParts.short.${slot}`).toUpperCase()),
     // Always busy: a row per weekday in my week's order, a checkbox per slot, valued '1am' for Monday morning

@@ -12,7 +12,8 @@ const auth = await import('../src/auth.js');
 const { routes } = await import('../src/routes.js');
 const { pollPage } = await import('../src/views.js');
 const { t, syncErrorText } = await import('../src/i18n.js');
-const { LANGUAGES, DAY_PARTS, SLOTS, ANSWERS, BUSY_CHOICES, pickLanguage } = await import('../src/lib.js');
+const { LANGUAGES, DAY_PARTS, SLOTS, ANSWERS, BUSY_CHOICES, SYNC_DAYS_CHOICES, pickLanguage } =
+  await import('../src/lib.js');
 
 const SRC = join(import.meta.dirname, '..', 'src');
 const readLocale = code => JSON.parse(readFileSync(join(SRC, 'locales', `${code}.json`), 'utf8'));
@@ -58,6 +59,7 @@ test('every key the templates and the code use is in en.json', () => {
     ...SLOTS.map(slot => ['views.js', `dayParts.short.${slot}`]),
     ...ANSWERS.map(answer => ['views.js', `poll.answers.${answer}`]),
     ...BUSY_CHOICES.map(minutes => ['views.js', `settings.busyChoices.${minutes}`]),
+    ...SYNC_DAYS_CHOICES.map(days => ['views.js', `settings.syncDaysChoices.${days}`]),
     ...['event', 'poll'].map(kind => ['routes.js', `errors.privateNeedsGroup.${kind}`]),
   );
   assert.ok(used.length > 300, 'the scan finds the keys');

@@ -1,14 +1,14 @@
 import ical from 'node-ical';
 import { all, get, run, now, tx } from './db.js';
-import { addDays, wallClock, today, SLOTS, DEFAULT_BUSY_MINUTES } from './lib.js';
+import { addDays, wallClock, today, SLOTS, DEFAULT_BUSY_MINUTES, DEFAULT_SYNC_DAYS } from './lib.js';
 
 // ---- Calendar Integration: free days worked out from members' own calendars (secret iCal links) ----
-// Every hour (server.js) each member's links are read, and every day from today to SYNC_DAYS ahead gets
-// the parts of it events do not take up: no event at all = free all day. The member's rules (Settings) say how much
-// makes a part busy, which parts always are, and which titles to leave out. Days the member set by hand
-// (manual_days, written by POST /free) are never touched. Declined invitations are not in Google's feed at all.
+// Every hour (server.js) each member's links are read, and each of their next sync_days days (today included)
+// gets the parts of it events do not take up: no event at all = free all day. The member's rules (Settings) say how
+// much makes a part busy, which parts always are, which titles to leave out, and how many days to fill. Days the
+// member set by hand (manual_days, written by POST /free) are never touched. Declined invitations are not in
+// Google's feed at all.
 
-export const SYNC_DAYS = 60;
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_CALENDAR_BYTES = 5 * 1024 * 1024;
 
@@ -165,7 +165,7 @@ export async function fetchCalendar(url) {
  */
 export async function syncUser(userId) {
   const links = all('SELECT id, url, count_free, last_error FROM calendar_links WHERE user_id = ?', userId);
-  const rules = get('SELECT busy_minutes, busy_slots, ignore_words FROM users WHERE id = ?', userId);
+  const rules = get('SELECT busy_minutes, busy_slots, ignore_words, sync_days FROM users WHERE id = ?', userId);
   if (links.length === 0) {
     return;
   }
@@ -192,8 +192,12 @@ export async function syncUser(userId) {
   }
 
   const fromDate = today();
-  const days = freePartsByDay(calendars, fromDate, addDays(fromDate, SYNC_DAYS), rules);
+  const toDate = addDays(fromDate, (rules.sync_days ?? DEFAULT_SYNC_DAYS) - 1);
+  const days = freePartsByDay(calendars, fromDate, toDate, rules);
   tx(() => {
+    // past the window (it was made shorter): no longer the calendar's to fill, so not free until set by hand
+    run(`DELETE FROM free_days WHERE user_id = ? AND date > ?
+         AND date NOT IN (SELECT date FROM manual_days WHERE user_id = ?)`, userId, toDate, userId);
     for (const [date, parts] of days) {
       if (get('SELECT 1 FROM manual_days WHERE user_id = ? AND date = ?', userId, date)) {
         continue;

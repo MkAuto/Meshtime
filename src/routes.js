@@ -8,7 +8,7 @@ import { t, syncErrorText } from './i18n.js';
 import {
   isValidDate, isValidMonth, monthInfo, isValidWeekStart, isValidDateFormat, isValidColor, eventError,
   bestDates, buildIcs, birthdayIn, birthdayRrule, today, randomColor, ANSWERS, MAX_DATES, MIN_PASSWORD, BASE_URL,
-  RP_ID, SLOTS, MAX_SLOTS_PER_DAY, toggleSlot, isValidBusyMinutes, isValidLanguage,
+  RP_ID, SLOTS, MAX_SLOTS_PER_DAY, toggleSlot, isValidBusyMinutes, isValidSyncDays, isValidLanguage,
 } from './lib.js';
 
 export const routes = [];
@@ -379,7 +379,7 @@ on('POST', '/free', async ctx => {
   }
 
   // No longer set by hand. It keeps what it shows until the sync rewrites it: at once inside the sync's window
-  // (today to SYNC_DAYS ahead) when every calendar answers, otherwise on a later hourly sync. A past day stays.
+  // (the member's next sync_days days) when every calendar answers, otherwise on a later hourly sync. A past day stays.
   if (part === 'auto') {
     run('DELETE FROM manual_days WHERE user_id = ? AND date = ?', ctx.user.id, date);
     await syncUser(ctx.user.id);
@@ -1207,14 +1207,18 @@ on('POST', '/settings/calendars/sync', async ctx => {
 const BUSY_SLOT = new RegExp(`^[0-6](${SLOTS.join('|')})$`);
 on('POST', '/settings/calendars/rules', async ctx => {
   const busyMinutes = Number(ctx.body.get('busy_minutes'));
+  const syncDays = Number(ctx.body.get('sync_days'));
   if (!isValidBusyMinutes(busyMinutes)) {
     return showSettings(ctx, { status: 400, errors: { rules: t(ctx.lang, 'errors.busyThreshold') } });
+  }
+  if (!isValidSyncDays(syncDays)) {
+    return showSettings(ctx, { status: 400, errors: { rules: t(ctx.lang, 'errors.syncDays') } });
   }
   const busySlots = [...new Set(ctx.body.getAll('busy').filter(value => BUSY_SLOT.test(value)))].sort().join(' ');
   const ignoreWords = cleanText(ctx.body.get('ignore_words'), 500).split(',')
     .map(word => word.trim()).filter(Boolean).join(', ');
-  run('UPDATE users SET busy_minutes = ?, busy_slots = ?, ignore_words = ? WHERE id = ?',
-    busyMinutes, busySlots, ignoreWords, ctx.user.id);
+  run('UPDATE users SET busy_minutes = ?, busy_slots = ?, ignore_words = ?, sync_days = ? WHERE id = ?',
+    busyMinutes, busySlots, ignoreWords, syncDays, ctx.user.id);
   await syncUser(ctx.user.id);
   ctx.redirect('/settings?msg=calendar_rules');
 });

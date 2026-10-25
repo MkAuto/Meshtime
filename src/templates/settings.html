@@ -82,6 +82,14 @@
   <form method="post" action="/settings/calendars/rules" class="stack">
     <h3>{{t.settings.rules}}</h3>
     <label>
+      {{t.settings.syncDays}}
+      <select name="sync_days">
+        {{#syncDaysChoices}}
+        <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
+        {{/syncDaysChoices}}
+      </select>
+    </label>
+    <label>
       {{t.settings.busyFrom}}
       <span class="hint">{{t.settings.busyHint}}</span>
       <select name="busy_minutes">
