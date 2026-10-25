@@ -113,6 +113,8 @@
     "new": "Nouveau sondage",
     "none": "Aucun sondage pour l'instant.",
     "open": "ouvert · {{voters}}/{{members}} ont répondu",
+    "openUntil": "ouvert jusqu'au {{date}} · {{voters}}/{{members}} ont répondu",
+    "toAnswer": "à répondre",
     "closed": "fermé"
   },
   "newPoll": {
@@ -121,6 +123,8 @@
     "placeholder": "Soirée jeux de société",
     "dates": "Dates proposées ({{max}} maximum)",
     "leaveEmpty": "Laissez les autres vides.",
+    "deadline": "Date limite (facultatif)",
+    "deadlineHint": "Le dernier jour pour répondre : le sondage se ferme ensuite.",
     "create": "Créer le sondage"
   },
   "poll": {
@@ -137,6 +141,7 @@
       "no": "non"
     },
     "totals": "oui / peut-être / non",
+    "suggested": "Les réponses en pointillé viennent de vos journées disponibles : vérifiez-les, puis enregistrez.",
     "save": "Enregistrer mes réponses",
     "bestDate": "Meilleure date : {{dates}}",
     "bestDates": "Meilleures dates : {{dates}}",
@@ -146,6 +151,9 @@
     "confirmedFor": "Confirmé pour le {{date}}.",
     "addToCalendar": "Ajouter le {{date}} au calendrier",
     "saveSharing": "Enregistrer qui le voit",
+    "until": "Réponses jusqu'au {{date}}.",
+    "deadlineHint": "Le dernier jour pour répondre. Vide : aucune date limite.",
+    "saveDeadline": "Enregistrer la date limite",
     "close": "Fermer le sondage maintenant"
   },
   "groups": {
@@ -397,6 +405,7 @@
     "calendarNotFound": "Calendrier introuvable.",
     "calendarForbidden": "Seul son propriétaire ou un admin peut modifier ce calendrier.",
     "busyThreshold": "Seuil d'occupation invalide.",
+    "pollDeadline": "La date limite doit être aujourd'hui ou plus tard.",
     "syncDays": "Nombre de jours à remplir invalide.",
     "weekStart": "Premier jour de la semaine invalide.",
     "dateFormat": "Format de date invalide.",

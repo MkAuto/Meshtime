@@ -113,6 +113,8 @@
     "new": "New poll",
     "none": "No polls yet.",
     "open": "open · {{voters}}/{{members}} answered",
+    "openUntil": "open until {{date}} · {{voters}}/{{members}} answered",
+    "toAnswer": "to answer",
     "closed": "closed"
   },
   "newPoll": {
@@ -121,6 +123,8 @@
     "placeholder": "Board game night",
     "dates": "Proposed dates (max {{max}})",
     "leaveEmpty": "Leave extras empty.",
+    "deadline": "Deadline (optional)",
+    "deadlineHint": "The last day to answer: the poll closes after it.",
     "create": "Create poll"
   },
   "poll": {
@@ -137,6 +141,7 @@
       "no": "no"
     },
     "totals": "yes / maybe / no",
+    "suggested": "The dashed answers come from your free days: check them, then save.",
     "save": "Save my answers",
     "bestDate": "Best date: {{dates}}",
     "bestDates": "Best dates: {{dates}}",
@@ -146,6 +151,9 @@
     "confirmedFor": "Confirmed for {{date}}.",
     "addToCalendar": "Add {{date}} to calendar",
     "saveSharing": "Save who sees it",
+    "until": "Answers until {{date}}.",
+    "deadlineHint": "The last day to answer. Empty: no deadline.",
+    "saveDeadline": "Save deadline",
     "close": "Close poll now"
   },
   "groups": {
@@ -397,6 +405,7 @@
     "calendarNotFound": "Calendar not found.",
     "calendarForbidden": "Only its owner or an admin can change this calendar.",
     "busyThreshold": "Invalid busy threshold.",
+    "pollDeadline": "The deadline must be a date from today on.",
     "syncDays": "Invalid number of days to fill.",
     "weekStart": "Invalid first day of the week.",
     "dateFormat": "Invalid date format.",

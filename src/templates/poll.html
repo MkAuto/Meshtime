@@ -5,6 +5,7 @@
 <p class="hint">{{visibilityLabel}}</p>
 {{/groupsEnabled}}
 {{#errors.answers}}<p class="err">{{errors.answers}}</p>{{/errors.answers}}
+{{#hasSuggestions}}<p class="hint">{{t.poll.suggested}}</p>{{/hasSuggestions}}
 <form method="post" action="/polls/{{id}}">
   <table class="poll">
     <thead>
@@ -21,8 +22,8 @@
         {{#cells}}
         <td>
           {{#editable}}
-          <select name="v_{{date}}">
-            {{^current}}<option value="" selected>—</option>{{/current}}
+          <select name="v_{{date}}"{{#suggested}} class="suggested"{{/suggested}}>
+            {{^current}}<option value=""{{^suggested}} selected{{/suggested}}>—</option>{{/current}}
             {{#options}}
             <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
             {{/options}}
@@ -86,6 +87,15 @@
 {{/groupsEnabled}}
 
 {{#canClose}}
+<form method="post" action="/polls/{{id}}/deadline" class="stack">
+  <label>
+    {{t.newPoll.deadline}}
+    <span class="hint">{{t.poll.deadlineHint}}</span>
+    <input type="date" name="deadline" min="{{today}}" value="{{deadline}}">
+  </label>
+  {{#errors.deadline}}<p class="err">{{errors.deadline}}</p>{{/errors.deadline}}
+  <button>{{t.poll.saveDeadline}}</button>
+</form>
 <form method="post" action="/polls/{{id}}/close">
   <p><button class="link danger">{{t.poll.close}}</button></p>
 </form>

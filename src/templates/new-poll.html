@@ -18,6 +18,12 @@
     <input type="date" name="dates">
   </fieldset>
   {{#errors.dates}}<p class="err">{{errors.dates}}</p>{{/errors.dates}}
+  <label>
+    {{t.newPoll.deadline}}
+    <span class="hint">{{t.newPoll.deadlineHint}}</span>
+    <input type="date" name="deadline" min="{{today}}" value="{{deadline}}">
+  </label>
+  {{#errors.deadline}}<p class="err">{{errors.deadline}}</p>{{/errors.deadline}}
   {{> share-with}}
   <button>{{t.newPoll.create}}</button>
 </form>

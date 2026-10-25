@@ -20,7 +20,7 @@
     {{#user}}
     <nav id="menu" popover>
       <a href="/">{{t.layout.calendar}}</a>
-      <a href="/polls">{{t.layout.polls}}</a>
+      <a href="/polls">{{t.layout.polls}}{{#pending_polls}} ({{pending_polls}}){{/pending_polls}}</a>
       {{#groupsEnabled}}
       <a href="/groups">{{t.layout.groups}}{{#pending_invites}} ({{pending_invites}}){{/pending_invites}}</a>
       {{/groupsEnabled}}

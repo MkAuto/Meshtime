@@ -439,11 +439,14 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 .polls li { margin: .4rem 0; }
 .polls a { color: var(--accent); }
 .polls small { color: var(--muted); margin-left: .5rem; }
+.polls .to-answer { color: var(--accent); font-size: .9rem; margin-left: .5rem; }
 table.poll { border-collapse: collapse; width: 100%; margin: 1rem 0; background: var(--card); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
 table.poll th, table.poll td { border-bottom: 1px solid var(--line); padding: .6rem .7rem; text-align: center; font-size: .9rem; }
 table.poll th { font-weight: 600; color: var(--muted); }
 table.poll th.best { background: var(--ok-bg); color: var(--ok); }
 table.poll td:first-child { text-align: left; }
+/* an answer filled in from my free days, not saved yet (poll.suggested) */
+table.poll select.suggested { border-style: dashed; border-color: var(--muted); }
 table.poll tr.tot td { color: var(--muted); font-size: .8rem; border: 0; }
 .a.yes { color: var(--ok); font-weight: 600; }
 .a.no { color: var(--err); }

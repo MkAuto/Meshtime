@@ -5,6 +5,7 @@
   <li>
     <a href="/polls/{{id}}">{{title}}</a>
     <small>{{status}}</small>
+    {{#toAnswer}}<b class="to-answer">{{t.polls.toAnswer}}</b>{{/toAnswer}}
   </li>
   {{/polls}}
   {{^polls}}

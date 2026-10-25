@@ -367,21 +367,29 @@ export function pollsPage(user, polls) {
   const { lang } = user;
   const status = poll => {
     if (!poll.closed_at) {
-      return t(lang, 'polls.open', { voters: poll.voters, members: poll.members });
+      const values = { voters: poll.voters, members: poll.members };
+      return poll.deadline
+        ? t(lang, 'polls.openUntil', { ...values, date: formatDate(poll.deadline, user.date_format, lang) })
+        : t(lang, 'polls.open', values);
     }
     return poll.chosen_date ? `✓ ${formatDate(poll.chosen_date, user.date_format, lang)}` : t(lang, 'polls.closed');
   };
   return page(t(lang, 'polls.title'), user, 'polls', {
-    polls: polls.map(poll => ({ id: poll.id, title: poll.title, status: status(poll) })),
+    polls: polls.map(poll => ({
+      id: poll.id, title: poll.title, status: status(poll), toAnswer: !poll.closed_at && Boolean(poll.i_owe),
+    })),
   });
 }
 
-// After a rejected form, `errors` ({ title, dates, visibility }) shows under each field, and `title` and
-// `sharing` (who sees it, as posted) are kept. `groups` are mine: the ones a private poll can be shared with.
-export const newPollPage = (user, { errors = {}, title = '', groups = [], sharing = {} } = {}) =>
+// After a rejected form, `errors` ({ title, dates, deadline, visibility }) shows under each field, and `title`,
+// `deadline` and `sharing` (who sees it, as posted) are kept. `groups` are mine: the ones a private poll can be
+// shared with.
+export const newPollPage = (user, { errors = {}, title = '', deadline = '', groups = [], sharing = {} } = {}) =>
   page(t(user.lang, 'newPoll.title'), user, 'new-poll', {
     errors,
     title,
+    deadline,
+    today: today(),
     maxDates: MAX_DATES,
     datesLegend: t(user.lang, 'newPoll.dates', { max: MAX_DATES }),
     ...sharingValues(sharing.isPrivate, sharing.groupIds, groups),
@@ -392,6 +400,7 @@ export const newPollPage = (user, { errors = {}, title = '', groups = [], sharin
 // private later): then only the confirmed date shows. `creatorGroups` and `groupIds` fill Who sees it.
 export function pollPage(user, {
   poll, dates, members, votes, missing, complete, best, event, groupIds = [], creatorGroups = [], errors = {},
+  suggested = {},
 }) {
   const { lang } = user;
   const answers = {}; // user_id -> { date: answer }
@@ -413,6 +422,9 @@ export function pollPage(user, {
   let status = t(lang, 'poll.closed');
   if (isOpen) {
     status = complete ? t(lang, 'poll.everyoneAnswered') : t(lang, 'poll.waitingFor', { names: missing.join(', ') });
+    if (poll.deadline) {
+      status += ' ' + t(lang, 'poll.until', { date: formatted(poll.deadline) });
+    }
   }
 
   const rows = sortedMembers.map(member => {
@@ -421,12 +433,15 @@ export function pollPage(user, {
       name: isMe ? t(lang, 'poll.you', { name: member.name }) : member.name,
       cells: dates.map(date => {
         const answer = answers[member.id]?.[date];
+        // not answered yet: starts on what my free time that day says (loadPoll), saved with the rest
+        const suggestion = myAnswers[date] ? null : suggested[date];
         return {
           date,
           editable: isMe && isOpen,
           current: myAnswers[date] ?? null,
+          suggested: Boolean(suggestion),
           options: ANSWERS.map(value => ({
-            value, label: t(lang, `poll.answers.${value}`), selected: myAnswers[date] === value,
+            value, label: t(lang, `poll.answers.${value}`), selected: (myAnswers[date] ?? suggestion) === value,
           })),
           answerClass: answer || 'none',
           answerText: answer ? t(lang, `poll.answers.${answer}`) : '–',
@@ -455,7 +470,10 @@ export function pollPage(user, {
     title: poll.title,
     status,
     isOpen,
+    hasSuggestions: isOpen && dates.some(date => !myAnswers[date] && suggested[date]),
     canClose: isOpen && canManage,
+    deadline: poll.deadline ?? '',
+    today: today(),
     visibilityLabel: t(lang, 'poll.whoSees', { label: t(lang, poll.is_private ? 'poll.private' : 'poll.public') }),
     // the creator (or an admin) can change who sees it, as on the event page
     sharing: canManage && sharingValues(poll.is_private, groupIds, creatorGroups),

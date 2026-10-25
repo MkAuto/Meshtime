@@ -71,6 +71,23 @@ test('Fill ahead: the sync fills sync_days days from today, and lets go of the d
     ...[0, 1, 2, 3, 4, 5, 6].map(offset => [day(offset), 'all']), // no event: free all day, today included
     [day(25), 'pm'], // set by hand: kept
   ], 'day 7 on not filled, day 20 cleared');
+
+  // a poll on those days starts my answers from them (Fay: calendar filling days 0 to 6)
+  run(`DELETE FROM free_days WHERE user_id = ? AND date = ?`, fay, day(2)); // the calendar found it busy
+  run('INSERT INTO manual_days(user_id, date) VALUES (?, ?)', fay, day(30)); // set to nothing by hand
+  const poll = run(`INSERT INTO polls(title, created_by, created_at) VALUES ('Climb', ?, ?)`, fay, now()).lastInsertRowid;
+  for (const offset of [1, 2, 8, 25, 30]) {
+    run('INSERT INTO poll_dates(poll_id, date) VALUES (?, ?)', poll, day(offset));
+  }
+  const url = new URL(`http://x.test/polls/${poll}`);
+  const route = routes.find(r => r.method === 'GET' && r.path.test(url.pathname));
+  let html = '';
+  await route.handler({ url, params: { id: String(poll) }, user: auth.userFromSession(auth.createSession(fay)),
+    html: body => { html = body; } });
+  const startsOn = offset => html.match(new RegExp(`name="v_${day(offset)}"[^]*?</select>`))[0]
+    .match(/value="(\w*)"[^>]* selected/)[1];
+  assert.deepEqual([1, 2, 8, 25, 30].map(startsOn), ['yes', 'no', '', 'maybe', 'no'],
+    'free all day, busy by the calendar, past what it fills (not known), free one part, set to nothing by hand');
 });
 
 test('Automatic: the day is no longer set by hand and keeps what it shows until the sync rewrites it', async () => {

@@ -113,7 +113,8 @@ CREATE TABLE IF NOT EXISTS polls(
   chosen_date TEXT,
   closed_at TEXT,
   created_at TEXT NOT NULL,
-  is_private INTEGER NOT NULL DEFAULT 0);
+  is_private INTEGER NOT NULL DEFAULT 0,
+  deadline TEXT); -- the last day it takes answers, 'YYYY-MM-DD'; it closes the day after. NULL = until closed
 
 -- the groups a private poll is shared with (none for a public poll). Groups its creator is in.
 CREATE TABLE IF NOT EXISTS poll_groups(
@@ -324,6 +325,10 @@ if (!eventColumns.includes('is_private')) {
 const pollColumns = db.prepare('PRAGMA table_info(polls)').all().map(column => column.name);
 if (!pollColumns.includes('is_private')) {
   db.exec('ALTER TABLE polls ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0');
+}
+// DBs created before deadlines existed: every poll stays open until closed by hand.
+if (!pollColumns.includes('deadline')) {
+  db.exec('ALTER TABLE polls ADD COLUMN deadline TEXT');
 }
 
 // A format that is no longer offered goes back to the default.

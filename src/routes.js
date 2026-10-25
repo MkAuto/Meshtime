@@ -7,7 +7,7 @@ import { fetchCalendar, syncUser, freePartsAround } from './sync.js';
 import { t, syncErrorText } from './i18n.js';
 import {
   isValidDate, isValidMonth, monthInfo, isValidWeekStart, isValidDateFormat, isValidColor, eventError,
-  bestDates, buildIcs, birthdayIn, birthdayRrule, today, randomColor, ANSWERS, MAX_DATES, MIN_PASSWORD, BASE_URL,
+  bestDates, buildIcs, birthdayIn, birthdayRrule, today, addDays, DEFAULT_SYNC_DAYS, randomColor, ANSWERS, MAX_DATES, MIN_PASSWORD, BASE_URL,
   RP_ID, SLOTS, MAX_SLOTS_PER_DAY, toggleSlot, isValidBusyMinutes, isValidSyncDays, isValidLanguage,
 } from './lib.js';
 
@@ -590,6 +590,25 @@ on('POST', '/events/(?<id>\\d+)/delete', ctx => {
 // Same public / private rule as events (pollVisibleTo). A poll is for everyone who can see it: they are the
 // ones it waits for, and the only ones who can open, answer or confirm it.
 
+// A poll past its deadline closes, as if closed by hand: done whenever polls are read, so no timer is needed.
+const closeExpiredPolls = () =>
+  run('UPDATE polls SET closed_at = ? WHERE closed_at IS NULL AND deadline < ?', now(), today());
+
+// A deadline from a form: '' (none) is null; otherwise a real date, today at the earliest. undefined if not.
+const postedDeadline = ctx => {
+  const deadline = ctx.body.get('deadline') || null;
+  return deadline === null || (isValidDate(deadline) && deadline >= today()) ? deadline : undefined;
+};
+
+// Poll `p` still has a date I have not answered. Takes my user id.
+const I_STILL_OWE = `EXISTS (SELECT 1 FROM poll_dates d WHERE d.poll_id = p.id AND NOT EXISTS (
+  SELECT 1 FROM poll_votes pv WHERE pv.poll_id = p.id AND pv.date = d.date AND pv.user_id = ?))`;
+
+/** How many open polls wait for my answers: the count by Polls in every page's nav (server.js). */
+export const pendingPolls = userId => get(`SELECT COUNT(*) AS count FROM polls p JOIN users u ON u.id = p.created_by
+  WHERE p.closed_at IS NULL AND (p.deadline IS NULL OR p.deadline >= ?) AND ${I_STILL_OWE} AND ${pollVisibleTo('?')}`,
+today(), userId, userId, userId, userId, userId).count;
+
 /**
  * Everything pollPage needs, if `user` may see the poll: the poll, its dates, the members it is for, their
  * votes, who of them still owes an answer, the groups it is shared with and the ones it could be (its
@@ -598,6 +617,7 @@ on('POST', '/events/(?<id>\\d+)/delete', ctx => {
  */
 function loadPoll(pollId, user) {
   const me = user.id;
+  closeExpiredPolls();
   const poll = get(`SELECT p.* FROM polls p JOIN users u ON u.id = p.created_by
                     WHERE p.id = ? AND ${pollVisibleTo('?')}`, pollId, me, me, me, me);
   if (!poll) {
@@ -636,13 +656,40 @@ function loadPoll(pollId, user) {
                 WHERE e.poll_id = ? AND ${EVENT_VISIBLE_TO_ME}`, pollId, me, me, me, me),
     groupIds: sharedGroupIds('poll', pollId),
     creatorGroups: myGroups(poll.created_by),
+    suggested: suggestedAnswers(user, pollId, dates),
   };
 }
 
+/**
+ * date -> where my answer starts on a date I have not answered yet (views.pollPage), from my free time that day:
+ * free all day 'yes', part of it 'maybe', and 'no' when I am known not to be free: a day I set by hand to nothing,
+ * or one my Calendar Integration fills. Any other day nobody knows: left out, it stays on "—".
+ */
+function suggestedAnswers(user, pollId, dates) {
+  const inPoll = 'date IN (SELECT date FROM poll_dates WHERE poll_id = ?)';
+  const free = new Map(all(`SELECT date, part FROM free_days WHERE user_id = ? AND ${inPoll}`, user.id, pollId)
+    .map(row => [row.date, row.part]));
+  const setByHand = new Set(all(`SELECT date FROM manual_days WHERE user_id = ? AND ${inPoll}`, user.id, pollId)
+    .map(row => row.date));
+  const lastFilled = get('SELECT 1 FROM calendar_links WHERE user_id = ?', user.id)
+    && addDays(today(), (user.sync_days ?? DEFAULT_SYNC_DAYS) - 1);
+  const filledByCalendar = date => Boolean(lastFilled) && today() <= date && date <= lastFilled;
+  const suggested = {};
+  for (const date of dates) {
+    if (free.has(date)) {
+      suggested[date] = free.get(date) === 'all' ? 'yes' : 'maybe';
+    } else if (setByHand.has(date) || filledByCalendar(date)) {
+      suggested[date] = 'no';
+    }
+  }
+  return suggested;
+}
+
 // The polls I may see, open first, newest first. `members` counts who each is for, `voters` those of them
-// who answered every date (v is each user, asked the same pollVisibleTo question as the page).
+// who answered every date (v is each user, asked the same pollVisibleTo question as the page), `i_owe` whether
+// I am not one of them yet. Takes my user id five times.
 const POLL_LIST_SQL = `
-SELECT p.*,
+SELECT p.*, ${I_STILL_OWE} AS i_owe,
   (SELECT COUNT(*) FROM users v
      WHERE ${pollVisibleTo('v.id')} AND NOT EXISTS (
        SELECT 1 FROM poll_dates d WHERE d.poll_id = p.id
@@ -659,13 +706,15 @@ const managesPoll = (user, poll) => poll.created_by === user.id || Boolean(user.
 
 on('GET', '/polls', ctx => {
   const me = ctx.user.id;
-  ctx.html(views.pollsPage(ctx.user, all(POLL_LIST_SQL, me, me, me, me)));
+  closeExpiredPolls();
+  ctx.html(views.pollsPage(ctx.user, all(POLL_LIST_SQL, me, me, me, me, me)));
 });
 on('GET', '/polls/new', ctx => ctx.html(views.newPollPage(ctx.user, { groups: myGroups(ctx.user.id) })));
 
 on('POST', '/polls/new', ctx => {
   const title = cleanText(ctx.body.get('title'), 100);
   const dates = [...new Set(ctx.body.getAll('dates').filter(Boolean))].sort(); // drop blanks and duplicates
+  const deadline = postedDeadline(ctx);
   const groups = myGroups(ctx.user.id);
   const sharing = readSharing(ctx, groups, 'poll');
   const errors = {};
@@ -675,16 +724,20 @@ on('POST', '/polls/new', ctx => {
   if (!dates.length || dates.length > MAX_DATES || !dates.every(isValidDate)) {
     errors.dates = t(ctx.lang, 'errors.pollDates', { max: MAX_DATES });
   }
+  if (deadline === undefined) {
+    errors.deadline = t(ctx.lang, 'errors.pollDeadline');
+  }
   if (sharing.error) {
     errors.visibility = sharing.error;
   }
   if (hasErrors(errors)) {
-    return ctx.html(views.newPollPage(ctx.user, { errors, title, groups, sharing }), 400);
+    const posted = { title, deadline: ctx.body.get('deadline') ?? '', groups, sharing };
+    return ctx.html(views.newPollPage(ctx.user, { errors, ...posted }), 400);
   }
 
   const pollId = tx(() => {
-    const id = run('INSERT INTO polls(title, created_by, created_at, is_private) VALUES (?,?,?,?)',
-      title, ctx.user.id, now(), sharing.isPrivate).lastInsertRowid;
+    const id = run('INSERT INTO polls(title, created_by, created_at, is_private, deadline) VALUES (?,?,?,?,?)',
+      title, ctx.user.id, now(), sharing.isPrivate, deadline).lastInsertRowid;
     for (const date of dates) {
       run('INSERT INTO poll_dates(poll_id, date) VALUES (?,?)', id, date);
     }
@@ -739,6 +792,27 @@ on('POST', '/polls/(?<id>\\d+)/close', ctx => {
   if (managesPoll(ctx.user, data.poll)) {
     run('UPDATE polls SET closed_at = ? WHERE id = ? AND closed_at IS NULL', now(), pollId);
   }
+  ctx.redirect('/polls/' + pollId);
+});
+
+// Its creator or an admin moves the deadline of an open poll, or removes it (empty).
+on('POST', '/polls/(?<id>\\d+)/deadline', ctx => {
+  const pollId = Number(ctx.params.id);
+  const data = loadPoll(pollId, ctx.user);
+  if (!data) {
+    return ctx.fail(404, 'errors.pollNotFound');
+  }
+  if (!managesPoll(ctx.user, data.poll)) {
+    return ctx.fail(403, 'errors.pollForbidden');
+  }
+  if (data.poll.closed_at) {
+    return rejectPoll(ctx, data, 409, { deadline: t(ctx.lang, 'errors.pollClosed') });
+  }
+  const deadline = postedDeadline(ctx);
+  if (deadline === undefined) {
+    return rejectPoll(ctx, data, 400, { deadline: t(ctx.lang, 'errors.pollDeadline') });
+  }
+  run('UPDATE polls SET deadline = ? WHERE id = ?', deadline, pollId);
   ctx.redirect('/polls/' + pollId);
 });
 

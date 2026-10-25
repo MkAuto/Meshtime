@@ -4,7 +4,7 @@ import { join, extname } from 'node:path';
 import { db, get, now } from './db.js';
 import { userFromSession, sessionOwner, createInvite } from './auth.js';
 import { logEvent } from './log.js';
-import { routes } from './routes.js';
+import { routes, pendingPolls } from './routes.js';
 import { syncAll } from './sync.js';
 import { errorPage } from './views.js';
 import { BASE_URL, pickLanguage } from './lib.js';
@@ -156,6 +156,7 @@ async function handle(req, res) {
       // their language (users.language, or the browser's) and the page asked for: views.js reads both from the user
       ctx.user.lang = ctx.lang = pickLanguage(ctx.user.language, cookies.lang, acceptLanguage);
       ctx.user.path = url.pathname + url.search;
+      ctx.user.pending_polls = pendingPolls(ctx.user.id); // the count by Polls in the nav, like pending_invites
     }
     if (ctx.sid && !ctx.user) {
       // A cookie with no live session: it expired, or a password change logged this device out.

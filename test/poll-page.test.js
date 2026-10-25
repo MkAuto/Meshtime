@@ -44,6 +44,21 @@ test('pollPage: a confirmed poll whose event I may not see shows only its date',
   assert.doesNotMatch(shown, /Confirmed for/);
 });
 
+test('pollPage: my unanswered dates start on what my free days say, dashed; a saved answer wins', () => {
+  const data = { poll: { id: 1, title: 't' }, dates: ['2026-09-29', '2026-09-30', '2026-10-01'],
+    members: [{ id: 3, name: 'Keven' }], votes: [{ date: '2026-09-30', user_id: 3, answer: 'no' }],
+    missing: [], complete: false, best: [], event: null, suggested: { '2026-09-29': 'yes', '2026-09-30': 'yes' } };
+  const page = pollPage({ id: 3, name: 'Keven' }, data);
+  assert.match(page, /The dashed answers come from your free days/);
+  assert.match(page, /name="v_2026-09-29" class="suggested">\s*<option value="">—<\/option>\s*<option value="yes" selected>/,
+    '"—" is still there to leave it unanswered');
+  assert.match(page, /name="v_2026-09-30">\s*<option value="yes">yes<\/option>\s*<option value="maybe">maybe<\/option>\s*<option value="no" selected>/);
+  assert.match(page, /name="v_2026-10-01">\s*<option value="" selected>—<\/option>/, 'nothing known: unanswered');
+
+  assert.doesNotMatch(pollPage({ id: 3, name: 'Keven' }, { ...data, suggested: { '2026-09-30': 'yes' } }),
+    /dashed answers|class="suggested"/, 'only a saved date suggested: no hint');
+});
+
 // Names and titles are typed by members: they must reach the page as text, never as markup.
 test('pollPage escapes what members typed', () => {
   const members = [{ id: 1, name: '<script>alert(1)</script>' }];
