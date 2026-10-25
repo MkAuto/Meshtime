@@ -32,9 +32,11 @@ const intlNames = (intl, options, count, dateAt) => Array.from({ length: count }
 const NAMES = Object.fromEntries(LANGUAGES.map(({ code, intl }) => [code, {
   months: intlNames(intl, { month: 'short' }, 12, index => Date.UTC(2000, index, 1)),
   // 2023-01-01 was a Sunday: getUTCDay() order, so index == day number
-  weekdays: intlNames(intl, { weekday: 'short' }, 7, index => Date.UTC(2023, 0, 1 + index)),
+  weekdays: Object.fromEntries(['short', 'long', 'narrow'].map(style =>
+    [style, intlNames(intl, { weekday: style }, 7, index => Date.UTC(2023, 0, 1 + index))])),
   monthYear: new Intl.DateTimeFormat(intl, { month: 'long', year: 'numeric', timeZone: 'UTC' }),  // October 2026
   monthDay: new Intl.DateTimeFormat(intl, { month: 'short', day: 'numeric', timeZone: 'UTC' }),   // Nov 1, 1 nov.
+  monthDayLong: new Intl.DateTimeFormat(intl, { month: 'long', day: 'numeric', timeZone: 'UTC' }), // November 1
 }]));
 /** The names of `lang`, English for an unknown one. */
 const namesIn = lang => NAMES[lang] ?? NAMES[DEFAULT_LANGUAGE];
@@ -119,6 +121,9 @@ export function formatDate(isoDate, format, lang) {
 
 /** '2026-11-01' as the calendar labels a day of the month around: 'Nov 1', '1 nov.' */
 export const formatMonthDay = (isoDate, lang) => namesIn(lang).monthDay.format(new Date(isoDate + 'T00:00:00Z'));
+/** ... and in full: 'November 1', '1 novembre' */
+export const formatMonthDayLong = (isoDate, lang) =>
+  namesIn(lang).monthDayLong.format(new Date(isoDate + 'T00:00:00Z'));
 
 // ---- event times ----
 // Times are 'HH:MM' wall-clock strings with no timezone: whatever the group means by "19:00".
@@ -130,19 +135,12 @@ export const isValidTime = text => /^([01]\d|2[0-3]):[0-5]\d$/.test(text || '');
  * `field` says which row of the event form the message goes under: 'start' (date + time) or 'end'.
  * `message` is its key in src/locales.
  */
-export function eventError({ date, endDate, startTime, endTime, repeats = null, repeatUntil = null }) {
+export function eventError({ date, endDate, startTime, endTime, rule = null }) {
   if (!isValidDate(date)) {
     return { field: 'start', message: 'errors.event.startDate' };
   }
-  if (repeats && !Object.hasOwn(REPEATS, repeats)) {
-    return { field: 'repeat', message: 'errors.event.repeat' };
-  }
-  if (repeats && repeatUntil && (!isValidDate(repeatUntil) || repeatUntil < date)) {
-    return { field: 'repeat', message: 'errors.event.repeatUntil' };
-  }
-  // each one must end before the next starts: a week-long event cannot come back every week
-  const { days, months } = REPEATS[repeats] ?? {};
-  if (repeats && isValidDate(endDate) && daysBetween(date, endDate) >= (days ?? 28 * months)) {
+  // each time must end before the next starts: a week-long event cannot come back every week (rule: repeatRule)
+  if (rule && isValidDate(endDate) && daysBetween(date, endDate) >= ruleGap(rule)) {
     return { field: 'repeat', message: 'errors.event.repeatTooLong' };
   }
   if (endDate && (!isValidDate(endDate) || endDate < date)) {
@@ -210,56 +208,250 @@ export function eventLanes(events) {
 }
 
 // ---- repeating events ----
-// events.repeats: how often an event comes back (NULL: never), until events.repeat_until if set (the last date
-// one may start). Its own date..end_date is the first; every other one is the same length, moved by a step.
-// A month without that day (the 31st, February 29) has none, as RRULE does.
-export const REPEATS = {
-  weekly: { days: 7, rrule: 'FREQ=WEEKLY' },
-  biweekly: { days: 14, rrule: 'FREQ=WEEKLY;INTERVAL=2' },
-  monthly: { months: 1, rrule: 'FREQ=MONTHLY' },
-  yearly: { months: 12, rrule: 'FREQ=YEARLY' },
-};
+// events.rrule: how an event comes back, as an RFC 5545 RRULE: the part of one the event form makes (repeatRule),
+// FREQ, INTERVAL, BYDAY (a weekly one's weekdays, or which weekday of the month: 2TU, -1FR for the last one) and
+// COUNT or UNTIL. NULL: it does not. Its own date..end_date is the first time, always one its rule gives
+// (firstTime); every other one is the same length. A month without that day (the 31st, February 29) has none, as
+// RRULE says. event_changes (db.js) holds its times changed or skipped one by one, by the date the rule gave them.
 
-const daysBetween = (from, to) => (Date.parse(to) - Date.parse(from)) / 864e5;
+export const WEEKDAY_CODES = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']; // getUTCDay() order
+export const FREQS = ['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'];
+export const MAX_EVERY = 99; // Custom: repeat every 1..99
+export const MAX_COUNT = 999; // Ends after 1..999 times
 
-/** The start of occurrence `n` (0 = the event's own date), or null when that month has no such day. */
-function occurrenceDate(date, { days, months }, n) {
-  if (days) {
-    return addDays(date, days * n);
-  }
+export const daysBetween = (from, to) => (Date.parse(to) - Date.parse(from)) / 864e5;
+const weekdayCode = date => WEEKDAY_CODES[new Date(date + 'T00:00:00Z').getUTCDay()];
+const mondayFirst = code => (WEEKDAY_CODES.indexOf(code) + 6) % 7; // Monday 0 .. Sunday 6
+const daysInMonth = (year, month) => new Date(Date.UTC(year, month, 0)).getUTCDate(); // month 1..12
+
+/** Which of its weekday in its month `date` is: { nth: 1..5, last: true when in the month's last 7 days }. */
+export function weekdayInMonth(date) {
   const [year, month, day] = date.split('-').map(Number);
-  const moved = new Date(Date.UTC(year, month - 1 + months * n, day));
-  return moved.getUTCDate() === day ? moved.toISOString().slice(0, 10) : null;
+  return { nth: Math.ceil(day / 7), last: day + 7 > daysInMonth(year, month) };
+}
+
+/** The day of the month a BYDAY like 2TU (its second Tuesday) or -1FR (its last Friday) is, in year-month. */
+function dayByWeekday(year, month, byday) {
+  const [, nth, code] = /^(-?\d)(\w\w)$/.exec(byday);
+  const weekday = WEEKDAY_CODES.indexOf(code);
+  if (nth > 0) {
+    return 1 + (weekday - new Date(Date.UTC(year, month - 1, 1)).getUTCDay() + 7) % 7 + 7 * (nth - 1);
+  }
+  const last = daysInMonth(year, month);
+  return last - (new Date(Date.UTC(year, month - 1, last)).getUTCDay() - weekday + 7) % 7;
+}
+
+/** 'FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE;COUNT=10' as { freq, interval, byday, count, until }. null for none. */
+export function parseRrule(text) {
+  if (!text) {
+    return null;
+  }
+  const parts = Object.fromEntries(text.split(';').map(part => part.split('=')));
+  return {
+    freq: parts.FREQ,
+    interval: Number(parts.INTERVAL ?? 1),
+    byday: parts.BYDAY?.split(','),
+    count: parts.COUNT && Number(parts.COUNT),
+    until: parts.UNTIL?.replace(/^(\d{4})(\d\d)(\d\d).*/, '$1-$2-$3'),
+  };
+}
+
+/** The other way. */
+export const formatRrule = ({ freq, interval = 1, byday, count, until }) => [
+  `FREQ=${freq}`, interval > 1 && `INTERVAL=${interval}`, byday && `BYDAY=${byday.join(',')}`,
+  count && `COUNT=${count}`, until && `UNTIL=${until.replaceAll('-', '')}`,
+].filter(Boolean).join(';');
+
+/** Whether two rules give the same dates, however each ends. */
+export const sameRule = (a, b) =>
+  formatRrule({ ...a, count: 0, until: '' }) === formatRrule({ ...b, count: 0, until: '' });
+
+/**
+ * Every date `rule` gives from `start` on, in order; endless without COUNT or UNTIL, so stop reading when done.
+ * COUNT counts from the first, the skipped ones included, as RFC 5545 has it.
+ */
+function* ruleDates(start, { freq, interval = 1, byday, count, until }) {
+  const [year, month, day] = start.split('-').map(Number);
+  let made = 0;
+  for (let step = 0; ; step += interval) {
+    let dates;
+    if (freq === 'DAILY') {
+      dates = [addDays(start, step)];
+    } else if (freq === 'WEEKLY') {
+      const monday = addDays(start, 7 * step - mondayFirst(weekdayCode(start)));
+      dates = byday.map(code => addDays(monday, mondayFirst(code))).sort();
+    } else {
+      const first = new Date(Date.UTC(year, month - 1 + (freq === 'MONTHLY' ? step : 12 * step), 1));
+      const [thatYear, thatMonth] = [first.getUTCFullYear(), first.getUTCMonth() + 1];
+      const thatDay = byday ? dayByWeekday(thatYear, thatMonth, byday[0]) : day;
+      dates = thatDay <= daysInMonth(thatYear, thatMonth) ? [`${thatYear}-${pad2(thatMonth)}-${pad2(thatDay)}`] : [];
+    }
+    for (const date of dates.filter(date => date >= start)) {
+      if ((until && date > until) || made === count) {
+        return;
+      }
+      made++;
+      yield date;
+    }
+  }
+}
+
+/** The first date `rule` gives on or after `date`: where a series asked to start then starts. Undefined: none. */
+export const firstTime = (date, rule) => ruleDates(date, rule).next().value;
+
+/** How many times the rule of a series starting on `start` gives before `date`. */
+export function timesBefore(start, rule, date) {
+  let count = 0;
+  for (const time of ruleDates(start, rule)) {
+    if (time >= date) {
+      break;
+    }
+    count++;
+  }
+  return count;
+}
+
+/** The fewest days between two times `rule` gives: an event must end before it comes back (eventError). */
+function ruleGap({ freq, interval = 1, byday }) {
+  if (freq !== 'WEEKLY') {
+    return { DAILY: 1, MONTHLY: 28, YEARLY: 365 }[freq] * interval;
+  }
+  const days = byday.map(mondayFirst).sort((a, b) => a - b);
+  return Math.min(7 * interval - days.at(-1) + days[0], ...days.slice(1).map((day, i) => day - days[i]));
 }
 
 /**
- * Every occurrence of `events` that touches from..to, each a copy of its event at its own date and end_date,
- * sorted like the calendar lists them: by day, all-day first, then by start time. One that does not repeat is
- * its own only occurrence.
- * ponytail: walks each repeating event from its first date, fine for years of weekly events; jump straight to
+ * The time of a repeating `event` its rule gave `on`, as it shows: moved to that date, with its own changes
+ * (event.changes, event_changes as JSON: { [on]: { title, date, ... } }, null for a skipped one). `on` is kept.
+ */
+export function timeOn(event, on) {
+  const changes = JSON.parse(event.changes || '{}')[on];
+  return { ...event, date: on, end_date: addDays(on, daysBetween(event.date, event.end_date)), on, ...changes };
+}
+
+/**
+ * Every time `events` happen that touches from..to, sorted like the calendar lists them: by day, all-day first,
+ * then by start time. One that does not repeat is its own only time; a repeating one's are timeOn copies, without
+ * the skipped ones.
+ * ponytail: walks each repeating event from its first date, fine for years of daily events; jump straight to
  * `from` if a group ever has thousands.
  */
 export function occurrences(events, from, to) {
   const found = [];
   for (const event of events) {
-    const repeat = REPEATS[event.repeats];
-    const length = daysBetween(event.date, event.end_date);
-    for (let n = 0; ; n++) {
-      const date = repeat ? occurrenceDate(event.date, repeat, n) : event.date;
-      if (date > to || (repeat && event.repeat_until && date > event.repeat_until)) {
+    const rule = parseRrule(event.rrule);
+    if (!rule) {
+      if (event.date <= to && event.end_date >= from) {
+        found.push(event);
+      }
+      continue;
+    }
+    const changes = JSON.parse(event.changes || '{}');
+    // a time moved in from after `to` still counts: the walk goes on to the last changed one
+    const last = [to, ...Object.keys(changes)].sort().at(-1);
+    for (const on of ruleDates(event.date, rule)) {
+      if (on > last) {
         break;
       }
-      const endDate = date && addDays(date, length);
-      if (date && endDate >= from) {
-        found.push({ ...event, date, end_date: endDate });
-      }
-      if (!repeat) {
-        break;
+      const time = changes[on] === null ? null : timeOn(event, on);
+      if (time && time.date <= to && time.end_date >= from) {
+        found.push(time);
       }
     }
   }
   return found.sort((a, b) => a.date.localeCompare(b.date) || Boolean(a.start_time) - Boolean(b.start_time)
     || (a.start_time ?? '').localeCompare(b.start_time ?? '') || a.id - b.id);
+}
+
+// The Repeat menu: what each of its choices means for an event starting on `date`.
+export const REPEAT_PRESETS = {
+  daily: () => ({ freq: 'DAILY', interval: 1 }),
+  weekly: date => ({ freq: 'WEEKLY', interval: 1, byday: [weekdayCode(date)] }),
+  biweekly: date => ({ freq: 'WEEKLY', interval: 2, byday: [weekdayCode(date)] }),
+  monthly: () => ({ freq: 'MONTHLY', interval: 1 }),
+  // its second Tuesday; a fifth one is the month's last
+  monthlyNth: date => ({ freq: 'MONTHLY', interval: 1,
+    byday: [monthlyByday(date, weekdayInMonth(date).nth < 5 ? 'nth' : 'last')] }),
+  yearly: () => ({ freq: 'YEARLY', interval: 1 }),
+  weekdays: () => ({ freq: 'WEEKLY', interval: 1, byday: ['MO', 'TU', 'WE', 'TH', 'FR'] }),
+};
+
+/** Custom's monthly choice for a start date, as a BYDAY: 'nth' its 2TU, 'last' -1TU. Undefined: the date has none. */
+function monthlyByday(date, choice) {
+  const { nth, last } = weekdayInMonth(date);
+  if (choice === 'nth' && nth < 5) {
+    return nth + weekdayCode(date);
+  }
+  if (choice === 'last' && last) {
+    return '-1' + weekdayCode(date);
+  }
+  return undefined;
+}
+
+/**
+ * The rule the event form's Repeat fields ask for, for an event starting on `date` (a valid one): { rule }, null
+ * when it does not repeat, or { error }, a key in src/locales. The fields as posted: repeats (the menu: '', a
+ * REPEAT_PRESETS key or 'custom'), Custom's every, unit (FREQS), days (WEEKDAY_CODES) and monthly ('day', 'nth'
+ * or 'last'), and ends ('never', 'on' or 'after') with endsOn / endsAfter.
+ */
+export function repeatRule({ repeats, every, unit, days = [], monthly, ends, endsOn, endsAfter }, date) {
+  if (!repeats) {
+    return { rule: null };
+  }
+  let rule;
+  if (repeats === 'custom') {
+    const interval = Number(every);
+    if (!Number.isInteger(interval) || interval < 1 || interval > MAX_EVERY) {
+      return { error: 'errors.event.repeatEvery' };
+    }
+    if (!FREQS.includes(unit) || !days.every(code => WEEKDAY_CODES.includes(code))) {
+      return { error: 'errors.event.repeat' };
+    }
+    rule = { freq: unit, interval };
+    if (unit === 'WEEKLY') {
+      // none ticked: the start's own weekday, as RRULE has it
+      rule.byday = days.length
+        ? [...new Set(days)].sort((a, b) => mondayFirst(a) - mondayFirst(b))
+        : [weekdayCode(date)];
+    } else if (unit === 'MONTHLY' && monthly && monthly !== 'day') {
+      rule.byday = [monthlyByday(date, monthly)];
+      if (!rule.byday[0]) {
+        return { error: 'errors.event.repeat' };
+      }
+    }
+  } else if (Object.hasOwn(REPEAT_PRESETS, repeats)) {
+    rule = REPEAT_PRESETS[repeats](date);
+  } else {
+    return { error: 'errors.event.repeat' };
+  }
+  if (ends === 'on') {
+    if (!isValidDate(endsOn) || endsOn < date) {
+      return { error: 'errors.event.repeatUntil' };
+    }
+    rule.until = endsOn;
+  } else if (ends === 'after') {
+    const count = Number(endsAfter);
+    if (!Number.isInteger(count) || count < 1 || count > MAX_COUNT) {
+      return { error: 'errors.event.repeatCount' };
+    }
+    rule.count = count;
+  }
+  return { rule };
+}
+
+/** The other way: a saved rule (null: none) as the Repeat fields show it, for an event starting on `date`. */
+export function repeatForm(rule, date) {
+  const preset = rule && Object.keys(REPEAT_PRESETS).find(name => sameRule(REPEAT_PRESETS[name](date), rule));
+  return {
+    repeats: rule ? preset ?? 'custom' : '',
+    every: rule?.interval ?? 1,
+    unit: rule?.freq ?? 'WEEKLY',
+    days: rule?.freq === 'WEEKLY' ? rule.byday : [weekdayCode(date)],
+    monthly: rule?.freq === 'MONTHLY' && rule.byday ? (rule.byday[0].startsWith('-') ? 'last' : 'nth') : 'day',
+    ends: rule?.count ? 'after' : rule?.until ? 'on' : 'never',
+    endsOn: rule?.until ?? '',
+    endsAfter: rule?.count ?? '',
+  };
 }
 
 export const DEFAULT_WEEK_START = 0; // Sunday
@@ -269,9 +461,9 @@ export const WEEK_START_CHOICES = [6, 0, 1];
 export const isValidColor = value => Number.isInteger(value) && value >= 0 && value < COLORS;
 
 export const isValidWeekStart = value => WEEK_START_CHOICES.includes(value);
-/** The short weekday names of `lang`, starting from weekStart (0 = Sunday): ['Mon', 'Tue', ...]. */
-export function weekdayNames(weekStart, lang) {
-  const { weekdays } = namesIn(lang);
+/** The weekday names of `lang`, starting from weekStart (0 = Sunday): ['Mon', ...], ['Monday', ...] or ['M', ...]. */
+export function weekdayNames(weekStart, lang, style = 'short') {
+  const weekdays = namesIn(lang).weekdays[style];
   return [...weekdays.slice(weekStart), ...weekdays.slice(0, weekStart)];
 }
 
@@ -402,17 +594,17 @@ export function fold(line) {
 // one zone; otherwise add TZID=America/Toronto and a VTIMEZONE block.
 const icsLocalTime = (date, time) => date.replaceAll('-', '') + 'T' + time.replace(':', '') + '00';
 
-/** The RRULE of a repeating events row (REPEATS), null for one that does not repeat. UNTIL is the same kind of
- *  value as DTSTART (RFC 5545): a date for an all-day event, a floating time at the end of that day otherwise. */
-export function eventRrule({ repeats, repeat_until: until, start_time: startTime }) {
-  if (!REPEATS[repeats]) {
-    return null;
-  }
-  const end = until && (startTime ? icsLocalTime(until, '23:59') : until.replaceAll('-', ''));
-  return REPEATS[repeats].rrule + (end ? `;UNTIL=${end}` : '');
-}
+/** An events row's RRULE for a feed. UNTIL is the same kind of value as DTSTART (RFC 5545): the date for an all-day
+ *  event, as saved, and a floating time at the end of that day otherwise. */
+export const eventRrule = ({ rrule, start_time: startTime }) =>
+  rrule && startTime ? rrule.replace(/UNTIL=(\d{8})/, 'UNTIL=$1T235900') : rrule;
+
+// DTSTART and its kind: a floating time, or a date for an all-day event
+const icsStart = (date, time) => (time ? ':' + icsLocalTime(date, time) : ';VALUE=DATE:' + date.replaceAll('-', ''));
 
 // items: [{ uid, date 'YYYY-MM-DD', endDate?, startTime?, endTime?, summary, location?, rrule?, stamp (ISO) }]
+// A repeating one's skipped times are its exdates (dates). A time of it changed on its own is one more item with
+// its uid and recurrenceId: { date, startTime } of the time it replaces, as the repeating one's DTSTART has them.
 export function buildIcs({ name, host, items }) {
   const lines = [
     'BEGIN:VCALENDAR',
@@ -427,6 +619,9 @@ export function buildIcs({ name, host, items }) {
   for (const item of items) {
     const endDate = item.endDate || item.date;
     lines.push('BEGIN:VEVENT', `UID:${item.uid}@${host}`, 'DTSTAMP:' + icsTimestamp(item.stamp));
+    if (item.recurrenceId) {
+      lines.push('RECURRENCE-ID' + icsStart(item.recurrenceId.date, item.recurrenceId.startTime));
+    }
     if (item.startTime) {
       lines.push('DTSTART:' + icsLocalTime(item.date, item.startTime));
       // No end time: DTEND left out, which RFC 5545 reads as ending when it starts.
@@ -439,7 +634,7 @@ export function buildIcs({ name, host, items }) {
         'DTEND;VALUE=DATE:' + addDays(endDate, 1).replaceAll('-', ''));
     }
     if (item.rrule) {
-      lines.push('RRULE:' + item.rrule);
+      lines.push('RRULE:' + item.rrule, ...(item.exdates ?? []).map(date => 'EXDATE' + icsStart(date, item.startTime)));
     }
     if (item.location) {
       lines.push('LOCATION:' + escapeIcsText(item.location));

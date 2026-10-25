@@ -197,6 +197,65 @@ if (eventForm) {
   });
 }
 
+// Event form, Repeat: its choices name the start date ("Weekly on Tuesday", from data-label), so they follow it
+// when it changes; Custom's "on the second Tuesday" is only there for a date in the month's first 4 weeks, "on the
+// last Tuesday" for one in its last 7 days. Its unit says "week" or "weeks" as its number does, and filling in
+// when it ends picks that way of ending. Without JS the server works it all out from the date anyway.
+const repeats = document.getElementById('repeats');
+if (repeats) {
+  const { date, repeat_every: every, repeat_unit: unit, repeat_monthly: monthly, ends } = repeats.form.elements;
+  const ordinals = JSON.parse(repeats.dataset.ordinals);
+  date.addEventListener('input', () => {
+    if (!date.value) {
+      return;
+    }
+    const at = new Date(date.value + 'T00:00:00Z');
+    const lang = document.documentElement.lang;
+    const day = at.getUTCDate();
+    const nth = Math.ceil(day / 7);
+    const words = {
+      day: at.toLocaleDateString(lang, { weekday: 'long', timeZone: 'UTC' }),
+      n: day,
+      nth: ordinals[Math.min(nth, 5) - 1],
+      date: at.toLocaleDateString(lang, { month: 'long', day: 'numeric', timeZone: 'UTC' }),
+    };
+    for (const option of repeats.form.querySelectorAll('option[data-label]')) {
+      option.textContent = option.dataset.label.replace(/\{(\w+)\}/g, (_, word) => words[word]);
+    }
+    const daysInMonth = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth() + 1, 0)).getUTCDate();
+    for (const [value, missing] of [['nth', nth > 4], ['last', day + 7 <= daysInMonth]]) {
+      const option = monthly.querySelector(`[value=${value}]`);
+      option.hidden = option.disabled = missing;
+    }
+    if (monthly.selectedOptions[0].disabled) {
+      monthly.value = 'day';
+    }
+  });
+  every.addEventListener('input', () => {
+    for (const option of unit.options) {
+      option.textContent = every.value === '1' ? option.dataset.one : option.dataset.other;
+    }
+  });
+  for (const [field, way] of [['ends_on', 'on'], ['ends_after', 'after']]) {
+    repeats.form.elements[field].addEventListener('input', () => { ends.value = way; });
+  }
+}
+
+// Event form, a repeating event with times changed on their own: saving all of them (or the following ones) with
+// a new date or Repeat drops those changes (routes.js), so it asks first, only then.
+const changedTimes = document.querySelector('form[data-confirm-changes]');
+if (changedTimes) {
+  const dateAndRule = () => JSON.stringify([...new FormData(changedTimes)]
+    .filter(([name]) => name === 'date' || name.startsWith('repeat')));
+  const before = dateAndRule();
+  changedTimes.addEventListener('submit', event => {
+    if (changedTimes.elements.scope.value !== 'one' && dateAndRule() !== before
+      && !confirm(changedTimes.dataset.confirmChanges)) {
+      event.preventDefault();
+    }
+  });
+}
+
 // Event form: the location box's clear button empties it (style.css shows it only while there is text). Without JS
 // it stays hidden, as it could do nothing.
 const clearPlace = document.querySelector('.place-clear');

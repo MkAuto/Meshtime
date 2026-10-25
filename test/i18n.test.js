@@ -12,7 +12,7 @@ const auth = await import('../src/auth.js');
 const { routes } = await import('../src/routes.js');
 const { pollPage } = await import('../src/views.js');
 const { t, syncErrorText } = await import('../src/i18n.js');
-const { LANGUAGES, DAY_PARTS, SLOTS, ANSWERS, BUSY_CHOICES, SYNC_DAYS_CHOICES, REPEATS, pickLanguage } =
+const { LANGUAGES, DAY_PARTS, SLOTS, ANSWERS, BUSY_CHOICES, SYNC_DAYS_CHOICES, FREQS, pickLanguage } =
   await import('../src/lib.js');
 
 const SRC = join(import.meta.dirname, '..', 'src');
@@ -58,7 +58,10 @@ test('every key the templates and the code use is in en.json', () => {
     ...['all', 'am', 'pm', 'eve', 'none', 'auto'].map(part => ['views.js', `dayParts.choice.${part}`]),
     ...SLOTS.map(slot => ['views.js', `dayParts.short.${slot}`]),
     ...ANSWERS.map(answer => ['views.js', `poll.answers.${answer}`]),
-    ...['none', ...Object.keys(REPEATS)].map(value => ['views.js', `event.repeats.${value}`]),
+    ...['daily', 'days', 'weekly', 'weeks', 'monthly', 'months', 'yearly', 'years', 'first', 'second', 'third',
+      'fourth', 'last'].map(key => ['views.js', `event.rule.${key}`]),
+    ...FREQS.flatMap(freq => ['one', 'other'].map(form => ['views.js', `event.units.${freq}.${form}`])),
+    ...['one', 'following', 'all'].map(scope => ['views.js', `event.scope.${scope}`]),
     ...BUSY_CHOICES.map(minutes => ['views.js', `settings.busyChoices.${minutes}`]),
     ...SYNC_DAYS_CHOICES.map(days => ['views.js', `settings.syncDaysChoices.${days}`]),
     ...['event', 'poll'].map(kind => ['routes.js', `errors.privateNeedsGroup.${kind}`]),

@@ -149,13 +149,32 @@ button.danger:not(.link) { background: var(--card); border-color: var(--line); c
   box-shadow: var(--shadow);
 }
 .stack { display: grid; gap: .8rem; max-width: 360px; }
-.stack label { display: grid; gap: .2rem; }
+.stack label { display: grid; grid-template-columns: minmax(0, 1fr); gap: .2rem; }
 .stack label.check { display: flex; align-items: center; gap: .4rem; }
 /* Event form: an all-day event has no times, so its time inputs are hidden. */
 form:has(#all-day:checked) input[type=time] { display: none; }
-/* ...and one that does not repeat has no end to its repeats. */
-form:has(#repeats option[value=""]:checked) .repeat-until { display: none; }
-.repeat-until { display: inline-flex; align-items: center; gap: .4rem; }
+/* Repeat: one that does not repeat has no end; only "Custom…" shows its fields, and its unit which of them (the
+   weekdays for weeks, which day for months). "This event" of a repeating one hides what is the whole event's. */
+form:has(#repeats option[value=""]:checked) .repeat-ends,
+form:not(:has(#repeats option[value=custom]:checked)) .repeat-custom,
+.repeat-custom:not(:has(option[value=WEEKLY]:checked)) .repeat-weekdays,
+.repeat-custom:not(:has(option[value=MONTHLY]:checked)) .repeat-monthly,
+form:has(input[name=scope][value=one]:checked) :is(.repeat, .visibility) { display: none; }
+/* minmax(0, 1fr): a select as wide as its longest option (French ones are long) shrinks to the phone, not the reverse. */
+.repeat, .repeat-custom, .repeat-ends, .scope { display: grid; grid-template-columns: minmax(0, 1fr); gap: .5rem; }
+.repeat-ends, .scope { border: none; padding: 0; margin: 0; gap: .3rem; }
+.repeat-ends legend, .scope legend { padding: 0; margin-bottom: .3rem; }
+.repeat input[type=number] { width: 4.5rem; }
+/* Custom's weekdays: a round letter each, like Google Calendar's, the checkbox over it unseen but still there */
+.repeat-weekdays { display: flex; gap: .35rem; }
+.stack .repeat-weekdays label { position: relative; display: block; }
+.repeat-weekdays input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.repeat-weekdays span {
+  display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: 50%;
+  background: var(--code-bg); color: var(--muted); font-size: .8rem; font-weight: 600;
+}
+.repeat-weekdays input:checked + span { background: var(--accent); color: var(--on-accent); }
+.repeat-weekdays input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* The location box looks like a map search: a pin on the left, the clear button (app.js) on the right. */
 .place-picker { display: grid; gap: .2rem; }
 .place-box { position: relative; }

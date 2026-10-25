@@ -100,23 +100,72 @@
     "defaultColor": "Par défaut",
     "colorN": "Couleur {{n}}",
     "confirmDelete": "Supprimer {{title}}?",
-    "confirmDeleteAll": "Supprimer {{title}} et toutes ses répétitions?",
-    "allRepeats": "Il se répète : les changements s'appliquent à toutes ses répétitions.",
     "delete": "Supprimer l'événement",
     "location": "Lieu",
     "locationPlaceholder": "Salle d'escalade, 123 rue Principale",
     "clearLocation": "Effacer",
     "repeat": "Répétition",
-    "until": "jusqu'au",
-    "repeatUntil": "Répéter jusqu'au",
     "repeats": {
       "none": "Ne se répète pas",
-      "weekly": "Chaque semaine",
-      "biweekly": "Toutes les 2 semaines",
-      "monthly": "Chaque mois",
-      "yearly": "Chaque année"
+      "weekdays": "Tous les jours de semaine (du lundi au vendredi)",
+      "custom": "Personnaliser…"
     },
-    "repeatsUntil": "{{repeats}} jusqu'au {{date}}"
+    "every": "Répéter tous les",
+    "everyHowMany": "Combien",
+    "unit": "Unité",
+    "repeatOn": "Répéter le",
+    "units": {
+      "DAILY": {
+        "one": "jour",
+        "other": "jours"
+      },
+      "WEEKLY": {
+        "one": "semaine",
+        "other": "semaines"
+      },
+      "MONTHLY": {
+        "one": "mois",
+        "other": "mois"
+      },
+      "YEARLY": {
+        "one": "an",
+        "other": "ans"
+      }
+    },
+    "repeatEnds": "Se termine",
+    "endsNever": "Jamais",
+    "endsOn": "Le",
+    "endsOnDate": "Date de fin",
+    "endsAfter": "Après",
+    "endsAfterCount": "Nombre d'occurrences",
+    "occurrences": "occurrences",
+    "rule": {
+      "daily": "Tous les jours",
+      "days": "Tous les {{n}} jours",
+      "weekly": "Chaque semaine le {{days}}",
+      "weeks": "Toutes les {{n}} semaines le {{days}}",
+      "weekdays": "Tous les jours de semaine",
+      "monthly": "Chaque mois le {{on}}",
+      "months": "Tous les {{n}} mois le {{on}}",
+      "yearly": "Chaque année le {{date}}",
+      "years": "Tous les {{n}} ans le {{date}}",
+      "day": "{{n}}",
+      "nth": "{{nth}} {{day}}",
+      "first": "premier",
+      "second": "deuxième",
+      "third": "troisième",
+      "fourth": "quatrième",
+      "last": "dernier",
+      "until": "{{rule}}, jusqu'au {{date}}",
+      "count": "{{rule}}, {{n}} fois"
+    },
+    "scope": {
+      "legend": "Événement répété",
+      "one": "Cet événement",
+      "following": "Cet événement et les suivants",
+      "all": "Tous les événements"
+    },
+    "confirmChanges": "Les occurrences de cet événement modifiées une par une redeviendront comme l'événement. Enregistrer quand même?"
   },
   "shareWith": {
     "legend": "Qui le voit",
@@ -441,7 +490,9 @@
       "endAfterStart": "L'heure de fin doit être après l'heure de début.",
       "repeat": "Répétition invalide.",
       "repeatUntil": "Les répétitions doivent finir le jour du début ou plus tard.",
-      "repeatTooLong": "Un événement répété doit finir avant de revenir."
+      "repeatTooLong": "Un événement répété doit finir avant de revenir.",
+      "repeatEvery": "Répéter tous les 1 à 99.",
+      "repeatCount": "Le nombre d'occurrences doit être de 1 à 999."
     }
   },
   "sync": {

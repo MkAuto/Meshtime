@@ -7,7 +7,8 @@ import {
   monthInfo, addDays, formatDate, formatMonthDay, formatTime, formatEventWhen, eventLanes, dayClass, weekdayNames, today,
   wallClock, BUSY_CHOICES, DEFAULT_BUSY_MINUTES, SLOTS, DATE_FORMATS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_DATES,
   SYNC_DAYS_CHOICES, DEFAULT_SYNC_DAYS, MIN_PASSWORD, LANGUAGES, DEFAULT_LANGUAGE, isValidLanguage, randomColor,
-  REPEATS,
+  DEFAULT_WEEK_START, REPEAT_PRESETS, FREQS, WEEKDAY_CODES, parseRrule, repeatForm, weekdayInMonth, formatMonthDayLong,
+  isValidDate,
 } from './lib.js';
 import { t, dictionary, hasText, syncErrorText } from './i18n.js';
 
@@ -126,15 +127,80 @@ const eventColor = event => event.color == null ? '' : ` colored c${event.color}
 
 const MS_PER_DAY = 864e5;
 
-/** An event's when and how it repeats, as tooltips and lists show it: '3 Oct 2026 19:00 · Every week'. */
-function eventDetails(event, user) {
+// ---- repeating events, in words ----
+// The ordinals of "Monthly on the second Tuesday": BYDAY 1..4, and -1 (or a fifth) the last.
+const ORDINALS = ['first', 'second', 'third', 'fourth', 'last'];
+const RULE_TEXTS = { DAILY: ['daily', 'days'], WEEKLY: ['weekly', 'weeks'], MONTHLY: ['monthly', 'months'],
+  YEARLY: ['yearly', 'years'] }; // event.rule.* for every 1, and for every n
+const weekdayName = (code, lang) => weekdayNames(0, lang, 'long')[WEEKDAY_CODES.indexOf(code)];
+
+/**
+ * What the Repeat choices say about a start date: its weekday, its day of the month, which of its weekday in the
+ * month it is (the second; a fifth is the last), and its day and month. app.js fills in the same {day} {n} {nth}
+ * {date} (data-label) when the date changes.
+ */
+function dateWords(date, lang) {
+  const nth = Math.min(weekdayInMonth(date).nth, 5);
+  return {
+    day: weekdayNames(0, lang, 'long')[new Date(date + 'T00:00:00Z').getUTCDay()],
+    n: Number(date.slice(8)),
+    nth: t(lang, `event.rule.${ORDINALS[nth - 1]}`),
+    date: formatMonthDayLong(date, lang),
+  };
+}
+const PLACEHOLDERS = { day: '{day}', n: '{n}', nth: '{nth}', date: '{date}' };
+
+/** A choice of the Repeat menu (REPEAT_PRESETS, '' and custom) or of Custom's monthly one, for dateWords `words`. */
+function repeatLabel(choice, words, lang) {
+  const monthlyOn = on => t(lang, 'event.rule.monthly', { on });
+  return {
+    '': () => t(lang, 'event.repeats.none'),
+    daily: () => t(lang, 'event.rule.daily'),
+    weekly: () => t(lang, 'event.rule.weekly', { days: words.day }),
+    biweekly: () => t(lang, 'event.rule.weeks', { n: 2, days: words.day }),
+    monthly: () => monthlyOn(t(lang, 'event.rule.day', { n: words.n })),
+    monthlyNth: () => monthlyOn(t(lang, 'event.rule.nth', { nth: words.nth, day: words.day })),
+    monthlyLast: () => monthlyOn(t(lang, 'event.rule.nth', { nth: t(lang, 'event.rule.last'), day: words.day })),
+    yearly: () => t(lang, 'event.rule.yearly', { date: words.date }),
+    weekdays: () => t(lang, 'event.repeats.weekdays'),
+    custom: () => t(lang, 'event.repeats.custom'),
+  }[choice]();
+}
+
+/** A label, and its data-label for app.js when it names the start date. */
+const dateLabel = (choice, words, lang) => {
+  const template = repeatLabel(choice, PLACEHOLDERS, lang);
+  return { label: repeatLabel(choice, words, lang), template: template.includes('{') ? template : '' };
+};
+
+/**
+ * A rule as lists say it, like Google Calendar: "Weekly on Monday, Wednesday", "Every 2 months on the last Friday,
+ * 10 times", "Every weekday, until 19 Oct 2026". `date` is one it gives (its day of the month, its month).
+ */
+function ruleText(rule, date, user) {
   const { lang, date_format: format } = user;
-  const repeats = event.repeats && t(lang, `event.repeats.${event.repeats}`);
+  const words = dateWords(date, lang);
+  const [, nth, code] = /^(-?\d)(\w\w)$/.exec(rule.byday?.[0]) ?? [];
+  const on = nth
+    ? t(lang, 'event.rule.nth', { nth: t(lang, `event.rule.${ORDINALS.at(nth > 0 ? nth - 1 : -1)}`),
+      day: weekdayName(code, lang) })
+    : t(lang, 'event.rule.day', { n: words.n });
+  const everyWeekday = rule.freq === 'WEEKLY' && rule.interval === 1 && rule.byday.join() === 'MO,TU,WE,TH,FR';
+  const text = t(lang, `event.rule.${everyWeekday ? 'weekdays' : RULE_TEXTS[rule.freq][rule.interval > 1 ? 1 : 0]}`, {
+    n: rule.interval, days: rule.byday?.map(day => weekdayName(day, lang)).join(', '), on, date: words.date,
+  });
+  if (rule.count) {
+    return t(lang, 'event.rule.count', { rule: text, n: rule.count });
+  }
+  return rule.until ? t(lang, 'event.rule.until', { rule: text, date: formatDate(rule.until, format, lang) }) : text;
+}
+
+/** An event's when and how it repeats, as tooltips and lists show it: '3 Oct 2026 19:00 · Weekly on Saturday'. */
+function eventDetails(event, user) {
+  const rule = parseRrule(event.rrule);
   return [
-    formatEventWhen(event, format, user.hour12, lang),
-    event.repeat_until
-      ? t(lang, 'event.repeatsUntil', { repeats, date: formatDate(event.repeat_until, format, lang) })
-      : repeats,
+    formatEventWhen(event, user.date_format, user.hour12, user.lang),
+    rule && ruleText(rule, event.on ?? event.date, user),
   ].filter(Boolean).join(' · ');
 }
 
@@ -270,6 +336,7 @@ export function calendarPage(user, yearMonth, {
         place: place(event.location),
         classes: event.end_date < today ? 'past' : '', // its last day is before today
         canEdit: event.created_by === user.id || Boolean(user.is_admin),
+        on: event.rrule ? event.on : '', // which time of a repeating one its Edit link is for
       })),
   });
 }
@@ -342,6 +409,50 @@ const sharingValues = (isPrivate, groupIds = [], groups = []) => ({
   })),
 });
 
+/**
+ * The event page's Repeat fields, and for a time of a repeating event which of its times a change is for (scopes).
+ * `event` is a time (timeOn: `on` is the date its rule gave it), or the form as posted (event.repeat).
+ */
+function repeatValues(user, event, editing) {
+  const { lang, week_start: weekStart = DEFAULT_WEEK_START } = user;
+  const ruleDate = event.on ?? (isValidDate(event.date) ? event.date : today());
+  const repeat = event.repeat ?? repeatForm(parseRrule(event.rrule), ruleDate);
+  const words = dateWords(ruleDate, lang);
+  const { nth, last } = weekdayInMonth(ruleDate);
+  const [letters, names] = [weekdayNames(weekStart, lang, 'narrow'), weekdayNames(weekStart, lang, 'long')];
+  const repeating = editing && Boolean(event.rrule);
+  return {
+    repeatChoices: ['', ...Object.keys(REPEAT_PRESETS), 'custom']
+      .map(value => ({ value, ...dateLabel(value, words, lang), selected: value === repeat.repeats })),
+    every: repeat.every,
+    // "1 week", "2 weeks": app.js switches them as the number changes
+    unitChoices: FREQS.map(value => {
+      const [one, other] = [t(lang, `event.units.${value}.one`), t(lang, `event.units.${value}.other`)];
+      return { value, one, other, label: Number(repeat.every) === 1 ? one : other, selected: value === repeat.unit };
+    }),
+    weekdayChoices: [...WEEKDAY_CODES.slice(weekStart), ...WEEKDAY_CODES.slice(0, weekStart)]
+      .map((value, i) => ({ value, letter: letters[i], name: names[i], checked: repeat.days.includes(value) })),
+    // a date in the month's fifth week has no "fifth Tuesday" (it is the last), one before its last 7 days no last
+    monthlyChoices: [['day', 'monthly', false], ['nth', 'monthlyNth', nth > 4], ['last', 'monthlyLast', !last]]
+      .map(([value, choice, missing]) => ({ value, ...dateLabel(choice, words, lang), missing,
+        selected: value === repeat.monthly })),
+    endsNever: !['on', 'after'].includes(repeat.ends),
+    endsOn: repeat.ends === 'on',
+    endsAfter: repeat.ends === 'after',
+    endsOnDate: repeat.endsOn ?? '',
+    endsAfterCount: repeat.endsAfter ?? '',
+    ordinals: JSON.stringify(ORDINALS.map(key => t(lang, `event.rule.${key}`))),
+    scopes: repeating
+      ? ['one', 'following', 'all'].map(value => ({ value, label: t(lang, `event.scope.${value}`),
+        checked: value === (event.scope ?? 'one') }))
+      : [],
+    on: event.on,
+    // moving all its times or changing its rule drops the times changed on their own: app.js asks first
+    confirmChanges: repeating && Object.keys(JSON.parse(event.changes || '{}')).length
+      ? t(lang, 'event.confirmChanges') : '',
+  };
+}
+
 // One page for both: event.id set means editing that event, otherwise adding one.
 // `event` is an events row, or what was posted when the form is shown again with `errors`
 // ({ title, start, end, color }: each shows under that part of the form).
@@ -366,9 +477,7 @@ export function eventPage(user, { event, errors = {}, groups = [] }) {
     action: editing ? `/events/${event.id}` : '/events',
     button: t(lang, editing ? 'common.save' : 'event.add'),
     title: event.title ?? '',
-    // a repeating event is one row: editing or deleting it changes every time it comes back
-    confirmDelete: t(lang, event.repeats ? 'event.confirmDeleteAll' : 'event.confirmDelete', { title: event.title ?? '' }),
-    allRepeats: editing && Boolean(event.repeats),
+    confirmDelete: t(lang, 'event.confirmDelete', { title: event.title ?? '' }),
     date: event.date ?? '',
     // A saved event is all day when it has no start time; a rejected form keeps the box as posted.
     allDay: event.allDay ?? !event.start_time,
@@ -377,10 +486,7 @@ export function eventPage(user, { event, errors = {}, groups = [] }) {
     endDate: event.end_date && event.end_date !== event.date ? event.end_date : '',
     endTime: event.end_time ?? '',
     location: event.location ?? '',
-    // '' (does not repeat) first, then every REPEATS key
-    repeatChoices: options(['', ...Object.keys(REPEATS)]
-      .map(value => [value, t(lang, `event.repeats.${value || 'none'}`)]), event.repeats ?? ''),
-    repeatUntil: event.repeat_until ?? '',
+    ...repeatValues(user, event, editing),
     colors: [
       colorChoice('', t(lang, 'event.defaultColor')),
       ...Array.from({ length: COLORS }, (_, i) => colorChoice(i, t(lang, 'event.colorN', { n: i + 1 }))),

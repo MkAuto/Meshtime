@@ -131,7 +131,7 @@
     <li class="{{classes}}">
       {{when}}{{#place}} · <a href="{{url}}" target="_blank" rel="noopener">{{name}}</a>{{/place}} — <b>{{title}}</b>
       <small class="hint">{{by}}</small>
-      {{#canEdit}}<a href="/events/{{id}}">{{t.calendar.edit}}</a>{{/canEdit}}
+      {{#canEdit}}<a href="/events/{{id}}{{#on}}?on={{on}}{{/on}}">{{t.calendar.edit}}</a>{{/canEdit}}
     </li>
     {{/events}}
     {{^events}}

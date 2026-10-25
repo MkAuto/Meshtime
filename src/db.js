@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import {
   COLORS, DEFAULT_WEEK_START, WEEK_START_CHOICES, DATE_FORMATS, DEFAULT_DATE_FORMAT, DAY_PARTS, SLOTS,
-  DEFAULT_BUSY_MINUTES, DEFAULT_SYNC_DAYS, LANGUAGES,
+  DEFAULT_BUSY_MINUTES, DEFAULT_SYNC_DAYS, LANGUAGES, REPEAT_PRESETS, formatRrule,
 } from './lib.js';
 
 const dbPath = process.env.DB_PATH || './data/app.db';
@@ -150,16 +150,22 @@ CREATE TABLE IF NOT EXISTS events(
   -- 0: public, 1: private
   is_private INTEGER NOT NULL DEFAULT 0,
   location TEXT, -- where, as typed; NULL = not given
-  -- how often it comes back (REPEATS in src/lib.js); NULL = never. repeat_until: the last date one may start,
-  -- NULL = forever
-  repeats TEXT,
-  repeat_until TEXT);
+  rrule TEXT); -- how it comes back, an RFC 5545 RRULE (src/lib.js, "repeating events"); NULL = it does not
 
 -- the groups a private event is shared with (none for a public event). Groups its creator is in.
 CREATE TABLE IF NOT EXISTS event_groups(
   event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
   group_id INTEGER NOT NULL REFERENCES member_groups(id) ON DELETE CASCADE,
   PRIMARY KEY(event_id, group_id));
+
+-- the times of a repeating event changed or skipped on their own, by the date its rule gives them (on_date).
+-- changes: JSON of the fields that time has its own (title, date, end_date, start_time, end_time, location,
+-- color; a null value is one emptied); NULL = skipped. Who sees it stays the event's.
+CREATE TABLE IF NOT EXISTS event_changes(
+  event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  on_date TEXT NOT NULL,
+  changes TEXT,
+  PRIMARY KEY(event_id, on_date));
 
 -- passkeys. public_key is SPKI DER (base64url), exactly as the browser's getPublicKey() gave it.
 CREATE TABLE IF NOT EXISTS credentials(
@@ -326,10 +332,20 @@ if (!eventColumns.includes('is_private')) {
 }
 
 // DBs created before locations and repeating events existed: no place given, and every event happens once.
-for (const column of ['location', 'repeats', 'repeat_until']) {
+for (const column of ['location', 'rrule']) {
   if (!eventColumns.includes(column)) {
     db.exec(`ALTER TABLE events ADD COLUMN ${column} TEXT`);
   }
+}
+// DBs from before RRULEs (e71cc52): its repeats were weekly / biweekly / monthly / yearly, the presets of the same
+// name now, until repeat_until. Each is turned into its rule, then the old columns go.
+if (eventColumns.includes('repeats')) {
+  const repeating = db.prepare('SELECT id, date, repeats, repeat_until FROM events WHERE repeats IS NOT NULL').all();
+  for (const event of repeating) {
+    db.prepare('UPDATE events SET rrule = ? WHERE id = ?')
+      .run(formatRrule({ ...REPEAT_PRESETS[event.repeats](event.date), until: event.repeat_until }), event.id);
+  }
+  db.exec('ALTER TABLE events DROP COLUMN repeats; ALTER TABLE events DROP COLUMN repeat_until');
 }
 
 // DBs created before private polls existed: every poll stays public.

@@ -1,9 +1,10 @@
 {{! One page for adding and editing an event. Ticking "All day" hides the time inputs (style.css, no JS),
-    and the server ignores any times sent with it. "Who sees it" is the share-with partial. }}
+    and the server ignores any times sent with it. "Who sees it" is the share-with partial.
+    Editing a time of a repeating event (on: the date its rule gave it) asks which times the change is for, like
+    Google Calendar (scopes); "This event" hides Repeat and Who sees it, which are the whole event's. }}
 <h1>{{heading}}</h1>
 <p class="hint">{{t.event.hint}}</p>
-{{#allRepeats}}<p class="hint">{{t.event.allRepeats}}</p>{{/allRepeats}}
-<form method="post" action="{{action}}" class="stack">
+<form method="post" action="{{action}}" class="stack"{{#confirmChanges}} data-confirm-changes="{{confirmChanges}}"{{/confirmChanges}}>
   <label>
     {{t.event.title}}
     <input name="title" required maxlength="100" value="{{title}}"{{^editing}} autofocus{{/editing}}>
@@ -42,21 +43,57 @@
       </button>
     </div>
   </div>
-  {{! "Does not repeat" hides the end date (style.css); the server drops it then. }}
-  <label>
-    {{t.event.repeat}}
-    <span class="row">
-      <select name="repeats" id="repeats">
+  {{! Repeat, like Google Calendar's. Its choices name the start date ("Weekly on Tuesday"), and app.js renames
+      them (data-label) when it changes. "Custom…" shows its fields, its unit which of them, and "Does not repeat"
+      hides when it ends (style.css, no JS). The server works the rule out from them (repeatRule in lib.js). }}
+  <div class="repeat">
+    <label>
+      {{t.event.repeat}}
+      <select name="repeats" id="repeats" data-ordinals="{{ordinals}}">
         {{#repeatChoices}}
-        <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
+        <option value="{{value}}"{{#template}} data-label="{{template}}"{{/template}}{{#selected}} selected{{/selected}}>{{label}}</option>
         {{/repeatChoices}}
       </select>
-      <span class="repeat-until">
-        {{t.event.until}}
-        <input type="date" name="repeat_until" aria-label="{{t.event.repeatUntil}}" value="{{repeatUntil}}">
+    </label>
+    <div class="repeat-custom">
+      <span class="row">
+        {{t.event.every}}
+        <input type="number" name="repeat_every" min="1" max="99" value="{{every}}" aria-label="{{t.event.everyHowMany}}">
+        <select name="repeat_unit" aria-label="{{t.event.unit}}">
+          {{#unitChoices}}
+          <option value="{{value}}" data-one="{{one}}" data-other="{{other}}"{{#selected}} selected{{/selected}}>{{label}}</option>
+          {{/unitChoices}}
+        </select>
       </span>
-    </span>
-  </label>
+      <span class="repeat-weekdays" role="group" aria-label="{{t.event.repeatOn}}">
+        {{#weekdayChoices}}
+        <label title="{{name}}">
+          <input type="checkbox" name="repeat_days" value="{{value}}" aria-label="{{name}}"{{#checked}} checked{{/checked}}>
+          <span aria-hidden="true">{{letter}}</span>
+        </label>
+        {{/weekdayChoices}}
+      </span>
+      <select name="repeat_monthly" class="repeat-monthly" aria-label="{{t.event.repeatOn}}">
+        {{#monthlyChoices}}
+        <option value="{{value}}"{{#template}} data-label="{{template}}"{{/template}}{{#missing}} hidden disabled{{/missing}}{{#selected}} selected{{/selected}}>{{label}}</option>
+        {{/monthlyChoices}}
+      </select>
+    </div>
+    {{! filling in a date or a number picks its way of ending (app.js) }}
+    <fieldset class="repeat-ends">
+      <legend>{{t.event.repeatEnds}}</legend>
+      <label class="check"><input type="radio" name="ends" value="never"{{#endsNever}} checked{{/endsNever}}> {{t.event.endsNever}}</label>
+      <label class="check">
+        <input type="radio" name="ends" value="on"{{#endsOn}} checked{{/endsOn}}> {{t.event.endsOn}}
+        <input type="date" name="ends_on" value="{{endsOnDate}}" aria-label="{{t.event.endsOnDate}}">
+      </label>
+      <label class="check">
+        <input type="radio" name="ends" value="after"{{#endsAfter}} checked{{/endsAfter}}> {{t.event.endsAfter}}
+        <input type="number" name="ends_after" min="1" max="999" value="{{endsAfterCount}}" aria-label="{{t.event.endsAfterCount}}">
+        {{t.event.occurrences}}
+      </label>
+    </fieldset>
+  </div>
   {{#errors.repeat}}<p class="err">{{errors.repeat}}</p>{{/errors.repeat}}
   <fieldset class="colors">
     <legend>{{t.event.color}}</legend>
@@ -68,11 +105,13 @@
   </fieldset>
   {{#errors.color}}<p class="err">{{errors.color}}</p>{{/errors.color}}
   {{> share-with}}
+  {{> event-scope}}
   <button>{{button}}</button>
 </form>
 {{#editing}}
 <form method="post" action="/events/{{id}}/delete" class="stack delete-event" data-confirm="{{confirmDelete}}">
   <input type="hidden" name="m" value="{{month}}">
+  {{> event-scope}}
   <button class="danger">{{t.event.delete}}</button>
 </form>
 {{/editing}}

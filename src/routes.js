@@ -8,7 +8,8 @@ import { t, syncErrorText } from './i18n.js';
 import {
   isValidDate, isValidMonth, monthInfo, isValidWeekStart, isValidDateFormat, isValidColor, eventError,
   bestDates, buildIcs, birthdayIn, birthdayRrule, today, addDays, DEFAULT_SYNC_DAYS, randomColor, occurrences,
-  eventRrule, ANSWERS, MAX_DATES, MIN_PASSWORD, BASE_URL,
+  eventRrule, parseRrule, formatRrule, sameRule, repeatRule, timeOn, firstTime, timesBefore, daysBetween, ANSWERS,
+  MAX_DATES, MIN_PASSWORD, BASE_URL,
   RP_ID, SLOTS, MAX_SLOTS_PER_DAY, toggleSlot, isValidBusyMinutes, isValidSyncDays, isValidLanguage,
 } from './lib.js';
 
@@ -284,9 +285,9 @@ function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
 
   // Every event shown that touches those weeks, including ones that started before or end after them, and each
   // time a repeating one comes back in them (occurrences). All-day ones first.
-  const events = occurrences(all(`SELECT e.*, u.name AS creator FROM events e
+  const events = occurrences(all(`SELECT e.*, u.name AS creator, ${WITH_CHANGES} FROM events e
                                   JOIN users u ON u.id = e.created_by
-                                  WHERE e.date <= ? AND (e.end_date >= ? OR e.repeats IS NOT NULL)
+                                  WHERE e.date <= ? AND (e.end_date >= ? OR e.rrule IS NOT NULL)
                                     AND ${audience.eventSql}`,
                                   gridEnd, gridStart, ...audience.eventParams), gridStart, gridEnd);
 
@@ -295,11 +296,11 @@ function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
   const shownEventIds = new Set(events.map(event => event.id));
   const hiddenEvents = new Map(); // user id -> the hidden events they are in
   for (const row of occurrences(all(`SELECT DISTINCT e.id, e.title, e.date, e.end_date, e.start_time, e.end_time,
-                                       e.repeats, e.repeat_until, m.user_id
+                                       e.rrule, ${WITH_CHANGES}, m.user_id
                                      FROM events e JOIN event_groups shared ON shared.event_id = e.id
                                      JOIN group_members m ON m.group_id = shared.group_id
                                      WHERE e.is_private = 1 AND e.date <= ?
-                                       AND (e.end_date >= ? OR e.repeats IS NOT NULL) AND m.user_id != ?`,
+                                       AND (e.end_date >= ? OR e.rrule IS NOT NULL) AND m.user_id != ?`,
                                      gridEnd, gridStart, me), gridStart, gridEnd)) {
     if (!shownEventIds.has(row.id)) {
       hiddenEvents.set(row.user_id, [...hiddenEvents.get(row.user_id) ?? [], row]);
@@ -472,38 +473,50 @@ const sharedGroupIds = (kind, id) =>
  * The optional fields arrive as '' when left empty: those become NULL (end_date: the start date).
  * `creatorGroups` are the groups of the event's creator: a private event can only be shared with those.
  * `currentSharing`: an edited event's saved Who sees it, kept while groups are off (readSharing).
+ * Repeat (repeatRule) is not read for a single time of a repeating event (`repeat` false). Its choices are about a
+ * date ("Weekly on Tuesday"): the one posted, `back` days later for a time moved on its own (its rule's date).
+ * `series` is the event as saved: starting `shift` days after the date posted (an edit of every time moves its
+ * first as much as the one shown), on the first date its rule gives from then, with its rrule. Unset on errors.
  */
-function readEventForm(ctx, creatorGroups, currentSharing) {
-  const colorText = ctx.body.get('color') || '';
+function readEventForm(ctx, creatorGroups, currentSharing, { repeat = true, back = 0, shift = 0 } = {}) {
+  const { body } = ctx;
+  const colorText = body.get('color') || '';
   // The time inputs are only hidden when "All day" is ticked, so the browser still sends them: drop them.
-  const allDay = ctx.body.get('all_day') === '1';
+  const allDay = body.get('all_day') === '1';
   const sharing = readSharing(ctx, creatorGroups, 'event', currentSharing);
   const event = {
-    title: cleanText(ctx.body.get('title'), 100),
-    date: ctx.body.get('date') || '',
-    end_date: ctx.body.get('end_date') || null,
-    start_time: allDay ? null : ctx.body.get('start_time') || null,
-    end_time: allDay ? null : ctx.body.get('end_time') || null,
+    title: cleanText(body.get('title'), 100),
+    date: body.get('date') || '',
+    end_date: body.get('end_date') || null,
+    start_time: allDay ? null : body.get('start_time') || null,
+    end_time: allDay ? null : body.get('end_time') || null,
     color: colorText === '' ? null : Number(colorText),
     is_private: sharing.isPrivate,
-    location: cleanText(ctx.body.get('location'), 200) || null,
-    repeats: ctx.body.get('repeats') || null,
-    // the end date input stays in the form while "Does not repeat" hides it: dropped then
-    repeat_until: (ctx.body.get('repeats') && ctx.body.get('repeat_until')) || null,
-    // not columns: the box as it was posted, and the groups ticked (only kept for a private event)
+    location: cleanText(body.get('location'), 200) || null,
+    // not columns: the box as it was posted, the groups ticked (only kept for a private event), and Repeat
     allDay,
     groupIds: sharing.groupIds,
+    repeat: repeat ? {
+      repeats: body.get('repeats') ?? '', every: body.get('repeat_every'), unit: body.get('repeat_unit'),
+      days: body.getAll('repeat_days'), monthly: body.get('repeat_monthly'),
+      ends: body.get('ends'), endsOn: body.get('ends_on'), endsAfter: body.get('ends_after'),
+    } : undefined,
   };
   const errors = {};
   if (!event.title) {
     errors.title = t(ctx.lang, 'errors.titleRequired');
   }
+  const { rule = null, error } = repeat && isValidDate(event.date)
+    ? repeatRule(event.repeat, addDays(event.date, back))
+    : {};
+  if (error) {
+    errors.repeat = t(ctx.lang, error);
+  }
   const whenError = eventError({
-    date: event.date, endDate: event.end_date, startTime: event.start_time, endTime: event.end_time,
-    repeats: event.repeats, repeatUntil: event.repeat_until,
+    date: event.date, endDate: event.end_date, startTime: event.start_time, endTime: event.end_time, rule,
   });
   if (whenError) {
-    errors[whenError.field] = t(ctx.lang, whenError.message);
+    errors[whenError.field] ??= t(ctx.lang, whenError.message);
   }
   if (!allDay && !event.start_time) {
     errors.start ??= t(ctx.lang, 'errors.pickStartTime');
@@ -515,12 +528,27 @@ function readEventForm(ctx, creatorGroups, currentSharing) {
     errors.visibility = sharing.error;
   }
   event.end_date ||= event.date;
-  return { event, errors };
+  let series;
+  if (!hasErrors(errors)) {
+    const start = rule ? firstTime(addDays(event.date, shift), rule) : addDays(event.date, shift);
+    if (start) {
+      series = { ...event, date: start, end_date: addDays(start, daysBetween(event.date, event.end_date)),
+        rrule: rule && formatRrule(rule) };
+    } else {
+      errors.repeat = t(ctx.lang, 'errors.event.repeatUntil'); // it ends before it would first happen
+    }
+  }
+  return { event, series, rule, errors };
 }
+
+// The times of a repeating event changed or skipped on their own (event_changes), as one JSON object for each
+// events row aliased `e`: { [on_date]: changes }, what occurrences and timeOn read.
+const WITH_CHANGES = `(SELECT json_group_object(on_date, json(changes)) FROM event_changes WHERE event_id = e.id)
+                      AS changes`;
 
 /** The event with this id, if the member may change it: their own, or any event if they are an admin. */
 const editableEvent = ctx => {
-  const event = get('SELECT * FROM events WHERE id = ?', Number(ctx.params.id));
+  const event = get(`SELECT e.*, ${WITH_CHANGES} FROM events e WHERE e.id = ?`, Number(ctx.params.id));
   if (!event) {
     return ctx.fail(404, 'errors.eventNotFound');
   }
@@ -529,6 +557,56 @@ const editableEvent = ctx => {
   }
   return event;
 };
+
+/**
+ * Which time of a repeating event an edit or a delete is about: `on`, the date its rule gave it (posted, or ?on=
+ * from its Edit link; its first when not one of its dates), and `scope`, the times it changes: 'one', 'following'
+ * or 'all' (the form's own default is 'one'; a form without the choice, 'all'). Following from its first is all.
+ * One that does not repeat is always 'all'.
+ */
+function pickedTime(ctx, event) {
+  const asked = ctx.body?.get('on') ?? ctx.url.searchParams.get('on');
+  const rule = parseRrule(event.rrule);
+  const on = rule && isValidDate(asked) && asked > event.date && firstTime(asked, rule) === asked ? asked : event.date;
+  const posted = ctx.body?.get('scope');
+  const scope = rule && (posted === 'one' || (posted === 'following' && on > event.date)) ? posted : 'all';
+  return { on, scope };
+}
+
+// The columns the event form saves, in this order in INSERT and UPDATE
+const EVENT_COLUMNS = ['title', 'date', 'end_date', 'start_time', 'end_time', 'color', 'is_private', 'location',
+  'rrule'];
+
+/** Adds `event` (a series from readEventForm) for `createdBy`, with who sees it. Its id. Run inside a tx. */
+function insertEvent(event, createdBy) {
+  const eventId = run(`INSERT INTO events(${EVENT_COLUMNS.join()}, created_by, created_at)
+                       VALUES (${EVENT_COLUMNS.map(() => '?').join()}, ?, ?)`,
+    ...EVENT_COLUMNS.map(column => event[column]), createdBy, now()).lastInsertRowid;
+  saveShares('event', eventId, event.groupIds);
+  return eventId;
+}
+
+/** Ends repeating `event` with its last time before `on`: COUNT (the times before) if it counted, else UNTIL. */
+function endBefore(event, on) {
+  const rule = parseRrule(event.rrule);
+  const ended = rule.count
+    ? { ...rule, count: timesBefore(event.date, rule, on) }
+    : { ...rule, until: addDays(on, -1) };
+  run('UPDATE events SET rrule = ? WHERE id = ?', formatRrule(ended), event.id);
+}
+
+/** Saves the own changes of one time of a repeating event (null: skipped), or drops them when there are none. */
+function saveTime(eventId, on, changes) {
+  if (changes && !Object.keys(changes).length) {
+    return run('DELETE FROM event_changes WHERE event_id = ? AND on_date = ?', eventId, on);
+  }
+  run(`INSERT INTO event_changes(event_id, on_date, changes) VALUES (?, ?, ?)
+       ON CONFLICT(event_id, on_date) DO UPDATE SET changes = excluded.changes`,
+    eventId, on, changes && JSON.stringify(changes));
+}
+
+// What a single time of a repeating event can have its own; who sees it stays the event's.
+const OWN_FIELDS = ['title', 'date', 'end_date', 'start_time', 'end_time', 'location', 'color'];
 
 // ?date= prefills the start date, e.g. for a link from a given day.
 on('GET', '/events/new', ctx => {
@@ -541,57 +619,92 @@ on('GET', '/events/new', ctx => {
 
 on('POST', '/events', ctx => {
   const groups = myGroups(ctx.user.id);
-  const { event, errors } = readEventForm(ctx, groups);
+  const { event, series, errors } = readEventForm(ctx, groups);
   if (hasErrors(errors)) {
     return ctx.html(views.eventPage(ctx.user, { event, errors, groups }), 400);
   }
-  tx(() => {
-    const eventId = run(`INSERT INTO events(title, date, end_date, start_time, end_time, color, is_private,
-                                            location, repeats, repeat_until, created_by, created_at)
-                         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-      event.title, event.date, event.end_date, event.start_time, event.end_time, event.color, event.is_private,
-      event.location, event.repeats, event.repeat_until, ctx.user.id, now()).lastInsertRowid;
-    saveShares('event', eventId, event.groupIds);
-  });
-  ctx.redirect('/?m=' + event.date.slice(0, 7));
+  tx(() => insertEvent(series, ctx.user.id));
+  ctx.redirect('/?m=' + series.date.slice(0, 7));
 });
 
+// A repeating one shows the time its Edit link was for (?on=), as that time is.
 on('GET', '/events/(?<id>\\d+)', ctx => {
   const event = editableEvent(ctx);
   if (event) {
     event.groupIds = sharedGroupIds('event', event.id);
     // An admin editing someone else's event shares it with the creator's groups, not their own.
-    ctx.html(views.eventPage(ctx.user, { event, groups: myGroups(event.created_by) }));
+    ctx.html(views.eventPage(ctx.user, { event: timeOn(event, pickedTime(ctx, event).on),
+      groups: myGroups(event.created_by) }));
   }
 });
 
+// Like Google Calendar, a change to a repeating event is for this time, this and the following ones, or all of
+// them (pickedTime). This time: only what differs from what the event gives it is kept (OWN_FIELDS). The following
+// ones: the event ends before this time, and a new one starts from it. All: the event itself. The times changed or
+// skipped on their own stay with the following / all, unless their date or rule changed: they might not line up
+// any more, so they go (app.js asks first).
 on('POST', '/events/(?<id>\\d+)', ctx => {
   const existing = editableEvent(ctx);
   if (!existing) {
     return;
   }
   const groups = myGroups(existing.created_by);
-  const { event, errors } = readEventForm(ctx, groups,
-    { isPrivate: existing.is_private, groupIds: sharedGroupIds('event', existing.id) });
-  event.id = existing.id;
+  const { on, scope } = pickedTime(ctx, existing);
+  const shown = timeOn(existing, on);
+  const { event, series, rule, errors } = readEventForm(ctx, groups,
+    { isPrivate: existing.is_private, groupIds: sharedGroupIds('event', existing.id) },
+    { repeat: scope !== 'one', back: daysBetween(shown.date, on),
+      shift: daysBetween(shown.date, scope === 'all' ? existing.date : on) });
   if (hasErrors(errors)) {
-    return ctx.html(views.eventPage(ctx.user, { event, errors, groups }), 400);
+    return ctx.html(views.eventPage(ctx.user, { event: { ...event, id: existing.id, on, scope, rrule: existing.rrule,
+      changes: existing.changes }, errors, groups }), 400);
   }
+  const oldRule = parseRrule(existing.rrule);
+  const lineUp = from => rule && oldRule && series.date === from && sameRule(rule, oldRule);
   tx(() => {
-    run(`UPDATE events SET title = ?, date = ?, end_date = ?, start_time = ?, end_time = ?, color = ?, is_private = ?,
-                           location = ?, repeats = ?, repeat_until = ?
-         WHERE id = ?`,
-      event.title, event.date, event.end_date, event.start_time, event.end_time, event.color, event.is_private,
-      event.location, event.repeats, event.repeat_until, existing.id);
-    saveShares('event', existing.id, event.groupIds);
+    if (scope === 'one') {
+      const plain = timeOn({ ...existing, changes: null }, on);
+      saveTime(existing.id, on, Object.fromEntries(OWN_FIELDS.filter(field => event[field] !== plain[field])
+        .map(field => [field, event[field]])));
+    } else if (scope === 'following') {
+      endBefore(existing, on);
+      // "After 10 times" counts from the first: the new one has what is left of them
+      const count = rule?.count && Math.max(1, rule.count - timesBefore(existing.date, oldRule, on));
+      const newId = insertEvent({ ...series, rrule: series.rrule && formatRrule({ ...rule, count }) },
+        existing.created_by);
+      if (lineUp(on)) {
+        run('UPDATE event_changes SET event_id = ? WHERE event_id = ? AND on_date >= ?', newId, existing.id, on);
+      }
+      run('DELETE FROM event_changes WHERE event_id = ? AND on_date >= ?', existing.id, on);
+    } else {
+      run(`UPDATE events SET ${EVENT_COLUMNS.map(column => `${column} = ?`).join()} WHERE id = ?`,
+        ...EVENT_COLUMNS.map(column => series[column]), existing.id);
+      saveShares('event', existing.id, series.groupIds);
+      if (!lineUp(existing.date)) {
+        run('DELETE FROM event_changes WHERE event_id = ?', existing.id);
+      }
+    }
   });
-  ctx.redirect('/?m=' + event.date.slice(0, 7));
+  ctx.redirect('/?m=' + (scope === 'one' ? event : series).date.slice(0, 7));
 });
 
-// The WHERE clause is the permission check: your own events, or any event if you are an admin.
+// The same three ways as editing: this time is skipped, the event ends before it, or it is deleted.
 on('POST', '/events/(?<id>\\d+)/delete', ctx => {
-  run('DELETE FROM events WHERE id = ? AND (created_by = ? OR ? = 1)',
-    Number(ctx.params.id), ctx.user.id, ctx.user.is_admin);
+  const event = editableEvent(ctx);
+  if (!event) {
+    return;
+  }
+  const { on, scope } = pickedTime(ctx, event);
+  tx(() => {
+    if (scope === 'one') {
+      saveTime(event.id, on, null);
+    } else if (scope === 'following') {
+      endBefore(event, on);
+      run('DELETE FROM event_changes WHERE event_id = ? AND on_date >= ?', event.id, on);
+    } else {
+      run('DELETE FROM events WHERE id = ?', event.id);
+    }
+  });
   ctx.redirect(backToMonth(ctx));
 });
 
@@ -924,7 +1037,7 @@ const deleteGroupIfEmpty = groupId =>
 
 // A group's own events: the private ones shared with it (event_groups). Public events are left out: they
 // belong to everyone who sees their creator, not to this group. Takes the group id.
-const GROUP_EVENT_SQL = `SELECT e.*, u.name AS creator FROM events e
+const GROUP_EVENT_SQL = `SELECT e.*, u.name AS creator, ${WITH_CHANGES} FROM events e
                          JOIN event_groups shared ON shared.event_id = e.id AND shared.group_id = ?
                          JOIN users u ON u.id = e.created_by`;
 
@@ -1563,7 +1676,8 @@ on('POST', '/admin/members/(?<id>\\d+)/delete', ctx => {
 // (users.language), English while they never picked one.
 const ICS_HEADERS = { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'private, no-cache' };
 
-/** An events row as buildIcs takes it: a repeating one is one VEVENT with its RRULE, the calendar app repeats it. */
+/** An events row (or one time of it) as buildIcs takes it: a repeating one is one VEVENT with its RRULE, the
+ *  calendar app repeats it. */
 const feedItem = event => ({
   uid: 'event-' + event.id,
   date: event.date,
@@ -1575,6 +1689,17 @@ const feedItem = event => ({
   rrule: eventRrule(event),
   stamp: event.created_at,
 });
+
+/** An events row as feed items: itself, a repeating one with its skipped times, and each of its times changed on
+ *  its own, in its place. */
+function feedItems(event) {
+  const changes = Object.entries(JSON.parse(event.changes || '{}'));
+  return [
+    { ...feedItem(event), exdates: changes.filter(([, own]) => own === null).map(([on]) => on) },
+    ...changes.filter(([, own]) => own).map(([on]) => ({ ...feedItem(timeOn(event, on)), rrule: null,
+      recurrenceId: { date: on, startTime: event.start_time } })),
+  ];
+}
 
 // One feed per group: its members' public events and the private ones shared with it; nobody else's.
 // The token is the subscriber's own, so the link dies when they leave the group or rotate their links.
@@ -1591,8 +1716,8 @@ on('GET', '/feed/(?<token>[\\w-]+)/groups/(?<id>\\d+)\\.ics', ctx => {
   }
   const host = new URL(BASE_URL).host;
 
-  const items = all(`SELECT e.* FROM events e JOIN users u ON u.id = e.created_by WHERE ${EVENT_IN_GROUP}`,
-    group.id, group.id).map(feedItem);
+  const items = all(`SELECT e.*, ${WITH_CHANGES} FROM events e JOIN users u ON u.id = e.created_by
+                     WHERE ${EVENT_IN_GROUP}`, group.id, group.id).flatMap(feedItems);
 
   ctx.text(buildIcs({ name: `Meshtime · ${group.name}`, host, items }), 200, ICS_HEADERS);
 }, true);
@@ -1605,7 +1730,7 @@ on('GET', '/feed/(?<token>[\\w-]+)/events\\.ics', ctx => {
     return ctx.fail(404, 'errors.feedNotFound');
   }
   // GROUPS_OFF is already true here; kept so the feed stays safe on its own
-  const items = all(`SELECT * FROM events WHERE ${GROUPS_OFF}`).map(feedItem);
+  const items = all(`SELECT e.*, ${WITH_CHANGES} FROM events e WHERE ${GROUPS_OFF}`).flatMap(feedItems);
   const name = `Meshtime · ${t(owner.language, 'feeds.allEvents')}`;
   ctx.text(buildIcs({ name, host: new URL(BASE_URL).host, items }), 200, ICS_HEADERS);
 }, true);

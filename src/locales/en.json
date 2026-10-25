@@ -100,23 +100,72 @@
     "defaultColor": "Default",
     "colorN": "Color {{n}}",
     "confirmDelete": "Delete {{title}}?",
-    "confirmDeleteAll": "Delete {{title}} and every time it repeats?",
-    "allRepeats": "It repeats: changes apply to every time it comes back.",
     "delete": "Delete event",
     "location": "Location",
     "locationPlaceholder": "Climbing gym, 123 Main St",
     "clearLocation": "Clear",
     "repeat": "Repeat",
-    "until": "until",
-    "repeatUntil": "Repeat until",
     "repeats": {
       "none": "Does not repeat",
-      "weekly": "Every week",
-      "biweekly": "Every 2 weeks",
-      "monthly": "Every month",
-      "yearly": "Every year"
+      "weekdays": "Every weekday (Monday to Friday)",
+      "custom": "Custom…"
     },
-    "repeatsUntil": "{{repeats}} until {{date}}"
+    "every": "Repeat every",
+    "everyHowMany": "How many",
+    "unit": "Unit",
+    "repeatOn": "Repeat on",
+    "units": {
+      "DAILY": {
+        "one": "day",
+        "other": "days"
+      },
+      "WEEKLY": {
+        "one": "week",
+        "other": "weeks"
+      },
+      "MONTHLY": {
+        "one": "month",
+        "other": "months"
+      },
+      "YEARLY": {
+        "one": "year",
+        "other": "years"
+      }
+    },
+    "repeatEnds": "Ends",
+    "endsNever": "Never",
+    "endsOn": "On",
+    "endsOnDate": "End date",
+    "endsAfter": "After",
+    "endsAfterCount": "Number of occurrences",
+    "occurrences": "occurrences",
+    "rule": {
+      "daily": "Daily",
+      "days": "Every {{n}} days",
+      "weekly": "Weekly on {{days}}",
+      "weeks": "Every {{n}} weeks on {{days}}",
+      "weekdays": "Every weekday",
+      "monthly": "Monthly on {{on}}",
+      "months": "Every {{n}} months on {{on}}",
+      "yearly": "Annually on {{date}}",
+      "years": "Every {{n}} years on {{date}}",
+      "day": "day {{n}}",
+      "nth": "the {{nth}} {{day}}",
+      "first": "first",
+      "second": "second",
+      "third": "third",
+      "fourth": "fourth",
+      "last": "last",
+      "until": "{{rule}}, until {{date}}",
+      "count": "{{rule}}, {{n}} times"
+    },
+    "scope": {
+      "legend": "Repeating event",
+      "one": "This event",
+      "following": "This and following events",
+      "all": "All events"
+    },
+    "confirmChanges": "The times of this event you changed one by one will go back to how the event is. Save anyway?"
   },
   "shareWith": {
     "legend": "Who sees it",
@@ -441,7 +490,9 @@
       "endAfterStart": "The end time must be after the start time.",
       "repeat": "Invalid repeat.",
       "repeatUntil": "The repeats must end on or after the start date.",
-      "repeatTooLong": "A repeating event must end before it comes back."
+      "repeatTooLong": "A repeating event must end before it comes back.",
+      "repeatEvery": "Repeat every 1 to 99.",
+      "repeatCount": "The number of occurrences must be from 1 to 999."
     }
   },
   "sync": {
