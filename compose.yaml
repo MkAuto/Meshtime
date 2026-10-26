@@ -1,11 +1,14 @@
-# Put DOMAIN=cal.example.com in a .env file next to this compose.yaml.
+# Put DOMAIN=cal.example.com in a .env file next to this compose.yaml, and PORT=3001 (any free port) for each extra instance.
 services:
   app:
     build: .
     restart: unless-stopped
     environment:
       BASE_URL: https://${DOMAIN:?set DOMAIN in .env}
+      PORT: ${PORT:-3000}
       TZ: ${TZ:-UTC}
+    ports:
+      - "127.0.0.1:${PORT:-3000}:${PORT:-3000}"
     volumes:
       - data:/data
   caddy:
@@ -16,6 +19,7 @@ services:
       - "443:443"
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+      PORT: ${PORT:-3000}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

@@ -18,7 +18,7 @@ Two npm dependencies: [`mustache`](https://github.com/janl/mustache.js) for the 
 ```sh
 node --version   # >= 24
 npm install      # once, and again after pulling a change to package.json
-npm start        # http://localhost:3000, database in ./data/app.db
+npm start        # http://localhost:3000 (PORT in .env changes it), database in ./data/app.db
 ```
 
 On first start the console prints a one-time **admin invite link**. Open it, pick a name and password. Then go to **Administration → Create invite link** to invite friends (links last 7 days, single use). The Administration page is only shown to admins: members, invite links, *Options* (groups on / off, members may create invite links) and the logs to download. Profile holds your name, birthday, color, private / public, password and passkeys; Settings holds display preferences (*Customisation*), Calendar Integration, calendar feeds, and invite links while an admin allows members to create them.
@@ -37,6 +37,28 @@ docker compose up -d --build
 docker compose logs app     # shows the first admin invite link
 ```
 
+### Several instances on one server
+
+Each instance gets its own folder (a clone of this repo, so its own `data` volume), its own domain and its own `PORT` in `.env`. Only one Caddy can hold ports 80/443, so start the apps alone and run one Caddy on the host for all of them:
+
+```sh
+printf "DOMAIN=friends.example.com
+PORT=3001
+" > .env
+docker compose up -d --build app   # listens on 127.0.0.1:3001 on the host
+```
+
+```
+cal.example.com {
+	reverse_proxy 127.0.0.1:3000
+}
+friends.example.com {
+	reverse_proxy 127.0.0.1:3001
+}
+```
+
+Another reverse proxy works too, as long as it sets `X-Forwarded-For` (Caddy does by default): login rate limiting reads it.
+
 The SQLite database lives in the `data` volume, next to `meshtime.log` and `errors.log` (both downloadable from Administration). Back the database up with:
 
 ```sh
@@ -44,7 +66,7 @@ docker compose exec app node -e "new (require('node:sqlite').DatabaseSync)('/dat
 docker compose cp app:/data/backup.db ./backup.db
 ```
 
-Environment variables: `BASE_URL` (public https URL, required behind a proxy), `DB_PATH`, `PORT`, `NODE_ENV=production` (sets the `Secure` cookie flag), `TZ` (the server's time zone, default `UTC`: which date is today, the zone Calendar Integration reads event times in, and the one the logs are written in).
+Environment variables: `BASE_URL` (public https URL, required behind a proxy), `DB_PATH`, `PORT` (default `3000`), `NODE_ENV=production` (sets the `Secure` cookie flag), `TZ` (the server's time zone, default `UTC`: which date is today, the zone Calendar Integration reads event times in, and the one the logs are written in).
 
 ## Subscribing to the feeds
 
