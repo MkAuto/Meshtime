@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import {
   COLORS, DEFAULT_WEEK_START, WEEK_START_CHOICES, DATE_FORMATS, DEFAULT_DATE_FORMAT, DAY_PARTS, SLOTS,
-  DEFAULT_BUSY_MINUTES,
+  DEFAULT_BUSY_MINUTES, DEFAULT_SYNC_DAYS, LANGUAGES, REPEAT_PRESETS, formatRrule,
 } from './lib.js';
 
 const dbPath = process.env.DB_PATH || './data/app.db';
@@ -55,7 +55,10 @@ CREATE TABLE IF NOT EXISTS users(
   -- Calendar Integration rules (src/sync.js): minutes of events that make a slot busy (BUSY_CHOICES in src/lib.js),
   busy_minutes INTEGER NOT NULL DEFAULT ${DEFAULT_BUSY_MINUTES},
   busy_slots TEXT NOT NULL DEFAULT '', -- always busy, "<weekday><slot>" space-separated, 0 = Sunday: '1am 1pm'
-  ignore_words TEXT NOT NULL DEFAULT ''); -- comma-separated: events whose title contains one are left out
+  ignore_words TEXT NOT NULL DEFAULT '', -- comma-separated: events whose title contains one are left out
+  sync_days INTEGER NOT NULL DEFAULT ${DEFAULT_SYNC_DAYS}, -- days from today it fills (SYNC_DAYS_CHOICES)
+  -- the language the app is shown in (LANGUAGES in src/lib.js); NULL = the browser's (pickLanguage)
+  language TEXT);
 
 -- single-use links. user_id set => password reset for that user, otherwise a new-account invite.
 CREATE TABLE IF NOT EXISTS invites(
@@ -110,7 +113,8 @@ CREATE TABLE IF NOT EXISTS polls(
   chosen_date TEXT,
   closed_at TEXT,
   created_at TEXT NOT NULL,
-  is_private INTEGER NOT NULL DEFAULT 0);
+  is_private INTEGER NOT NULL DEFAULT 0,
+  deadline TEXT); -- the last day it takes answers, 'YYYY-MM-DD'; it closes the day after. NULL = until closed
 
 -- the groups a private poll is shared with (none for a public poll). Groups its creator is in.
 CREATE TABLE IF NOT EXISTS poll_groups(
@@ -144,13 +148,24 @@ CREATE TABLE IF NOT EXISTS events(
   poll_id INTEGER UNIQUE REFERENCES polls(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL,
   -- 0: public, 1: private
-  is_private INTEGER NOT NULL DEFAULT 0);
+  is_private INTEGER NOT NULL DEFAULT 0,
+  location TEXT, -- where, as typed; NULL = not given
+  rrule TEXT); -- how it comes back, an RFC 5545 RRULE (src/lib.js, "repeating events"); NULL = it does not
 
 -- the groups a private event is shared with (none for a public event). Groups its creator is in.
 CREATE TABLE IF NOT EXISTS event_groups(
   event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
   group_id INTEGER NOT NULL REFERENCES member_groups(id) ON DELETE CASCADE,
   PRIMARY KEY(event_id, group_id));
+
+-- the times of a repeating event changed or skipped on their own, by the date its rule gives them (on_date).
+-- changes: JSON of the fields that time has its own (title, date, end_date, start_time, end_time, location,
+-- color; a null value is one emptied); NULL = skipped. Who sees it stays the event's.
+CREATE TABLE IF NOT EXISTS event_changes(
+  event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  on_date TEXT NOT NULL,
+  changes TEXT,
+  PRIMARY KEY(event_id, on_date));
 
 -- passkeys. public_key is SPKI DER (base64url), exactly as the browser's getPublicKey() gave it.
 CREATE TABLE IF NOT EXISTS credentials(
@@ -245,7 +260,6 @@ const appSettingColumns = db.prepare('PRAGMA table_info(app_settings)').all().ma
 if (!appSettingColumns.includes('groups_enabled')) {
   db.exec('ALTER TABLE app_settings ADD COLUMN groups_enabled INTEGER NOT NULL DEFAULT 1');
 }
-
 // DBs created before the date-format setting existed: everyone gets the default.
 if (!userColumns.includes('date_format')) {
   db.exec(`ALTER TABLE users ADD COLUMN date_format TEXT NOT NULL DEFAULT '${DEFAULT_DATE_FORMAT}'`);
@@ -281,11 +295,17 @@ if (!userColumns.includes('default_group_id')) {
   db.exec('ALTER TABLE users ADD COLUMN default_group_id INTEGER REFERENCES member_groups(id) ON DELETE SET NULL');
 }
 
+// DBs created before languages existed: everyone follows their browser until they pick one.
+if (!userColumns.includes('language')) {
+  db.exec('ALTER TABLE users ADD COLUMN language TEXT');
+}
+
 // DBs created before Calendar Integration rules existed: the old fixed 2 h, nothing always busy, no word ignored.
 for (const [column, definition] of [
   ['busy_minutes', `INTEGER NOT NULL DEFAULT ${DEFAULT_BUSY_MINUTES}`],
   ['busy_slots', `TEXT NOT NULL DEFAULT ''`],
   ['ignore_words', `TEXT NOT NULL DEFAULT ''`],
+  ['sync_days', `INTEGER NOT NULL DEFAULT ${DEFAULT_SYNC_DAYS}`],
 ]) {
   if (!userColumns.includes(column)) {
     db.exec(`ALTER TABLE users ADD COLUMN ${column} ${definition}`);
@@ -311,15 +331,40 @@ if (!eventColumns.includes('is_private')) {
   db.exec('ALTER TABLE events ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0');
 }
 
+// DBs created before locations and repeating events existed: no place given, and every event happens once.
+for (const column of ['location', 'rrule']) {
+  if (!eventColumns.includes(column)) {
+    db.exec(`ALTER TABLE events ADD COLUMN ${column} TEXT`);
+  }
+}
+// DBs from before RRULEs (e71cc52): its repeats were weekly / biweekly / monthly / yearly, the presets of the same
+// name now, until repeat_until. Each is turned into its rule, then the old columns go.
+if (eventColumns.includes('repeats')) {
+  const repeating = db.prepare('SELECT id, date, repeats, repeat_until FROM events WHERE repeats IS NOT NULL').all();
+  for (const event of repeating) {
+    db.prepare('UPDATE events SET rrule = ? WHERE id = ?')
+      .run(formatRrule({ ...REPEAT_PRESETS[event.repeats](event.date), until: event.repeat_until }), event.id);
+  }
+  db.exec('ALTER TABLE events DROP COLUMN repeats; ALTER TABLE events DROP COLUMN repeat_until');
+}
+
 // DBs created before private polls existed: every poll stays public.
 const pollColumns = db.prepare('PRAGMA table_info(polls)').all().map(column => column.name);
 if (!pollColumns.includes('is_private')) {
   db.exec('ALTER TABLE polls ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0');
 }
+// DBs created before deadlines existed: every poll stays open until closed by hand.
+if (!pollColumns.includes('deadline')) {
+  db.exec('ALTER TABLE polls ADD COLUMN deadline TEXT');
+}
 
 // A format that is no longer offered goes back to the default.
 db.prepare(`UPDATE users SET date_format = ? WHERE date_format NOT IN (${Object.keys(DATE_FORMATS).map(() => '?')})`)
   .run(DEFAULT_DATE_FORMAT, ...Object.keys(DATE_FORMATS));
+
+// A language that is no longer offered goes back to following the browser.
+db.prepare(`UPDATE users SET language = NULL WHERE language NOT IN (${LANGUAGES.map(() => '?')})`)
+  .run(...LANGUAGES.map(language => language.code));
 
 // Members who picked a first day that is no longer offered go back to the Sunday default.
 db.exec(`UPDATE users SET week_start = ${DEFAULT_WEEK_START} WHERE week_start NOT IN (${WEEK_START_CHOICES})`);

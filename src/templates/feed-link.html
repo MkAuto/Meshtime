@@ -1,6 +1,7 @@
-{{! Partial: a feed link to copy (Settings and the Groups page). Expects feed (the URL) and name.
-    Read-only input, so it can be selected by hand when JS, and so the Copy button (see app.js), is off. }}
+{{! Partial: a feed link to copy (Settings and the Groups page). Expects feed (the URL) and linkLabel (feedLink in
+    views.js). Read-only input, so it can be selected by hand when JS, and so the Copy button (see app.js), is off.
+    data-copied / data-copy-failed: what app.js shows on the button after a click. }}
 <div class="row">
-  <input class="feed-link" value="{{feed}}" readonly aria-label="Calendar feed link for {{name}}">
-  <button type="button" data-copy="{{feed}}" hidden>Copy</button>
+  <input class="feed-link" value="{{feed}}" readonly aria-label="{{linkLabel}}">
+  <button type="button" data-copied="{{t.common.copied}}" data-copy-failed="{{t.common.copyFailed}}" data-copy="{{feed}}" hidden>{{t.common.copy}}</button>
 </div>

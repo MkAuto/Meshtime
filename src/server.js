@@ -4,10 +4,10 @@ import { join, extname } from 'node:path';
 import { db, get, now } from './db.js';
 import { userFromSession, sessionOwner, createInvite } from './auth.js';
 import { logEvent } from './log.js';
-import { routes } from './routes.js';
+import { routes, pendingPolls } from './routes.js';
 import { syncAll } from './sync.js';
 import { errorPage } from './views.js';
-import { BASE_URL } from './lib.js';
+import { BASE_URL, pickLanguage } from './lib.js';
 
 const PORT = Number(process.env.PORT || 3000);
 const PROD = process.env.NODE_ENV === 'production';
@@ -65,7 +65,7 @@ function readBody(req) {
     req.on('data', chunk => {
       size += chunk.length;
       if (size > MAX_BODY) {
-        reject(Object.assign(new Error('Request body too large.'), { status: 413 }));
+        reject(Object.assign(new Error('errors.tooLarge'), { status: 413 }));
         req.destroy();
       } else {
         chunks.push(chunk);
@@ -85,6 +85,7 @@ function makeCtx(req, res, url) {
     url,
     params: {},  // named groups captured by the route regex
     user: null,  // the users row, or null when not logged in
+    lang: null,  // the language the answer is in (pickLanguage in lib.js)
     body: null,  // URLSearchParams on POST
     sid: null,   // raw session cookie value
     // Client address for rate limiting. Caddy sets X-Forwarded-For in production; only trust it there,
@@ -110,8 +111,9 @@ function makeCtx(req, res, url) {
       res.setHeader('Set-Cookie',
         `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${PROD ? '; Secure' : ''}`);
     },
+    // `msg` is a key in src/locales (errors.*), shown in the visitor's language
     fail(status, msg) {
-      this.html(errorPage(status, msg, this.user), status);
+      this.html(errorPage(status, msg, this.user, { lang: this.lang, path: url.pathname + url.search }), status);
     },
   };
 }
@@ -125,6 +127,10 @@ async function handle(req, res) {
   const url = new URL(req.url, BASE_URL);
   const method = req.method === 'HEAD' ? 'GET' : req.method;
   const ctx = makeCtx(req, res, url);
+  const cookies = parseCookies(req);
+  const acceptLanguage = req.headers['accept-language'];
+  // Before anything can fail, so every error page is in it too; a logged-in member's own pick comes below.
+  ctx.lang = pickLanguage(null, cookies.lang, acceptLanguage);
 
   try {
     if (method === 'GET' && STATIC_FILES.has(url.pathname)) {
@@ -135,19 +141,22 @@ async function handle(req, res) {
 
     if (method === 'POST') { // every mutation: SameSite=Lax cookie + same-origin check
       if (!isSameOrigin(req)) {
-        return ctx.fail(403, 'Cross-origin request rejected.');
+        return ctx.fail(403, 'errors.crossOrigin');
       }
       if (!(req.headers['content-type'] || '').startsWith('application/x-www-form-urlencoded')) {
-        return ctx.fail(415, 'Unsupported content type.');
+        return ctx.fail(415, 'errors.contentType');
       }
       ctx.body = await readBody(req);
     }
 
-    const cookies = parseCookies(req);
     ctx.sid = cookies.sid || null;
     ctx.user = userFromSession(ctx.sid) || null;
     if (ctx.user) {
       ctx.user.hour12 = cookies.hour12 === '1'; // the device's clock, set by app.js: pages write times like it
+      // their language (users.language, or the browser's) and the page asked for: views.js reads both from the user
+      ctx.user.lang = ctx.lang = pickLanguage(ctx.user.language, cookies.lang, acceptLanguage);
+      ctx.user.path = url.pathname + url.search;
+      ctx.user.pending_polls = pendingPolls(ctx.user.id); // the count by Polls in the nav, like pending_invites
     }
     if (ctx.sid && !ctx.user) {
       // A cookie with no live session: it expired, or a password change logged this device out.
@@ -159,16 +168,16 @@ async function handle(req, res) {
 
     const route = routes.find(r => r.method === method && r.path.test(url.pathname));
     if (!route) {
-      return ctx.fail(404, 'Page not found.');
+      return ctx.fail(404, 'errors.notFound');
     }
 
     ctx.params = url.pathname.match(route.path).groups || {};
     if (!route.public && !ctx.user) {
-      return method === 'GET' ? ctx.redirect('/login') : ctx.fail(401, 'Please log in.');
+      return method === 'GET' ? ctx.redirect('/login') : ctx.fail(401, 'errors.logIn');
     }
     return await route.handler(ctx);
   } catch (err) {
-    // err.status means we threw it deliberately and the message is safe to show.
+    // err.status means we threw it deliberately and the message (a key in src/locales) is safe to show.
     // The rest is a bug: logged (and so in errors.log) with what is needed to reproduce it. Never the body,
     // which can hold a password.
     if (!err.status) {
@@ -183,7 +192,7 @@ async function handle(req, res) {
     if (res.headersSent) {
       return res.end();
     }
-    ctx.fail(err.status || 500, err.status ? err.message : 'Something went wrong.');
+    ctx.fail(err.status || 500, err.status ? err.message : 'errors.generic');
   }
 }
 

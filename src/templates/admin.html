@@ -1,34 +1,34 @@
 {{! Admin only: the route enforces it, this only draws it.
     Future admin-only tools get their own section here: class "panel" plus a .panel-* color no other section
     on this page uses (public/style.css). }}
-<h1>Administration</h1>
+<h1>{{t.admin.title}}</h1>
 {{> notices}}
 <section class="panel panel-admin">
-  <h2>Members</h2>
+  <h2>{{t.admin.members}}</h2>
   {{#errors.members}}<p class="err">{{errors.members}}</p>{{/errors.members}}
-  <p class="hint">A member who forgot their password needs a reset link — send them the one you create here.</p>
+  <p class="hint">{{t.admin.membersHint}}</p>
   <ul>
     {{#members}}
     <li>
-      {{name}}{{#is_admin}} (admin){{/is_admin}} —
+      {{name}}{{#is_admin}} ({{t.admin.adminTag}}){{/is_admin}} —
       {{! data-copy-link (here and on Create invite link): app.js copies the new link as it is created
           (see Open links below without JS). }}
       <form method="post" action="/admin/invite" class="inline" data-copy-link>
-        <input type="hidden" name="user_id" value="{{id}}"><button class="link">create reset-password link</button>
+        <input type="hidden" name="user_id" value="{{id}}"><button class="link">{{t.admin.resetLink}}</button>
       </form>
       {{^isMe}}
       · <form method="post" action="/admin/members/{{id}}/delete" class="inline"
-          data-confirm="Remove {{name}}? Their events and polls are deleted.">
-        <button class="link danger">remove</button>
+          data-confirm="{{confirmRemove}}">
+        <button class="link danger">{{t.common.remove}}</button>
       </form>
       {{/isMe}}
     </li>
     {{/members}}
   </ul>
-  <h3>Invite someone new</h3>
-  <form method="post" action="/admin/invite" data-copy-link><button>Create invite link</button></form>
+  <h3>{{t.admin.inviteNew}}</h3>
+  <form method="post" action="/admin/invite" data-copy-link><button>{{t.admin.createInvite}}</button></form>
   {{#invites.length}}
-  <h3>Open links (valid 7 days, single use)</h3>
+  <h3>{{t.admin.openLinks}}</h3>
   <ul>
     {{#invites}}
     <li>{{label}}: <code>{{url}}</code></li>
@@ -38,47 +38,49 @@
 </section>
 
 <section class="panel panel-options">
-  <h2>Options</h2>
+  <h2>{{t.admin.options}}</h2>
   <form method="post" action="/admin/options">
     {{! Always posted, so a form without it (an older page) leaves groups as they are (POST /admin/options). }}
     <input type="hidden" name="groups_enabled" value="0">
     <label>
       {{! data-confirm-on / -off: app.js asks before saving, only when this box was ticked / unticked. }}
       <input type="checkbox" name="groups_enabled" value="1"{{#groupsEnabled}} checked{{/groupsEnabled}}
-        data-confirm-on="Turn groups on? Groups come back, and every private member, event and poll is private again."
-        data-confirm-off="Turn groups off? Every member, event and poll is shown to everyone until groups are back on.">
-      Groups
+        data-confirm-on="{{t.admin.groupsOn}}"
+        data-confirm-off="{{t.admin.groupsOff}}">
+      {{t.admin.groups}}
     </label>
     <p class="hint">
-      Turning groups off shows every member, event and poll to everyone, and hides groups and every public / private
-      choice. Nothing is deleted: turning them back on brings back the groups and each private / public choice.
+      {{t.admin.groupsHint}}
     </p>
     <label>
       <input type="checkbox" name="member_invites" value="1"{{#memberInvites}} checked{{/memberInvites}}>
-      Members can create invite links (in their Settings)
+      {{t.admin.memberInvites}}
     </label>
-    <p class="hint">Turning it off also cancels the links members made that nobody has used yet.</p>
-    <p><button>Save</button></p>
+    <p class="hint">{{t.admin.memberInvitesHint}}</p>
+    <p><button>{{t.common.save}}</button></p>
   </form>
 </section>
 
 <section class="panel panel-log">
-  <h2>Logs</h2>
-  <p class="hint"><a href="/admin/log" download>Download meshtime.log</a></p>
+  <h2>{{t.admin.logs}}</h2>
+  <p class="hint"><a href="/admin/log" download>{{t.admin.downloadLog}}</a></p>
   <p class="hint">
-    <a href="/admin/errors" download>Download errors.log</a>
+    <a href="/admin/errors" download>{{t.admin.downloadErrors}}</a>
   </p>
   {{#log.length}}
   <div class="log-wrap">
     <table class="log">
-      <thead><tr><th>#</th><th>Time (Eastern)</th><th>IP</th><th>User</th><th>Action</th></tr></thead>
+      <thead><tr>
+        <th>{{t.admin.number}}</th><th>{{t.admin.time}}</th><th>{{t.admin.ip}}</th><th>{{t.admin.user}}</th>
+        <th>{{t.admin.action}}</th>
+      </tr></thead>
       <tbody>
         {{#log}}
         <tr>
           <td class="n">{{number}}</td>
           <td>{{time}}</td>
           <td>{{ip}}</td>
-          <td>{{user}}{{^known}} <span class="hint">(unknown)</span>{{/known}}</td>
+          <td>{{user}}{{^known}} <span class="hint">{{t.admin.unknown}}</span>{{/known}}</td>
           <td>{{action}}</td>
         </tr>
         {{/log}}
@@ -87,6 +89,6 @@
   </div>
   {{/log.length}}
   {{^log}}
-  <p class="hint">Nothing logged yet.</p>
+  <p class="hint">{{t.admin.nothingLogged}}</p>
   {{/log}}
 </section>

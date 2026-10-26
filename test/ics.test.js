@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fold, buildIcs, birthdayRrule } from '../src/lib.js';
+import { fold, buildIcs, birthdayRrule, eventRrule } from '../src/lib.js';
 
 test('fold keeps every line within 75 octets, UTF-8 aware', () => {
   const folded = fold('SUMMARY:' + 'é'.repeat(100));
@@ -56,6 +56,39 @@ test('buildIcs: yearly birthday RRULE', () => {
   assert.ok(ics.includes(
     'DTSTART;VALUE=DATE:20000229\r\nDTEND;VALUE=DATE:20000301\r\nRRULE:FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-1\r\n'));
   assert.ok(ics.includes('DTSTART;VALUE=DATE:19900517\r\nDTEND;VALUE=DATE:19900518\r\nRRULE:FREQ=YEARLY\r\n'));
+});
+
+test('a repeating event is one VEVENT with its RRULE, UNTIL the kind of value DTSTART is; LOCATION escaped', () => {
+  assert.equal(eventRrule({ rrule: null }), null);
+  assert.equal(eventRrule({ rrule: 'FREQ=MONTHLY;UNTIL=20261231' }), 'FREQ=MONTHLY;UNTIL=20261231');
+  assert.equal(eventRrule({ rrule: 'FREQ=WEEKLY;BYDAY=MO;UNTIL=20261231', start_time: '19:00' }),
+    'FREQ=WEEKLY;BYDAY=MO;UNTIL=20261231T235900');
+  const ics = buildIcs({ name: 'G', host: 'h', items: [{
+    uid: 'event-1', date: '2026-10-05', startTime: '19:00', summary: 'Climb', location: 'Gym; Main St, 2nd floor',
+    rrule: 'FREQ=YEARLY', stamp: '2026-01-01T00:00:00Z',
+  }] });
+  assert.ok(ics.includes('DTSTART:20261005T190000\r\nRRULE:FREQ=YEARLY\r\nLOCATION:Gym\\; Main St\\, 2nd floor\r\n'));
+  assert.doesNotMatch(buildIcs({ name: 'G', host: 'h', items: [{ uid: 'x', date: '2026-10-05', summary: 's',
+    stamp: '2026-01-01T00:00:00Z' }] }), /LOCATION|RRULE/, 'neither when not given');
+});
+
+test('a repeating event\'s skipped times are EXDATEs; one changed on its own a VEVENT with its RECURRENCE-ID', () => {
+  const stamp = '2026-01-01T00:00:00Z';
+  const timed = buildIcs({ name: 'G', host: 'h', items: [
+    { uid: 'event-1', date: '2026-10-05', startTime: '19:00', summary: 'Climb', rrule: 'FREQ=WEEKLY;BYDAY=MO',
+      exdates: ['2026-10-12', '2026-10-26'], stamp },
+    { uid: 'event-1', date: '2026-10-20', startTime: '18:00', summary: 'Climb, Tuesday',
+      recurrenceId: { date: '2026-10-19', startTime: '19:00' }, stamp },
+  ] });
+  assert.ok(timed.includes('RRULE:FREQ=WEEKLY;BYDAY=MO\r\nEXDATE:20261012T190000\r\nEXDATE:20261026T190000\r\n'));
+  assert.ok(timed.includes('UID:event-1@h\r\nDTSTAMP:20260101T000000Z\r\nRECURRENCE-ID:20261019T190000\r\n'
+    + 'DTSTART:20261020T180000\r\nSUMMARY:Climb\\, Tuesday\r\n'));
+  const allDay = buildIcs({ name: 'G', host: 'h', items: [
+    { uid: 'event-2', date: '2026-10-05', summary: 'Gym', rrule: 'FREQ=DAILY', exdates: ['2026-10-06'], stamp },
+    { uid: 'event-2', date: '2026-10-09', summary: 'Gym', recurrenceId: { date: '2026-10-08' }, stamp },
+  ] });
+  assert.ok(allDay.includes('EXDATE;VALUE=DATE:20261006\r\n'));
+  assert.ok(allDay.includes('RECURRENCE-ID;VALUE=DATE:20261008\r\nDTSTART;VALUE=DATE:20261009\r\n'));
 });
 
 // Security review: a lone CR in a member's text must not start a new line in the feed.

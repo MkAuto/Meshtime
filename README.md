@@ -2,13 +2,14 @@
 
 A small self-hosted web app for a group of friends:
 
-- **Calendar**: click a day to say you're free (hold it on a phone, or double-click it, for just the morning, afternoon or evening). Everyone's free days are overlaid, and the group can add events: all day or with times, over one day or several, in a color of their choice. Times follow your device's 12 h / 24 h clock.
-- **Groups**: create one and invite members. Members of a group see each other's free days and events even with a private account (Profile), events and polls can be kept private to chosen groups, and the calendar can show one group at a time (*Make default* opens it there). An admin can turn groups off: everyone and everything is then shown to everyone, and nothing is lost when they are turned back on.
-- **Polls**: propose a few dates, everyone answers yes / maybe / no. When everyone has answered (or the creator closes it), the best date is shown with an **Add to calendar** button.
-- **Birthdays**: give yours in Profile and it shows on everyone's calendar every year (each member can hide them in Settings).
+- **Calendar**: click a day to say you're free (hold it on a phone, or double-click it, for just the morning, afternoon or evening). Everyone's free days are overlaid, and the group can add events: all day or with times, over one day or several, in a color of their choice, with a location (linked to Google Maps). An event can repeat as in Google Calendar: daily, weekly, every 2 weeks, monthly (on the day, or on the second Tuesday), yearly, every weekday, or on a custom rule (every 1 to 99 days, weeks, months or years, on the weekdays you pick), for good, until a date or a number of times. Editing or deleting one asks whether it is for this event, this and following events, or all events; a monthly one on the 31st skips the months without one, as calendar apps do. Times follow your device's 12 h / 24 h clock.
+- **Groups**: create one and invite members. Members of a group see each other's free days and events even with a private account (Profile), events and polls can be kept private to chosen groups, and the calendar can show one group at a time (*Make default* opens it there). A private event takes up its groups' members: wherever it is not shown (another group, or another group's view) they are free only around it, by each member's Calendar Integration [Rules](#calendar-integration) (busy threshold, ignored words; a start time with no end takes its whole morning, afternoon or evening). An admin can turn groups off: everyone and everything is then shown to everyone, and nothing is lost when they are turned back on.
+- **Polls**: propose a few dates, everyone answers yes / maybe / no. Your answers start from your free days (dashed until you save): *yes* when you are free all day, *maybe* for part of it, *no* when you set the day to nothing or your Calendar Integration found it taken; a day nothing is known about stays unanswered. A poll can have a deadline, its last day for answers (set when creating it, changed or removed by its creator or an admin): it closes the day after. **Polls (2)** in the menu counts the open polls still waiting for your answers, marked *to answer* in the list. When everyone has answered (or the creator closes it), the best date is shown with an **Add to calendar** button.
+- **Birthdays**: give yours in Profile and it shows every year on the calendar of everyone in your groups (everyone's while groups are off; each member can hide them in Settings).
 - **Passkeys**: add one in Profile and log in with a fingerprint, face or device PIN instead of a password.
 - **Calendar feeds**: each member gets private ICS links to subscribe from Google Calendar, Apple Calendar or Outlook. No OAuth, no API keys.
 - **Calendar Integration**: connect the secret iCal link of your own Google, Outlook or iCloud calendar and your free days fill themselves in ([below](#calendar-integration)).
+- **English and French**: the language icon at the end of the menu (top right when logged out) switches it. Until you pick one, the app follows your browser's language ([below](#languages)).
 
 Two npm dependencies: [`mustache`](https://github.com/janl/mustache.js) for the HTML templates in `src/templates/`, and [`node-ical`](https://github.com/jens-maus/node-ical) to read the calendars connected in Calendar Integration, repeating events included. Everything else is Node built-ins (`node:http`, `node:sqlite`, `node:crypto`), passkeys included.
 
@@ -23,7 +24,7 @@ npm start        # http://localhost:3000, database in ./data/app.db
 On first start the console prints a one-time **admin invite link**. Open it, pick a name and password. Then go to **Administration → Create invite link** to invite friends (links last 7 days, single use). The Administration page is only shown to admins: members, invite links, *Options* (groups on / off, members may create invite links) and the logs to download. Profile holds your name, birthday, color, private / public, password and passkeys; Settings holds display preferences (*Customisation*), Calendar Integration, calendar feeds, and invite links while an admin allows members to create them.
 
 ```sh
-npm test         # date and event validation, poll ranking, ICS output, passkey verification, Calendar Integration, groups, logs, page rendering
+npm test         # date and event validation, poll ranking, ICS output, passkey verification, Calendar Integration, groups, logs, page rendering, translations
 ```
 
 ## Deploy with Docker + HTTPS
@@ -47,7 +48,7 @@ Environment variables: `BASE_URL` (public https URL, required behind a proxy), `
 
 ## Subscribing to the feeds
 
-Settings → *Calendar feeds* lists one events feed per group you are in (the events created by that group's members, with a *Copy* button; each group's panel on the **Groups** page shows its own too), and the **Birthdays** feed (each member's birthday from their Profile, repeating every year). While groups are off, a single **All events** feed takes the place of the group feeds.
+Settings → *Calendar feeds* lists one events feed per group you are in (the events created by that group's members, with a *Copy* button; each group's panel on the **Groups** page shows its own too), and the **Birthdays** feed (your own and your groups' members' birthdays from their Profile, repeating every year). While groups are off, a single **All events** feed takes the place of the group feeds. A repeating event goes out as one event with its repeat rule (and its location), so your calendar app repeats it too; the times you removed go out as exceptions, and the ones you changed on their own as changed times of that event.
 
 | App | How | Refresh |
 |---|---|---|
@@ -59,13 +60,28 @@ Anyone with the link can read the feed. **Rotate all feed links** in Settings in
 
 ## Calendar Integration
 
-Settings → *Calendar Integration* takes the secret iCal link of your own calendars (Google: Settings → your calendar → *Integrate calendar* → *Secret address in iCal format*; Outlook: *Publish a calendar* → ICS). Several can be connected. Every hour the server reads them and sets each of the next 60 days to the parts no event takes up: morning 6:00–12:00, afternoon 12:00–18:00, evening 18:00–midnight. A part is taken once events cover at least 2 hours of it, added up: 10:00–13:00 leaves the afternoon and evening free, two 1-hour meetings take the morning. A day with no event is free all day, and events shown as *free* in your calendar are ignored. Invitations you decline are not in Google's feed at all, so they never take a part. Days you click on the calendar yourself (and the ones already marked when you connect your first calendar) are never changed, until you pick **Automatic** in that day's menu (hold or double-click it): the calendar decides it again from the next sync, at once for the next 60 days. The menu highlights Automatic on the days the calendar decides. Removing your last calendar clears the days it filled in.
+Settings → *Calendar Integration* takes the secret iCal link of your own calendars (Google: Settings → your calendar → *Integrate calendar* → *Secret address in iCal format*; Outlook: *Publish a calendar* → ICS). Several can be connected. Every hour the server reads them and sets each of the next 30 days (*Fill ahead* in Rules), today included, to the parts no event takes up: morning 6:00–12:00, afternoon 12:00–18:00, evening 18:00–midnight. A part is taken once events cover at least 2 hours of it, added up: 10:00–13:00 leaves the afternoon and evening free, two 1-hour meetings take the morning. A day with no event is free all day, and events shown as *free* in your calendar are ignored. Invitations you decline are not in Google's feed at all, so they never take a part. Days you click on the calendar yourself (and the ones already marked when you connect your first calendar) are never changed, until you pick **Automatic** in that day's menu (hold or double-click it): the calendar decides it again from the next sync, at once for a day inside the filled days. The menu highlights Automatic on the days the calendar decides. Removing your last calendar clears the days it filled in.
 
 Once a calendar is connected, **Rules** (one set per member, for all their calendars) change how the days are worked out; saving them syncs again at once:
 
+- **Fill ahead**: how many days from today the calendar fills: 1, 2 or 3 weeks, or 1, 1.5 or 2 months (30, 45 or 60 days). 1 month by default. Shortening it lets go of the days past it: they are no longer free unless set by hand.
 - **A timeframe is busy from**: how much of a part events must fill before it is taken, from *Any event* to *Whole slot (6h)*. 2h by default.
 - **Ignore events whose title contains**: comma-separated words, any case, matched anywhere in the title (`gym` also leaves out "Gymnastics"). Outlook links published as *Availability only* have no titles, so this does nothing for them.
 - **Always busy**: a weekday × morning / afternoon / evening grid, for work hours a work calendar does not show (it holds meetings, not "at work"). For a day off, click the day on the calendar: days set by hand win.
+
+## Languages
+
+The language icon at the end of the menu (top right of the login page) lists every language in its own name. A pick is saved on your account, and in a cookie so the login page keeps it after you log out. Until you pick one, pages follow your browser's language, and English when it speaks none of ours. A new account starts in the language its invite page was shown in.
+
+Month and weekday names come from Node's `Intl`, in each language's locale (`29 Sep 2026`, `29 sept. 2026`); the date format picked in *Customisation* keeps its order in every language. Calendar feeds are read by your calendar app, not your browser, so they use the language saved on your account (English if you never picked one). The logs stay in English.
+
+### Adding a language
+
+1. Copy `src/locales/en.json` to `src/locales/<code>.json` (`es.json`) and translate every value. Keep the keys, and keep each `{{name}}` placeholder as it is; a few texts hold a link or `<b>`, keep those tags too.
+2. Add one line to `LANGUAGES` in `src/lib.js`: its code, its name in itself, and the `Intl` locale for its month and weekday names, e.g. `{ code: 'es', name: 'Español', intl: 'es' }`.
+3. `npm test`: it fails on a missing or extra key, or a placeholder that does not match English's.
+
+A text missing from a language falls back to English, so a page never shows a raw key.
 
 ## Forgot password
 

@@ -74,6 +74,7 @@ if (linkedPanel?.matches('details')) {
 
 // Copy buttons (data-copy: the text to copy) start hidden, since they need JS and a secure page (https or
 // localhost) for the clipboard. Without either, the link next to them can still be selected and copied.
+// data-copied / data-copy-failed: what the button says for a moment after, in the page's language.
 if (navigator.clipboard) {
   for (const button of document.querySelectorAll('button[data-copy]')) {
     button.hidden = false;
@@ -81,9 +82,9 @@ if (navigator.clipboard) {
       const label = button.textContent;
       try {
         await navigator.clipboard.writeText(button.dataset.copy);
-        button.textContent = 'Copied';
+        button.textContent = button.dataset.copied;
       } catch {
-        button.textContent = 'Copy failed';
+        button.textContent = button.dataset.copyFailed;
       }
       setTimeout(() => { button.textContent = label; }, 1500);
     });
@@ -196,6 +197,77 @@ if (eventForm) {
   });
 }
 
+// Event form, Repeat: its choices name the start date ("Weekly on Tuesday", from data-label), so they follow it
+// when it changes; Custom's "on the second Tuesday" is only there for a date in the month's first 4 weeks, "on the
+// last Tuesday" for one in its last 7 days. Its unit says "week" or "weeks" as its number does, and filling in
+// when it ends picks that way of ending. Without JS the server works it all out from the date anyway.
+const repeats = document.getElementById('repeats');
+if (repeats) {
+  const { date, repeat_every: every, repeat_unit: unit, repeat_monthly: monthly, ends } = repeats.form.elements;
+  const ordinals = JSON.parse(repeats.dataset.ordinals);
+  date.addEventListener('input', () => {
+    if (!date.value) {
+      return;
+    }
+    const at = new Date(date.value + 'T00:00:00Z');
+    const lang = document.documentElement.lang;
+    const day = at.getUTCDate();
+    const nth = Math.ceil(day / 7);
+    const words = {
+      day: at.toLocaleDateString(lang, { weekday: 'long', timeZone: 'UTC' }),
+      n: day,
+      nth: ordinals[Math.min(nth, 5) - 1],
+      date: at.toLocaleDateString(lang, { month: 'long', day: 'numeric', timeZone: 'UTC' }),
+    };
+    for (const option of repeats.form.querySelectorAll('option[data-label]')) {
+      option.textContent = option.dataset.label.replace(/\{(\w+)\}/g, (_, word) => words[word]);
+    }
+    const daysInMonth = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth() + 1, 0)).getUTCDate();
+    for (const [value, missing] of [['nth', nth > 4], ['last', day + 7 <= daysInMonth]]) {
+      const option = monthly.querySelector(`[value=${value}]`);
+      option.hidden = option.disabled = missing;
+    }
+    if (monthly.selectedOptions[0].disabled) {
+      monthly.value = 'day';
+    }
+  });
+  every.addEventListener('input', () => {
+    for (const option of unit.options) {
+      option.textContent = every.value === '1' ? option.dataset.one : option.dataset.other;
+    }
+  });
+  for (const [field, way] of [['ends_on', 'on'], ['ends_after', 'after']]) {
+    repeats.form.elements[field].addEventListener('input', () => { ends.value = way; });
+  }
+}
+
+// Event form, a repeating event with times changed on their own: saving all of them (or the following ones) with
+// a new date or Repeat drops those changes (routes.js), so it asks first, only then.
+const changedTimes = document.querySelector('form[data-confirm-changes]');
+if (changedTimes) {
+  const dateAndRule = () => JSON.stringify([...new FormData(changedTimes)]
+    .filter(([name]) => name === 'date' || name.startsWith('repeat')));
+  const before = dateAndRule();
+  changedTimes.addEventListener('submit', event => {
+    if (changedTimes.elements.scope.value !== 'one' && dateAndRule() !== before
+      && !confirm(changedTimes.dataset.confirmChanges)) {
+      event.preventDefault();
+    }
+  });
+}
+
+// Event form: the location box's clear button empties it (style.css shows it only while there is text). Without JS
+// it stays hidden, as it could do nothing.
+const clearPlace = document.querySelector('.place-clear');
+if (clearPlace) {
+  const box = document.getElementById('location');
+  clearPlace.hidden = false;
+  clearPlace.addEventListener('click', () => {
+    box.value = '';
+    box.focus();
+  });
+}
+
 const dates = document.querySelector('.dates');
 if (dates) {
   const rows = () => dates.querySelectorAll('input');
@@ -218,19 +290,22 @@ const toBase64url = buffer => btoa(String.fromCharCode(...new Uint8Array(buffer)
 const fromBase64url = value =>
   Uint8Array.from(atob(value.replaceAll('-', '+').replaceAll('_', '/')), char => char.charCodeAt(0));
 
-/** Posts a form-encoded body and returns the parsed JSON, throwing the server's message on failure. */
+/** Posts a form-encoded body and returns the parsed JSON, throwing the server's message (or none) on failure. */
 async function postJson(url, fields = {}) {
   const response = await fetch(url, {
     method: 'POST', body: new URLSearchParams(fields), headers: { Accept: 'application/json' },
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || 'Something went wrong.');
+    throw new Error(data.error ?? '');
   }
   return data;
 }
 
-/** Reveals a hidden "<p><button><span class=err>" block and runs `action` when the button is clicked. */
+/**
+ * Reveals a hidden "<p><button><span class=err>" block and runs `action` when the button is clicked, with the texts
+ * the block carries in its data-* (the page's language): data-error is shown for an error that has no message.
+ */
 function onPasskeyButton(id, action) {
   const holder = document.getElementById(id);
   if (!holder || !window.PublicKeyCredential) {
@@ -245,11 +320,11 @@ function onPasskeyButton(id, action) {
     error.textContent = '';
     button.disabled = true;
     try {
-      await action();
+      await action(holder.dataset);
     } catch (err) {
       // NotAllowedError is the user dismissing the system prompt; that needs no error message.
       if (err.name !== 'NotAllowedError') {
-        error.textContent = err.message;
+        error.textContent = err.message || holder.dataset.error;
       }
     } finally {
       button.disabled = false;
@@ -281,9 +356,9 @@ if (navigator.clipboard && window.ClipboardItem) {
   }
 }
 
-onPasskeyButton('passkey-add',async () => {
+onPasskeyButton('passkey-add', async texts => {
   const options = await postJson('/profile/passkeys/options');
-  const label = prompt('Name this passkey', 'My device');
+  const label = prompt(texts.prompt, texts.defaultName);
   if (label === null) {
     return;
   }
@@ -303,7 +378,7 @@ onPasskeyButton('passkey-add',async () => {
   const response = credential.response;
   const publicKey = response.getPublicKey();
   if (!publicKey) {
-    throw new Error('This browser cannot export the passkey. Try another one.');
+    throw new Error(texts.noExport);
   }
 
   await postJson('/profile/passkeys', {
@@ -337,6 +412,21 @@ onPasskeyButton('passkey-login', async () => {
   });
   location.href = '/';
 });
+
+// The language menu (templates/language-menu.html) is a details element: a click outside it or Esc folds it.
+const languageMenu = document.querySelector('.lang-menu');
+if (languageMenu) {
+  document.addEventListener('click', event => {
+    if (!languageMenu.contains(event.target)) {
+      languageMenu.open = false;
+    }
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      languageMenu.open = false;
+    }
+  });
+}
 
 // The nav link of the page we are on gets .active (style.css draws it as a pill).
 document.querySelector(`nav a[href="${location.pathname}"]`)?.classList.add('active');

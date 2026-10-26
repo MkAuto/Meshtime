@@ -1,7 +1,7 @@
 <h1>
-  <a href="/?m={{month.prev}}{{groupQuery}}" title="Previous month">&lsaquo;</a>
+  <a href="/?m={{month.prev}}{{groupQuery}}" title="{{t.calendar.previousMonth}}">&lsaquo;</a>
   {{month.label}}
-  <a href="/?m={{month.next}}{{groupQuery}}" title="Next month">&rsaquo;</a>
+  <a href="/?m={{month.next}}{{groupQuery}}" title="{{t.calendar.nextMonth}}">&rsaquo;</a>
 </h1>
 {{! Whose free time is shown: everyone I can see, or one of my groups. A plain GET form, so it works
     without JS; app.js submits it as soon as the choice changes and hides the Show button.
@@ -11,20 +11,20 @@
 <div class="row group-pick">
 <form method="get" action="/" class="row" data-autosubmit>
   <input type="hidden" name="m" value="{{yearMonth}}">
-  <select name="g" aria-label="Whose free time to show">
-    <option value="">Everyone I can see</option>
+  <select name="g" aria-label="{{t.calendar.whoseFreeTime}}">
+    <option value="">{{t.calendar.everyone}}</option>
     {{#groupChoices}}
     <option value="{{value}}" {{#selected}}selected{{/selected}}>{{label}}</option>
     {{/groupChoices}}
   </select>
-  <button>Show</button>
+  <button>{{t.calendar.show}}</button>
 </form>
 {{! Changes what the calendar opens on, so it posts; styled as a link. }}
 {{^isDefaultView}}
 <form method="post" action="/calendar/default" class="inline">
   <input type="hidden" name="m" value="{{yearMonth}}">
   <input type="hidden" name="g" value="{{groupId}}">
-  <button class="link">Make default</button>
+  <button class="link">{{t.calendar.makeDefault}}</button>
 </form>
 {{/isDefaultView}}
 </div>
@@ -34,15 +34,10 @@
 <p class="err">{{error}}</p>
 {{/error}}
 <details class="hint">
-  <summary>How to use</summary>
-  Click a day to mark yourself free all day (outlined). For only the morning, afternoon or evening,
-  hold the day on a phone or double-click (or right-click) it on a computer. Do it again to add a second
-  free time that day, e.g. morning and evening. Initials show who is free
-  (<sup>am</sup> / <sup>pm</sup> / <sup>eve</sup> for part of the day);
-  green means everyone shown is free at the same time.
+  <summary>{{t.calendar.howToUse}}</summary>
+  {{{t.calendar.howToBody}}}
   {{#groupsEnabled}}
-  You see the free time and events of people who share a <a href="/groups">group</a> with you, and of public
-  accounts; pick one group above the calendar to see only theirs.
+  {{{t.calendar.howToGroups}}}
   {{/groupsEnabled}}
 </details>
 
@@ -97,7 +92,7 @@
           {{/gap}}
           {{/bars}}
           {{#birthdays}}
-          <span class="ev colored c{{color}}" title="{{name}}'s birthday">🎉 {{name}}'s birthday</span>
+          <span class="ev colored c{{color}}" title="{{label}}">🎉 {{label}}</span>
           {{/birthdays}}
           {{! One-day events follow; the lanes above (gaps included) keep them off the bars. }}
           {{#oneDay}}
@@ -125,21 +120,22 @@
       {{/partChoices}}
     </div>
   </form>
-  <form method="dialog"><button class="link">Cancel</button></form>
+  <form method="dialog"><button class="link">{{t.calendar.cancel}}</button></form>
 </dialog>
 
 <section>
-  <h2>Events this month</h2>
-  <p><a class="btn" href="/events/new">Add event</a></p>
+  <h2>{{t.calendar.eventsThisMonth}}</h2>
+  <p><a class="btn" href="/events/new">{{t.calendar.addEvent}}</a></p>
   <ul class="events">
     {{#events}}
     <li class="{{classes}}">
-      {{when}} — <b>{{title}}</b> <small class="hint">by {{creator}}</small>
-      {{#canEdit}}<a href="/events/{{id}}">edit</a>{{/canEdit}}
+      {{when}}{{#place}} · <a href="{{url}}" target="_blank" rel="noopener">{{name}}</a>{{/place}} — <b>{{title}}</b>
+      <small class="hint">{{by}}</small>
+      {{#canEdit}}<a href="/events/{{id}}{{#on}}?on={{on}}{{/on}}">{{t.calendar.edit}}</a>{{/canEdit}}
     </li>
     {{/events}}
     {{^events}}
-    <li class="hint">No events this month.</li>
+    <li class="hint">{{t.calendar.noEvents}}</li>
     {{/events}}
   </ul>
 </section>

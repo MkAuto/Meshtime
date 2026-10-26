@@ -4,14 +4,14 @@
     (Administration → Options): everything is public then. }}
 {{#groupsEnabled}}
 <fieldset class="visibility">
-  <legend>Who sees it</legend>
+  <legend>{{t.shareWith.legend}}</legend>
   <label class="check">
     <input type="radio" name="visibility" value="public"{{^isPrivate}} checked{{/isPrivate}}>
-    Public: everyone who sees your free time (all your groups)
+    {{t.shareWith.public}}
   </label>
   <label class="check">
     <input type="radio" name="visibility" value="private" id="visibility-private"{{#isPrivate}} checked{{/isPrivate}}>
-    Private: only the groups you pick
+    {{t.shareWith.private}}
   </label>
   <div class="share-groups">
     {{#groupChoices}}
@@ -21,7 +21,7 @@
     </label>
     {{/groupChoices}}
     {{^groupChoices}}
-    <p class="hint">Not in any <a href="/groups">group</a> yet: there is nobody to share it with privately.</p>
+    <p class="hint">{{{t.shareWith.noGroups}}}</p>
     {{/groupChoices}}
   </div>
 </fieldset>

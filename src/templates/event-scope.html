@@ -1,0 +1,11 @@
+{{! Partial (event.html, in its save and delete forms): which times of a repeating event the change is for, and which
+    time it was opened on (routes.js, pickedTime). Nothing for one that does not repeat. }}
+{{#scopes.length}}
+<input type="hidden" name="on" value="{{on}}">
+<fieldset class="scope">
+  <legend>{{t.event.scope.legend}}</legend>
+  {{#scopes}}
+  <label class="check"><input type="radio" name="scope" value="{{value}}"{{#checked}} checked{{/checked}}> {{label}}</label>
+  {{/scopes}}
+</fieldset>
+{{/scopes.length}}
