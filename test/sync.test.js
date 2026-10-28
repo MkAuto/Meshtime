@@ -64,6 +64,12 @@ test('freePartsByDay: the member\'s rules: busy threshold, always-busy slots, ig
   assert.deepEqual(freePartsByDay([events], '2026-10-05', '2026-10-07').get('2026-10-05'), ['all'], 'default: 2 h');
   assert.deepEqual(freePartsByDay([events], '2026-10-07', '2026-10-07', { busy_minutes: 360 }).get('2026-10-07'),
     ['all'], 'Whole slot: 3 h of 6 is not enough');
+  const dinner = calendar([['UID:d', `SUMMARY:${'Dîner'.normalize('NFD')}`, `DTSTART${at('20261005T180000')}`,
+    `DTEND${at('20261005T210000')}`]]);
+  assert.deepEqual(freePartsByDay([dinner], '2026-10-05', '2026-10-05', { ignore_words: 'dîner'.normalize('NFC') })
+    .get('2026-10-05'), ['all'], 'an accent written in another Unicode form in the feed than typed');
+  assert.deepEqual(freePartsByDay([dinner], '2026-10-05', '2026-10-05', { ignore_words: 'DINER' }).get('2026-10-05'),
+    ['all'], 'typed without the accent');
 });
 
 test('withoutFreeEvents: drops the events shown as Free, keeps the Busy ones', () => {
@@ -92,4 +98,8 @@ test('freePartsAround: another group\'s events take a member\'s free parts by th
     ['pm', 'eve'], 'Any event');
   assert.deepEqual(freePartsAround(['all'], day, [event('Gym class', day)], { ignore_words: 'gym' }), ['all'],
     'ignored title');
+  assert.deepEqual(freePartsAround(['all'], day, [event('Dîner'.normalize('NFD'), day)],
+    { ignore_words: 'dîner'.normalize('NFC') }), ['all'], 'accents in two Unicode forms');
+  assert.deepEqual(freePartsAround(['all'], day, [event('Café', day)], { ignore_words: 'cafe' }), ['all'],
+    'typed without the accent');
 });

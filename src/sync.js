@@ -32,8 +32,11 @@ function wallClockSpan(instance) {
   return [start, instance.end ? toMinutes(wallClock(instance.end)) : start]; // no end: an instant, takes nothing
 }
 
-/** A member's ignore_words as the lowercase words a title is checked for. */
-const ignoredWords = ignoreWords => ignoreWords.toLowerCase().split(',').map(word => word.trim()).filter(Boolean);
+/** Text as titles and ignored words are compared: lowercase, accents dropped ("diner" matches "Dîner"). */
+const comparable = text => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+
+/** A member's ignore_words as the words (comparable) a title is checked for. */
+const ignoredWords = ignoreWords => comparable(ignoreWords).split(',').map(word => word.trim()).filter(Boolean);
 
 /** Busy minutes inside [slotStart, slotEnd): the spans' overlaps added up, time two spans share counted once. */
 function busyMinutes(busy, slotStart, slotEnd) {
@@ -82,7 +85,7 @@ export function freePartsAround(parts, date, events, {
   busy_minutes: busyThreshold = DEFAULT_BUSY_MINUTES, ignore_words: ignoreWords = '',
 } = {}) {
   const words = ignoredWords(ignoreWords);
-  const busy = events.filter(event => !words.some(word => event.title.toLowerCase().includes(word))).map(eventSpan);
+  const busy = events.filter(event => !words.some(word => comparable(event.title).includes(word))).map(eventSpan);
   const taken = takenSlots(date, busy, busyThreshold);
   const free = (parts.includes('all') ? SLOTS : parts).filter(slot => !taken.includes(slot));
   return free.length === SLOTS.length ? ['all'] : free;
@@ -110,7 +113,7 @@ export function freePartsByDay(calendars, fromDate, toDate, {
       }
       for (const instance of ical.expandRecurringEvent(event, { from, to, expandOngoing: true })) {
         // the instance's own title: a moved occurrence can be renamed. With LANGUAGE it is { params, val }.
-        const title = String(instance.summary?.val ?? instance.summary ?? '').toLowerCase();
+        const title = comparable(String(instance.summary?.val ?? instance.summary ?? ''));
         if (words.some(word => title.includes(word))) {
           continue;
         }
