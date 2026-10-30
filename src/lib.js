@@ -75,9 +75,9 @@ export const TIME_ZONE = process.env.TZ || 'UTC';
 export const BUSY_CHOICES = [1, 60, 120, 180, 240, 360];
 export const DEFAULT_BUSY_MINUTES = 120;
 export const isValidBusyMinutes = value => BUSY_CHOICES.includes(value);
-// How many days from today it fills (users.sync_days): 1, 2 or 3 weeks, or 1, 1.5 or 2 months of 30 days
+// How many days from today it fills (users.sync_days): 1, 2 or 3 weeks, or 1, 1.5, 2, 3, 4, 5 or 6 months of 30 days
 // (labels: settings.syncDaysChoices).
-export const SYNC_DAYS_CHOICES = [7, 14, 21, 30, 45, 60];
+export const SYNC_DAYS_CHOICES = [7, 14, 21, 30, 45, 60, 90, 120, 150, 180];
 export const DEFAULT_SYNC_DAYS = 30;
 export const isValidSyncDays = value => SYNC_DAYS_CHOICES.includes(value);
 const wallClockFormat = new Intl.DateTimeFormat('sv-SE', {

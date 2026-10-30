@@ -3,6 +3,7 @@
 <form method="post" action="/login" class="stack">
   <label>{{t.login.name}} <input name="name" required maxlength="40" autocomplete="username" autofocus></label>
   <label>{{t.login.password}} <input name="password" type="password" required autocomplete="current-password"></label>
+  <label class="check"><input type="checkbox" data-reveal> {{t.login.showPassword}}</label>
   <button>{{t.login.button}}</button>
 </form>
 {{! data-error: app.js shows it when the passkey login fails with no message of its own. }}

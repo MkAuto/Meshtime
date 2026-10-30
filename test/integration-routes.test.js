@@ -45,7 +45,7 @@ test('Rules: saved tidied up, forged slots dropped, an unknown threshold refused
   const refused = await post(ada, '/settings/calendars/rules', [['busy_minutes', '90'], ['ignore_words', 'x']]);
   assert.equal(refused.status, 400);
   assert.match(refused.html, /Invalid busy threshold\./);
-  const badDays = await post(ada, '/settings/calendars/rules', [['busy_minutes', '60'], ['sync_days', '90']]);
+  const badDays = await post(ada, '/settings/calendars/rules', [['busy_minutes', '60'], ['sync_days', '100']]);
   assert.equal(badDays.status, 400);
   assert.match(badDays.html, /Invalid number of days to fill\./);
   assert.deepEqual([rules().ignore_words, rules().sync_days], ['Gym, lunch', 14], 'nothing saved');

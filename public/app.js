@@ -25,6 +25,13 @@ for (const box of document.querySelectorAll('input[data-confirm-on]')) {
   });
 }
 
+// Checkboxes with data-reveal show or hide the password field of their form (CSP forbids inline onchange).
+for (const box of document.querySelectorAll('input[data-reveal]')) {
+  box.addEventListener('change', () => {
+    box.form.elements.password.type = box.checked ? 'text' : 'password';
+  });
+}
+
 // Live preview of the color slider in Settings.
 const hue = document.querySelector('.hue'), swatch = document.getElementById('swatch');
 if (hue && swatch) {
