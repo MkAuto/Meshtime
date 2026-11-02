@@ -96,7 +96,7 @@
           {{/birthdays}}
           {{! One-day events follow; the lanes above (gaps included) keep them off the bars. }}
           {{#oneDay}}
-          <span class="{{classes}}" title="{{tooltip}}">{{label}}</span>
+          <span class="{{classes}}" title="{{tooltip}}">{{#time}}<span class="ev-time">{{time}} </span>{{/time}}{{title}}</span>
           {{/oneDay}}
         </span>
       </button>

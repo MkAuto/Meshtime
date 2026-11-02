@@ -298,10 +298,12 @@ export function calendarPage(user, yearMonth, {
       bars: barValues,
       birthdays: birthdays.filter(member => member.date === date)
         .map(member => ({ color: member.color, label: t(lang, 'calendar.birthday', { name: member.name }) })),
+      // time apart from the title, so a phone can drop it (style.css .ev-time)
       oneDay: dayEvents.filter(event => !lanes.has(event)).map(event => ({
         classes: `ev${eventColor(event)}`,
         tooltip: eventTooltip(event),
-        label: label(event),
+        time: event.start_time && event.date === date ? formatTime(event.start_time, user.hour12) : '',
+        title: event.title,
       })),
     });
   }

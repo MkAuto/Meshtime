@@ -497,11 +497,16 @@ details { margin: .8rem 0; }
 a { color: var(--accent); }
 @media (max-width: 600px) {
   :root { --gap: 4px; }
+  /* half the side margin: every pixel goes to the 7 calendar columns (about 2px more each) */
+  main { padding: 1rem .5rem; }
   .day { font-size: .65rem; border-radius: 8px; }
   .day .num { font-size: .8rem; min-width: 1.2rem; }
   .day.today .num { width: 1.2rem; height: 1.2rem; line-height: 1.2rem; }
   .day .day-events { min-height: 1.8rem; }
-  .who span { padding: 0 .15rem; }
+  .day .ev:not(.bar) { white-space: nowrap; overflow: hidden; padding: 0 .15rem; }
+  .ev-time { display: none; }
+  /* initials and their am / pm wrap as one */
+  .who span { padding: 0 .15rem; white-space: nowrap; }
   h1 { font-size: 1.8rem; }
 }
 
