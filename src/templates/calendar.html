@@ -2,6 +2,7 @@
   <a href="/?m={{month.prev}}{{groupQuery}}" title="{{t.calendar.previousMonth}}">&lsaquo;</a>
   {{month.label}}
   <a href="/?m={{month.next}}{{groupQuery}}" title="{{t.calendar.nextMonth}}">&rsaquo;</a>
+  {{#todayMonth}}<a href="/?m={{todayMonth}}{{groupQuery}}" class="today-link">{{t.calendar.today}}</a>{{/todayMonth}}
 </h1>
 {{! Whose free time is shown: everyone I can see, or one of my groups. A plain GET form, so it works
     without JS; app.js submits it as soon as the choice changes and hides the Show button.
@@ -30,9 +31,7 @@
 </div>
 {{/groupChoices.length}}
 {{/groupsEnabled}}
-{{#error}}
-<p class="err">{{error}}</p>
-{{/error}}
+{{> notices}}
 <details class="hint">
   <summary>{{t.calendar.howToUse}}</summary>
   {{{t.calendar.howToBody}}}
@@ -96,7 +95,7 @@
           {{/birthdays}}
           {{! One-day events follow; the lanes above (gaps included) keep them off the bars. }}
           {{#oneDay}}
-          <span class="{{classes}}" title="{{tooltip}}">{{label}}</span>
+          <span class="{{classes}}" title="{{tooltip}}">{{#time}}<span class="ev-time">{{time}} </span>{{/time}}{{title}}</span>
           {{/oneDay}}
         </span>
       </button>
@@ -120,6 +119,8 @@
       {{/partChoices}}
     </div>
   </form>
+  {{! app.js points it at the day the menu is for (/events/new?date=). }}
+  <p class="day-add"><a href="/events/new">{{t.calendar.addEvent}}</a></p>
   <form method="dialog"><button class="link">{{t.calendar.cancel}}</button></form>
 </dialog>
 

@@ -54,7 +54,7 @@ const changesOf = id => Object.fromEntries(all('SELECT on_date, changes FROM eve
   .map(row => [row.on_date, JSON.parse(row.changes)]));
 
 test('a weekly event with a location: saved, and on the calendar each week until its last date', async () => {
-  assert.equal((await request('POST', '/events', ada, climb)).location, '/?m=2026-10');
+  assert.equal((await request('POST', '/events', ada, climb)).location, '/?m=2026-10&msg=event_added');
   const saved = get("SELECT * FROM events WHERE title = 'Climb'");
   assert.deepEqual([saved.location, saved.rrule], ['Gym', 'FREQ=WEEKLY;BYDAY=MO;UNTIL=20261019']);
 
@@ -96,7 +96,7 @@ test('This event: only what differs from the series is kept; deleting it skips t
   const event = await addEvent({ ends: 'never' });
   const edit = (fields, on = '2026-10-12') => request('POST', `/events/${event.id}`, ada,
     { ...climb, ends: 'never', date: on, scope: 'one', on, ...fields });
-  assert.equal((await edit({ title: 'Climb (Tuesday)', date: '2026-10-13' })).location, '/?m=2026-10');
+  assert.equal((await edit({ title: 'Climb (Tuesday)', date: '2026-10-13' })).location, '/?m=2026-10&msg=event_saved');
   assert.deepEqual(changesOf(event.id), { '2026-10-12': { title: 'Climb (Tuesday)', date: '2026-10-13',
     end_date: '2026-10-13' } });
   assert.equal(get('SELECT title FROM events WHERE id = ?', event.id).title, 'Climb', 'the series stays');

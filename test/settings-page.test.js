@@ -29,7 +29,7 @@ test('settingsPage: Rules once a calendar is connected, days in my week order, m
   assert.doesNotMatch(settingsPage(user, { base: '' }), /settings\/calendars\/rules/, 'no calendar, no rules');
   const page = settingsPage(user, { base: '', calendarLinks: [{ id: 4, url: 'https://x.test/a.ics', label: 'Work' }] });
   assert.match(page, /<option value="60" selected>1h<\/option>/);
-  assert.match(page, /<option value="45" selected>1.5 months<\/option>/);
+  assert.match(page, /<option value="45" selected>45 days \(1.5 months\)<\/option>/);
   assert.match(page, /name="ignore_words" maxlength="500" value="gym, lunch"/);
   assert.match(page, /value="1am" aria-label="Mon AM" checked>/);
   assert.match(page, /value="0eve" aria-label="Sun EVE" checked>/);
@@ -38,7 +38,7 @@ test('settingsPage: Rules once a calendar is connected, days in my week order, m
   const defaults = settingsPage({ ...user, busy_minutes: undefined, sync_days: undefined },
     { base: '', calendarLinks: [{ id: 4, url: 'https://x.test' }] });
   assert.match(defaults, /<option value="120" selected>2h<\/option>/, 'default 2h');
-  assert.match(defaults, /<option value="30" selected>1 month<\/option>/, 'default 1 month');
+  assert.match(defaults, /<option value="30" selected>30 days \(1 month\)<\/option>/, 'default 30 days');
 });
 
 test('settingsPage: Customisation first, then Calendar Integration with my calendars, then Calendar feeds', () => {
