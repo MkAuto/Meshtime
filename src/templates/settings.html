@@ -71,7 +71,7 @@
         </label>
         <button>{{t.common.save}}</button>
       </form>
-      <form method="post" action="/settings/calendars/{{id}}/delete" class="inline">
+      <form method="post" action="/settings/calendars/{{id}}/delete" class="inline" data-confirm="{{t.settings.confirmRemove}}">
         <button class="danger">{{t.settings.remove}}</button>
       </form>
     </li>
@@ -188,7 +188,7 @@
     </ul>
   </details>
   {{! Rotating changes the token in every feed link: birthdays, each group's, and All events. }}
-  <form method="post" action="/settings/rotate-feed"><button class="danger">{{t.settings.rotate}}</button></form>
+  <form method="post" action="/settings/rotate-feed" data-confirm="{{t.settings.confirmRotate}}"><button class="danger">{{t.settings.rotate}}</button></form>
 </details>
 
 {{! Only while an admin allows it (Administration → Options); /settings/invite refuses otherwise.

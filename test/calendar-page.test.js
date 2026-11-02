@@ -76,3 +76,13 @@ test('calendarPage: a location links to a map search for it, encoded in the link
     + 'Caf%C3%A9%20%3Cb%3E%26%3C%2Fb%3E%20Co" target="_blank" rel="noopener">Café &lt;b&gt;&amp;&lt;/b&gt; Co</a>'));
   assert.doesNotMatch(page, /<b>&<\/b>/);
 });
+
+test('calendarPage: Today only on another month, keeping the group; ?msg= shows its notice', () => {
+  const user = { id: 1, feed_token: 'tok', week_start: 0, show_birthdays: 1, color: 3 };
+  const month = { free: new Map(), mine: new Map(), events: [], birthdays: [], today: '2026-10-04', members: 1 };
+  assert.doesNotMatch(calendarPage(user, '2026-10', month), /today-link/);
+  assert.match(calendarPage(user, '2026-12', { ...month, group: { id: 7 } }),
+    /<a href="\/\?m=2026-10&amp;g=7" class="today-link">Today<\/a>/);
+  assert.match(calendarPage(user, '2026-10', { ...month, msg: 'event_deleted' }), /<p class="ok">Event deleted\.<\/p>/);
+  assert.doesNotMatch(calendarPage(user, '2026-10', { ...month, msg: 'nonsense' }), /class="ok"/);
+});

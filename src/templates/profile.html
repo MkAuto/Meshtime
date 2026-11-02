@@ -42,6 +42,7 @@
       <input name="password" type="password" required minlength="{{minPassword}}" autocomplete="new-password">
     </label>
     {{#errors.password}}<p class="err">{{errors.password}}</p>{{/errors.password}}
+    <label class="check"><input type="checkbox" data-reveal> {{t.login.showPassword}}</label>
     <button>{{t.profile.changePassword}}</button>
   </form>
   <h3>{{t.profile.passkeys}}</h3>
@@ -52,7 +53,7 @@
     {{#passkeys}}
     <li>
       {{label}} <small class="hint">{{added}}</small>
-      <form method="post" action="/profile/passkeys/delete" class="inline">
+      <form method="post" action="/profile/passkeys/delete" class="inline" data-confirm="{{t.profile.confirmRemovePasskey}}">
         <input type="hidden" name="id" value="{{id}}"><button class="link danger">{{t.common.remove}}</button>
       </form>
     </li>

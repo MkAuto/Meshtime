@@ -25,10 +25,14 @@ for (const box of document.querySelectorAll('input[data-confirm-on]')) {
   });
 }
 
-// Checkboxes with data-reveal show or hide the password field of their form (CSP forbids inline onchange).
+// Checkboxes with data-reveal show or hide the password fields of their form (CSP forbids inline onchange): Profile's
+// has two, the current one and the new one. Listed once, as a revealed one is no longer [type=password].
 for (const box of document.querySelectorAll('input[data-reveal]')) {
+  const fields = box.form.querySelectorAll('input[type=password]');
   box.addEventListener('change', () => {
-    box.form.elements.password.type = box.checked ? 'text' : 'password';
+    for (const field of fields) {
+      field.type = box.checked ? 'text' : 'password';
+    }
   });
 }
 
@@ -119,9 +123,11 @@ if (partMenu) {
   const MAX_SLOTS_PER_DAY = 2;
   const WHOLE_DAY_CHOICES = ['all', 'none', 'auto'];
   const choiceForm = partMenu.querySelector('form');
+  const addEvent = partMenu.querySelector('.day-add a');
 
   const openMenu = day => {
     choiceForm.elements.date.value = day.form.elements.date.value;
+    addEvent.href = '/events/new?date=' + day.form.elements.date.value;
     partMenu.querySelector('h2').textContent = day.dataset.dateLabel;
     const parts = day.dataset.parts.split(' ');
     const slotsPicked = parts.filter(part => !WHOLE_DAY_CHOICES.includes(part)).length;
@@ -180,6 +186,23 @@ if (partMenu) {
       clickTimer = setTimeout(() => day.form.submit(), DOUBLE_CLICK_MS);
     });
   }
+
+  // A tap or click on the backdrop closes the menu, as Cancel does. Only one that also started there: the finger
+  // lifting after a long press can land on the backdrop too, as the menu opened under it, and must leave it open.
+  // ponytail: not <dialog closedby="any">, whose light dismiss closes it on that lift (its pointerdown came before).
+  const onBackdrop = event => {
+    const box = partMenu.getBoundingClientRect();
+    return event.target === partMenu && (event.clientX < box.left || event.clientX > box.right
+      || event.clientY < box.top || event.clientY > box.bottom);
+  };
+  let pressedBackdrop = false;
+  partMenu.addEventListener('pointerdown', event => { pressedBackdrop = onBackdrop(event); });
+  partMenu.addEventListener('click', event => {
+    if (pressedBackdrop && onBackdrop(event)) {
+      partMenu.close();
+    }
+    pressedBackdrop = false;
+  });
 }
 
 const eventForm = document.querySelector('input[name=start_time]')?.form;

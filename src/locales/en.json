@@ -45,6 +45,7 @@
   "calendar": {
     "previousMonth": "Previous month",
     "nextMonth": "Next month",
+    "today": "Today",
     "whoseFreeTime": "Whose free time to show",
     "everyone": "Everyone I can see",
     "show": "Show",
@@ -220,7 +221,8 @@
     "until": "Answers until {{date}}.",
     "deadlineHint": "The last day to answer. Empty: no deadline.",
     "saveDeadline": "Save deadline",
-    "close": "Close poll now"
+    "close": "Close poll now",
+    "confirmClose": "Close this poll now? No one can answer it after, and it cannot be reopened."
   },
   "groups": {
     "title": "Groups",
@@ -276,6 +278,7 @@
     "synced": "synced {{when}}",
     "countFree": "Count events shown as Free",
     "remove": "Remove",
+    "confirmRemove": "Remove this calendar? If it is your last one, the free days it filled in are cleared.",
     "syncNow": "Sync now",
     "rules": "Rules",
     "syncDays": "Fill ahead",
@@ -327,6 +330,7 @@
     "subscribeApple": "<b>Apple Calendar</b>: click the webcal link, or File → New Calendar Subscription. Choose a short auto-refresh interval.",
     "subscribeOutlook": "<b>Outlook</b> (web): Add calendar → Subscribe from web → paste the https link. Refreshes every few hours.",
     "rotate": "Rotate all feed links",
+    "confirmRotate": "Rotate all your feed links? Calendar apps subscribed to them stop updating until you subscribe again.",
     "invite": "Invite someone",
     "inviteHint": "A link to create an account: valid 7 days, single use. Send it only to who you mean to invite.",
     "createInvite": "Create invite link",
@@ -357,6 +361,7 @@
     "passkeysHint": "Log in with your fingerprint, face or device PIN instead of typing a password. Your password keeps working.",
     "added": "added {{date}}",
     "noPasskeys": "No passkeys yet.",
+    "confirmRemovePasskey": "Remove this passkey? You can no longer log in with it.",
     "addPasskey": "Add a passkey",
     "needsJs": "Adding a passkey needs JavaScript.",
     "passkeyPrompt": "Name this passkey",
@@ -420,7 +425,11 @@
     "calendar_removed": "Calendar removed.",
     "calendar_synced": "Calendars synced.",
     "calendar_saved": "Calendar saved.",
-    "calendar_rules": "Rules saved. Your free days are worked out again with them."
+    "calendar_rules": "Rules saved. Your free days are worked out again with them.",
+    "event_added": "Event added.",
+    "event_saved": "Event saved.",
+    "event_deleted": "Event deleted.",
+    "answers_saved": "Answers saved."
   },
   "errors": {
     "generic": "Something went wrong.",

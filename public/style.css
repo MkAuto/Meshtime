@@ -103,7 +103,7 @@ nav button.link { color: var(--muted); font-weight: 500; }
   nav .lang-menu form { position: static; min-width: 0; padding: .2rem 0 0 1.6rem; background: none; border: 0; box-shadow: none; }
 }
 main { max-width: 900px; margin: 0 auto; padding: 1rem; }
-h1 { font: 700 2.2rem/1.1 var(--display); letter-spacing: -.02em; display: flex; align-items: center; gap: .6rem; margin: 1.2rem 0 .8rem; }
+h1 { font: 700 2.2rem/1.1 var(--display); letter-spacing: -.02em; display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: 1.2rem 0 .8rem; }
 /* the month arrows: round buttons */
 h1 a {
   color: var(--accent);
@@ -117,6 +117,8 @@ h1 a {
   background: var(--card);
   box-shadow: var(--shadow);
 }
+/* Today, after the arrows while another month is on screen: a pill at body size (wraps under them on a phone) */
+h1 a.today-link { width: auto; height: auto; padding: .3rem .9rem; border-radius: 999px; font: 600 .9rem system-ui, sans-serif; letter-spacing: 0; }
 h2 { font: 700 1.3rem var(--display); letter-spacing: -.01em; margin: 2rem 0 .6rem; }
 .hint { color: var(--muted); font-size: .9rem; }
 /* a subtitle right under a page title, like the version on Settings */
@@ -353,6 +355,7 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 #day-part .stack button.current { outline: 3px solid var(--fg); outline-offset: 2px; }
 /* already free twice that day: a third time cannot be picked until one is taken off */
 #day-part .stack button:disabled { opacity: .4; }
+#day-part .day-add { margin: .8rem 0 0; text-align: center; }
 #day-part form[method=dialog] { margin-top: .8rem; text-align: center; }
 /* day states: one class per DAY_STATES key in src/lib.js */
 /* my free days, ringed in my own color: the grid carries my .cN class */
@@ -478,9 +481,12 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 .polls a { color: var(--accent); }
 .polls small { color: var(--muted); margin-left: .5rem; }
 .polls .to-answer { color: var(--accent); font-size: .9rem; margin-left: .5rem; }
-table.poll { border-collapse: collapse; width: 100%; margin: 1rem 0; background: var(--card); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+/* The card is the wrapper, so a table wider than a phone scrolls sideways inside it, and the names column stays put. */
+.poll-wrap { overflow-x: auto; margin: 1rem 0; background: var(--card); border-radius: 12px; box-shadow: var(--shadow); }
+table.poll { border-collapse: collapse; width: 100%; }
+table.poll tr > :first-child { position: sticky; left: 0; background: var(--card); }
 table.poll th, table.poll td { border-bottom: 1px solid var(--line); padding: .6rem .7rem; text-align: center; font-size: .9rem; }
-table.poll th { font-weight: 600; color: var(--muted); }
+table.poll th { font-weight: 600; color: var(--muted); white-space: nowrap; }
 table.poll th.best { background: var(--ok-bg); color: var(--ok); }
 table.poll td:first-child { text-align: left; }
 /* an answer filled in from my free days, not saved yet (poll.suggested) */
