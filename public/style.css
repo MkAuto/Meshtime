@@ -318,6 +318,49 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 /* Calendar Integration rules: always-busy days × slots */
 .busy-grid th, .busy-grid td { padding: .1rem .6rem; text-align: center; font-weight: normal; }
 .busy-grid tr > th:first-child { text-align: left; }
+/* Settings → Customisation and Profile → About me: an option per row in its card, a faint line between rows (~: an
+   error between two rows keeps it): an emoji in a tinted circle (it tilts on hover), its words, then its control at
+   the right end, under the words when there is no room. A note (.pref-note) goes under it all, lined up with the words. */
+.pref { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .8rem; padding: .65rem 0; }
+label.pref { cursor: pointer; }
+.pref ~ .pref { border-top: 1px solid color-mix(in srgb, var(--panel-edge) 18%, transparent); }
+.pref > .pref-icon + span { flex: 1; min-width: 9rem; }
+.pref > input:not([type=checkbox]) { margin-left: auto; width: min(100%, 16rem); }
+.pref-color { display: flex; align-items: center; gap: .5rem; margin-left: auto; max-width: 100%; }
+.pref-color .hue { width: min(240px, 100%); min-width: 0; }
+.pref-note { flex-basis: 100%; margin: 0; padding-left: 2.9rem; font-size: .85rem; }
+/* rows as a list (Profile → my passkeys): no bullets; a row's own form (Remove) at its right end */
+.pref-list { list-style: none; padding: 0; margin: .5rem 0; }
+.pref > form:last-child { margin-left: auto; }
+.pref-icon {
+  display: grid; place-items: center; flex: none; width: 2.1rem; height: 2.1rem; border-radius: 50%;
+  font-size: 1.05rem; background: color-mix(in srgb, var(--panel-edge) 14%, var(--card)); transition: transform .2s ease;
+}
+.pref:hover .pref-icon { transform: rotate(-10deg) scale(1.08); }
+/* on / off: a switch in the panel's color, the checkbox itself redrawn (so it still posts, and Space toggles it) */
+.pref input[type=checkbox] {
+  appearance: none; flex: none; position: relative; width: 2.6rem; height: 1.5rem; margin: 0 0 0 auto; padding: 0;
+  border: none; border-radius: 999px; cursor: pointer;
+  background: color-mix(in srgb, var(--panel-edge) 22%, var(--card)); transition: background .2s ease;
+}
+.pref input[type=checkbox]::before {
+  content: ""; position: absolute; top: .2rem; left: .2rem; width: 1.1rem; height: 1.1rem; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / .3); transition: translate .2s ease;
+}
+.pref input[type=checkbox]:checked { background: var(--panel-edge); }
+.pref input[type=checkbox]:checked::before { translate: 1.1rem 0; }
+/* one of a few: rounded chips, the picked one filled; the radio over each, unseen but still there (.repeat-weekdays) */
+.chips { display: flex; flex-wrap: wrap; gap: .4rem; margin-left: auto; }
+.chips label { position: relative; }
+.chips input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.chips span {
+  display: block; padding: .35rem .85rem; border-radius: 999px; font-size: .9rem; font-weight: 600;
+  color: color-mix(in srgb, var(--panel-edge) 70%, var(--fg));
+  background: color-mix(in srgb, var(--panel-edge) 12%, var(--card)); transition: background .15s ease;
+}
+.chips label:hover span { background: color-mix(in srgb, var(--panel-edge) 22%, var(--card)); }
+.chips input:checked + span { background: var(--panel-edge); color: var(--card); }
+.pref input:focus-visible, .chips input:focus-visible + span { outline: 2px solid var(--panel-edge); outline-offset: 2px; }
 .panel-options  { --panel-edge: #6b8a3f; } /* olive */
 .panel-log      { --panel-edge: #6f5e8f; } /* heather */
 /* one group on the groups page: stripe and title in the group's own color (member_groups.color) */
@@ -604,6 +647,10 @@ a { color: var(--accent); }
   .day .day-events { min-height: 1.8rem; }
   .day .ev:not(.bar) { white-space: nowrap; overflow: hidden; padding: 0 .15rem; }
   .ev-time { display: none; }
+  /* .pref rows: a field or chips that do not fit beside the words go under them, lined up with them, full width
+     (switches stay beside) */
+  .pref > input:not([type=checkbox]), .pref > .chips, .pref-color { margin-left: 2.9rem; width: calc(100% - 2.9rem); }
+  .pref-color .hue { flex: 1; width: auto; }
   /* an event's Add to calendar: just the icon, beside its text instead of under it */
   .events .add-label, .events .add-menu > summary::after { display: none; }
   .events .add-menu > summary { padding: .4rem; }

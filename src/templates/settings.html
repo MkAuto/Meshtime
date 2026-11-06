@@ -7,45 +7,54 @@
 <details class="panel panel-custom" open data-remember="settings-customisation">
   <summary><h2>{{t.settings.customisation}}</h2></summary>
   <form method="post" action="/settings/customisation">
-    {{! Two sections: everything about how the calendar looks, then how dates are written (style.css
-        uppercases the headings). }}
-    <h3>{{t.settings.calendar}}</h3>
-    <label>
-      {{t.settings.weekStart}}
-      <select name="week_start">
-        {{#weekStarts}}
-        <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
-        {{/weekStarts}}
-      </select>
-    </label>
-    {{#errors.weekStart}}<p class="err">{{errors.weekStart}}</p>{{/errors.weekStart}}
-    <br>
-    <label>
-      <input type="checkbox" name="continuous_calendar" value="1"{{#continuousCalendar}} checked{{/continuousCalendar}}>
-      {{t.settings.continuous}}
-    </label>
-    <br>
-    <label>
-      <input type="checkbox" name="show_birthdays" value="1"{{#showBirthdays}} checked{{/showBirthdays}}>
-      {{t.settings.showBirthdays}}
-    </label>
-    <br>
-    <label>
-      <input type="checkbox" name="hide_free_border" value="1"{{#hideFreeBorder}} checked{{/hideFreeBorder}}>
-      {{t.settings.hideFreeBorder}}
-    </label>
-    <br>
-    <label>
-      <input type="checkbox" name="hide_own_initials" value="1"{{#hideOwnInitials}} checked{{/hideOwnInitials}}>
-      {{t.settings.hideOwnInitials}}
-    </label>
-    <h3>{{t.settings.dateFormat}}</h3>
-    <select name="date_format" aria-label="{{t.settings.dateFormat}}">
-      {{#dateFormats}}
-      <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
-      {{/dateFormats}}
-    </select>
-    {{#errors.dateFormat}}<p class="err">{{errors.dateFormat}}</p>{{/errors.dateFormat}}
+    {{! Two cards, like Calendar Integration's: everything about how the calendar looks, then how dates are
+        written. Each option is a row (.pref): an emoji, its words, its control. The choices are chips (radios), the
+        on/off ones switches (checkboxes); style.css draws both. }}
+    <div class="integration">
+      <div>
+        <h3>{{t.settings.calendar}}</h3>
+        <div class="pref">
+          <span class="pref-icon" aria-hidden="true">🗓️</span>
+          <span id="week-start-label">{{t.settings.weekStart}}</span>
+          <span class="chips" role="radiogroup" aria-labelledby="week-start-label">
+            {{#weekStarts}}
+            <label><input type="radio" name="week_start" value="{{value}}"{{#selected}} checked{{/selected}}><span>{{label}}</span></label>
+            {{/weekStarts}}
+          </span>
+        </div>
+        {{#errors.weekStart}}<p class="err">{{errors.weekStart}}</p>{{/errors.weekStart}}
+        <label class="pref">
+          <span class="pref-icon" aria-hidden="true">🔁</span>
+          <span>{{t.settings.continuous}}</span>
+          <input type="checkbox" name="continuous_calendar" value="1"{{#continuousCalendar}} checked{{/continuousCalendar}}>
+        </label>
+        <label class="pref">
+          <span class="pref-icon" aria-hidden="true">🎂</span>
+          <span>{{t.settings.showBirthdays}}</span>
+          <input type="checkbox" name="show_birthdays" value="1"{{#showBirthdays}} checked{{/showBirthdays}}>
+        </label>
+        <label class="pref">
+          <span class="pref-icon" aria-hidden="true">⭕</span>
+          <span>{{t.settings.hideFreeBorder}}</span>
+          <input type="checkbox" name="hide_free_border" value="1"{{#hideFreeBorder}} checked{{/hideFreeBorder}}>
+        </label>
+        <label class="pref">
+          <span class="pref-icon" aria-hidden="true">🙈</span>
+          <span>{{t.settings.hideOwnInitials}}</span>
+          <input type="checkbox" name="hide_own_initials" value="1"{{#hideOwnInitials}} checked{{/hideOwnInitials}}>
+        </label>
+      </div>
+      <div>
+        <h3 id="date-format-label">{{t.settings.dateFormat}}</h3>
+        {{! each format written as today's date }}
+        <div class="chips" role="radiogroup" aria-labelledby="date-format-label">
+          {{#dateFormats}}
+          <label><input type="radio" name="date_format" value="{{value}}"{{#selected}} checked{{/selected}}><span>{{label}}</span></label>
+          {{/dateFormats}}
+        </div>
+        {{#errors.dateFormat}}<p class="err">{{errors.dateFormat}}</p>{{/errors.dateFormat}}
+      </div>
+    </div>
     <p><button>{{t.common.save}}</button></p>
   </form>
 </details>
