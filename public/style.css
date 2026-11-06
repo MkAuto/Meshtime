@@ -604,6 +604,11 @@ a { color: var(--accent); }
   .day .day-events { min-height: 1.8rem; }
   .day .ev:not(.bar) { white-space: nowrap; overflow: hidden; padding: 0 .15rem; }
   .ev-time { display: none; }
+  /* an event's Add to calendar: just the icon, beside its text instead of under it */
+  .events .add-label, .events .add-menu > summary::after { display: none; }
+  .events .add-menu > summary { padding: .4rem; }
+  .events > li { flex-wrap: nowrap; }
+  .events > li > span { flex: 1; min-width: 0; }
   /* initials and their am / pm wrap as one */
   .who span { padding: 0 .15rem; white-space: nowrap; }
   h1 { font-size: 1.8rem; }

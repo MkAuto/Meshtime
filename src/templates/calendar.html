@@ -158,9 +158,10 @@
       {{! Add to calendar, like a feed's (feed-card.html), for this one time: Apple Calendar downloads its .ics. }}
       {{#add}}
       <details class="add-menu">
-        <summary class="pill">
+        {{! on a phone only the icon shows (style.css .add-label): aria-label keeps its name }}
+        <summary class="pill" aria-label="{{t.settings.addToCalendar}}">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 3h-1V1h-2v2H7V1H5v2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 18H4V8h16v13zM11 10h2v3.5h3.5v2H13V19h-2v-3.5H7.5v-2H11z"/></svg>
-          {{t.settings.addToCalendar}}
+          <span class="add-label">{{t.settings.addToCalendar}}</span>
         </summary>
         <ul>
           <li><a href="{{google}}" target="_blank" rel="noopener">{{t.settings.googleCalendar}}</a></li>
