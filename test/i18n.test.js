@@ -92,13 +92,13 @@ test('pickLanguage: my pick, then the cookie, then the browser, then English', (
 
 test('a page in French: lang attribute, texts, Quebec month names, the menu ticks Français', () => {
   const page = pollPage({ id: 3, name: 'Keven', lang: 'fr', path: '/polls/1' }, {
-    poll: { id: 1, title: 'Souper' }, dates: ['2026-07-14'], members: [{ id: 3, name: 'Keven' }],
+    poll: { id: 1, title: 'Souper' }, choices: ['2026-07-14'], members: [{ id: 3, name: 'Keven' }],
     votes: [], missing: [], complete: false, best: [], event: null,
   });
   assert.match(page, /<html lang="fr">/);
-  assert.match(page, /<th class="">14 juill\. 2026<\/th>/);
+  assert.match(page, /<th class="" scope="col"><small>mar\.<\/small>14 juill\. 2026<\/th>/);
   assert.match(page, /<button>Enregistrer mes réponses<\/button>/);
-  assert.match(page, /<option value="maybe">peut-être<\/option>/);
+  assert.match(page, /value="maybe" aria-label="peut-être">/);
   assert.match(page, /Se déconnecter \(Keven\)/);
   assert.match(page, /<input type="hidden" name="back" value="\/polls\/1">/);
   assert.match(page, /lang="fr" class="link" aria-current="true">Français<\/button>/);

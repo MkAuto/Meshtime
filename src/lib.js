@@ -529,34 +529,36 @@ export const randomColor = () => Math.floor(Math.random() * COLORS);
 // so the number lives here only.
 export const MIN_PASSWORD = 12;
 
-// Poll size cap: enforced in routes.js, rendered as fieldset data-max for public/app.js.
-export const MAX_DATES = 30;
+// Poll size cap, dates or activities: enforced in routes.js, rendered as fieldset data-max for public/app.js.
+export const MAX_CHOICES = 30;
+// Longest activity name in an activity poll.
+export const MAX_ACTIVITY = 60;
 
 // The three poll answers. Mirrors the CHECK constraint on poll_votes.answer in db.js.
 export const ANSWERS = ['yes', 'maybe', 'no'];
 
-// Most "yes", then fewest "no", then earliest date. Returns every date tied at the top,
-// so the UI can ask the user to pick. votes: [{ date, answer }]; "maybe" counts for neither side.
-export function bestDates(dates, votes) {
-  if (!dates.length) {
+// Most "yes", then fewest "no", then earliest date (A to Z for activities). Returns every choice tied at the top,
+// so the UI can ask the user to pick. votes: [{ choice, answer }]; "maybe" counts for neither side.
+export function bestChoices(choices, votes) {
+  if (!choices.length) {
     return [];
   }
 
-  const tally = Object.fromEntries(dates.map(date => [date, { yes: 0, no: 0 }]));
+  const tally = Object.fromEntries(choices.map(choice => [choice, { yes: 0, no: 0 }]));
   for (const vote of votes) {
-    const counts = tally[vote.date];
+    const counts = tally[vote.choice];
     if (counts && vote.answer in counts) {
       counts[vote.answer]++;
     }
   }
 
-  const ranked = [...dates].sort((a, b) =>
+  const ranked = [...choices].sort((a, b) =>
     tally[b].yes - tally[a].yes ||
     tally[a].no - tally[b].no ||
     a.localeCompare(b));
 
   const winner = tally[ranked[0]];
-  return ranked.filter(date => tally[date].yes === winner.yes && tally[date].no === winner.no);
+  return ranked.filter(choice => tally[choice].yes === winner.yes && tally[choice].no === winner.no);
 }
 
 // ---- ICS (RFC 5545) ----

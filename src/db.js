@@ -25,6 +25,12 @@ const freeDaysTable = name => `CREATE TABLE IF NOT EXISTS ${name}(
   part2 TEXT ${PART2_CHECK},
   PRIMARY KEY(user_id, date))`;
 
+// DBs from before activity polls: a poll's choices were all dates, in poll_dates(date). Renamed before the schema
+// below runs, or it would create an empty poll_choices beside the old table.
+if (db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'poll_dates'`).get()) {
+  db.exec('ALTER TABLE poll_dates RENAME TO poll_choices; ALTER TABLE poll_choices RENAME COLUMN date TO choice');
+}
+
 // Schema. CREATE IF NOT EXISTS, so this runs on every start and is a no-op once created.
 // All timestamps are ISO strings (see now() below); all dates are 'YYYY-MM-DD'.
 db.exec(`
@@ -113,16 +119,21 @@ CREATE TABLE IF NOT EXISTS custom_view_members(
   member_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   PRIMARY KEY(user_id, member_id));
 
--- date polls. chosen_date is set when the winning date becomes an event.
+-- polls on dates (the winner becomes an event) or on activities (the winner gets a date poll of its own).
+-- chosen is set once the winner is acted on: the date that became an event, or the activity a date poll was made for.
 CREATE TABLE IF NOT EXISTS polls(
   id INTEGER PRIMARY KEY,
   title TEXT NOT NULL,
   created_by INTEGER NOT NULL REFERENCES users(id),
-  chosen_date TEXT,
+  chosen TEXT,
   closed_at TEXT,
   created_at TEXT NOT NULL,
   is_private INTEGER NOT NULL DEFAULT 0,
-  deadline TEXT); -- the last day it takes answers, 'YYYY-MM-DD'; it closes the day after. NULL = until closed
+  deadline TEXT, -- the last day it takes answers, 'YYYY-MM-DD'; it closes the day after. NULL = until closed
+  kind TEXT NOT NULL DEFAULT 'date' CHECK(kind IN ('date','activity')),
+  open_choices INTEGER NOT NULL DEFAULT 0, -- 1: everyone it is for may add choices, not only its creator
+  -- a date poll made from an activity poll: that one. UNIQUE (index below), so it gets only one.
+  from_poll_id INTEGER REFERENCES polls(id) ON DELETE SET NULL);
 
 -- the groups a private poll is shared with (none for a public poll). Groups its creator is in.
 CREATE TABLE IF NOT EXISTS poll_groups(
@@ -130,17 +141,18 @@ CREATE TABLE IF NOT EXISTS poll_groups(
   group_id INTEGER NOT NULL REFERENCES member_groups(id) ON DELETE CASCADE,
   PRIMARY KEY(poll_id, group_id));
 
-CREATE TABLE IF NOT EXISTS poll_dates(
+-- what a poll asks about: a date ('YYYY-MM-DD') in a date poll, an activity's name in an activity poll.
+CREATE TABLE IF NOT EXISTS poll_choices(
   poll_id INTEGER NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
-  date TEXT NOT NULL,
-  PRIMARY KEY(poll_id, date));
+  choice TEXT NOT NULL,
+  PRIMARY KEY(poll_id, choice));
 
 CREATE TABLE IF NOT EXISTS poll_votes(
   poll_id INTEGER NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
-  date TEXT NOT NULL,
+  choice TEXT NOT NULL,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   answer TEXT NOT NULL CHECK(answer IN ('yes','maybe','no')),
-  PRIMARY KEY(poll_id, date, user_id));
+  PRIMARY KEY(poll_id, choice, user_id));
 
 -- group events. poll_id is UNIQUE, so confirming a poll twice cannot create two events.
 -- date..end_date is inclusive (equal for a one-day event). No start_time means all day. Times are 'HH:MM'.
@@ -369,6 +381,21 @@ if (!pollColumns.includes('is_private')) {
 if (!pollColumns.includes('deadline')) {
   db.exec('ALTER TABLE polls ADD COLUMN deadline TEXT');
 }
+// DBs created before activity polls: every poll is on dates, its creator alone adds choices, and its winner is
+// `chosen` (it was chosen_date); a vote's choice was its date.
+if (!pollColumns.includes('kind')) {
+  db.exec(`ALTER TABLE polls ADD COLUMN kind TEXT NOT NULL DEFAULT 'date' CHECK(kind IN ('date','activity'));
+           ALTER TABLE polls ADD COLUMN open_choices INTEGER NOT NULL DEFAULT 0;
+           ALTER TABLE polls ADD COLUMN from_poll_id INTEGER REFERENCES polls(id) ON DELETE SET NULL`);
+}
+if (pollColumns.includes('chosen_date')) {
+  db.exec('ALTER TABLE polls RENAME COLUMN chosen_date TO chosen');
+}
+if (db.prepare('PRAGMA table_info(poll_votes)').all().some(column => column.name === 'date')) {
+  db.exec('ALTER TABLE poll_votes RENAME COLUMN date TO choice');
+}
+// SQLite cannot ADD a UNIQUE column, so the one-date-poll-per-activity-poll rule is this index, on every DB.
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS polls_from_poll ON polls(from_poll_id)');
 
 // A format that is no longer offered goes back to the default.
 db.prepare(`UPDATE users SET date_format = ? WHERE date_format NOT IN (${Object.keys(DATE_FORMATS).map(() => '?')})`)

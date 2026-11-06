@@ -182,11 +182,16 @@
   "polls": {
     "title": "Polls",
     "new": "New poll",
-    "none": "No polls yet.",
+    "none": "No open polls.",
     "open": "open · {{voters}}/{{members}} answered",
     "openUntil": "open until {{date}} · {{voters}}/{{members}} answered",
     "toAnswer": "to answer",
-    "closed": "closed"
+    "closed": "closed",
+    "intro": "Find a date that works for everyone, or decide together what to do first.",
+    "openHeading": "Open",
+    "closedHeading": "Closed ({{count}})",
+    "kindDate": "Date poll",
+    "kindActivity": "Activity poll"
   },
   "newPoll": {
     "title": "New poll",
@@ -196,7 +201,16 @@
     "leaveEmpty": "Leave extras empty.",
     "deadline": "Deadline (optional)",
     "deadlineHint": "The last day to answer: the poll closes after it.",
-    "create": "Create poll"
+    "create": "Create poll",
+    "aboutHeading": "The poll",
+    "answersHeading": "Answers",
+    "kind": "Poll on",
+    "kindDate": "Dates",
+    "kindActivity": "Activities",
+    "activities": "Proposed activities (max {{max}})",
+    "openChoices": "Let everyone add choices",
+    "openChoicesHint": "Everyone it is for can propose more while it is open. Off: only you can.",
+    "planFrom": "Pick dates for {{activity}}, the winner of “{{title}}”."
   },
   "poll": {
     "closed": "Poll closed.",
@@ -214,8 +228,8 @@
     "totals": "yes / maybe / no",
     "suggested": "The dashed answers come from your free days: check them, then save.",
     "save": "Save my answers",
-    "bestDate": "Best date: {{dates}}",
-    "bestDates": "Best dates: {{dates}}",
+    "bestDate": "Best date: {{choices}}",
+    "bestDates": "Best dates: {{choices}}",
     "tied": "Tied on yes and no — pick the one you want.",
     "addedAs": "Added to the calendar as <b>{{title}}</b> on {{date}}.",
     "view": "View",
@@ -226,7 +240,22 @@
     "deadlineHint": "The last day to answer. Empty: no deadline.",
     "saveDeadline": "Save deadline",
     "close": "Close poll now",
-    "confirmClose": "Close this poll now? No one can answer it after, and it cannot be reopened."
+    "confirmClose": "Close this poll now? No one can answer it after, and it cannot be reopened.",
+    "answersHeading": "Answers",
+    "noAnswer": "no answer yet",
+    "bestActivity": "Best activity: {{choices}}",
+    "bestActivities": "Best activities: {{choices}}",
+    "tiedActivity": "Tied on yes and no — pick the one you want to plan.",
+    "planned": "Dates are being picked in <b>{{title}}</b>.",
+    "openPoll": "Open",
+    "pickedActivity": "Picked: {{activity}}.",
+    "planDates": "Plan dates for {{activity}}",
+    "addDate": "Add a date",
+    "addActivity": "Add an activity",
+    "activityPlaceholder": "Bowling",
+    "addHint": "Save your answers first: adding one leaves unsaved answers behind.",
+    "manage": "Manage",
+    "deadlineHeading": "Deadline"
   },
   "groups": {
     "title": "Groups",
@@ -436,7 +465,8 @@
     "event_added": "Event added.",
     "event_saved": "Event saved.",
     "event_deleted": "Event deleted.",
-    "answers_saved": "Answers saved."
+    "answers_saved": "Answers saved.",
+    "choice_added": "Choice added."
   },
   "errors": {
     "generic": "Something went wrong.",
@@ -470,8 +500,8 @@
     "eventForbidden": "Only its creator or an admin can change this event.",
     "pollDates": "Propose 1 to {{max}} valid dates.",
     "pollNotFound": "Poll not found.",
-    "pollClosed": "This poll is closed: your answers were not saved.",
-    "pollForbidden": "Only its creator or an admin can change who sees this poll.",
+    "pollClosed": "This poll is closed: nothing was saved.",
+    "pollForbidden": "Only its creator or an admin can change this poll.",
     "notEveryoneAnswered": "Not everyone has answered yet.",
     "notBestDate": "Not one of the best dates.",
     "groupsOff": "Groups are turned off.",
@@ -514,7 +544,9 @@
       "repeatTooLong": "A repeating event must end before it comes back.",
       "repeatEvery": "Repeat every 1 to 99.",
       "repeatCount": "The number of occurrences must be from 1 to 999."
-    }
+    },
+    "pollActivities": "Propose 1 to {{max}} activities.",
+    "cannotPlan": "Dates can no longer be planned from that poll."
   },
   "sync": {
     "unreachable": "Could not reach that link.",

@@ -5,10 +5,10 @@ import Mustache from 'mustache';
 import packageJson from '../package.json' with { type: 'json' };
 import {
   monthInfo, addDays, formatDate, formatMonthDay, formatTime, formatEventWhen, eventLanes, dayClass, weekdayNames, today,
-  wallClock, BUSY_CHOICES, DEFAULT_BUSY_MINUTES, SLOTS, DATE_FORMATS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_DATES,
+  wallClock, BUSY_CHOICES, DEFAULT_BUSY_MINUTES, SLOTS, DATE_FORMATS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_CHOICES,
   SYNC_DAYS_CHOICES, DEFAULT_SYNC_DAYS, MIN_PASSWORD, LANGUAGES, DEFAULT_LANGUAGE, isValidLanguage, randomColor,
   DEFAULT_WEEK_START, REPEAT_PRESETS, FREQS, WEEKDAY_CODES, parseRrule, repeatForm, weekdayInMonth, formatMonthDayLong,
-  isValidDate,
+  isValidDate, MAX_ACTIVITY,
 } from './lib.js';
 import { t, dictionary, hasText, syncErrorText } from './i18n.js';
 
@@ -536,6 +536,20 @@ export function eventPage(user, { event, errors = {}, groups = [] }) {
 
 // ---- polls ----
 
+// The answers as icons (Material Design Icons by Pictogrammers, Apache License 2.0): check, help, close. Paths only,
+// as each one is drawn once per cell of the poll table.
+const ANSWER_ICONS = {
+  yes: 'M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z',
+  maybe: 'M10,19H13V22H10V19M12,2C17.35,2.22 19.68,7.62 16.5,11.67C15.67,12.67 14.33,13.33 13.67,14.17C13,15 13,16 13,'
+    + '17H10C10,15.33 10,13.92 10.67,12.92C11.33,11.92 12.67,11.33 13.5,10.67C15.92,8.43 15.32,5.26 12,5A3,3 0 0,0 9,'
+    + '8H6A6,6 0 0,1 12,2Z',
+  no: 'M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z',
+};
+
+/** A poll's choice as shown: a date in my format, an activity as typed. */
+const choiceLabel = (user, poll, choice) =>
+  poll.kind === 'activity' ? choice : formatDate(choice, user.date_format, user.lang);
+
 export function pollsPage(user, polls) {
   const { lang } = user;
   const status = poll => {
@@ -545,49 +559,80 @@ export function pollsPage(user, polls) {
         ? t(lang, 'polls.openUntil', { ...values, date: formatDate(poll.deadline, user.date_format, lang) })
         : t(lang, 'polls.open', values);
     }
-    return poll.chosen_date ? `✓ ${formatDate(poll.chosen_date, user.date_format, lang)}` : t(lang, 'polls.closed');
+    return poll.chosen ? `✓ ${choiceLabel(user, poll, poll.chosen)}` : t(lang, 'polls.closed');
   };
+  const row = poll => ({
+    id: poll.id,
+    title: poll.title,
+    isActivity: poll.kind === 'activity',
+    kind: t(lang, poll.kind === 'activity' ? 'polls.kindActivity' : 'polls.kindDate'),
+    status: status(poll),
+    toAnswer: !poll.closed_at && Boolean(poll.i_owe),
+  });
+  const closed = polls.filter(poll => poll.closed_at).map(row);
   return page(t(lang, 'polls.title'), user, 'polls', {
-    polls: polls.map(poll => ({
-      id: poll.id, title: poll.title, status: status(poll), toAnswer: !poll.closed_at && Boolean(poll.i_owe),
-    })),
+    open: polls.filter(poll => !poll.closed_at).map(row),
+    closed,
+    closedHeading: t(lang, 'polls.closedHeading', { count: closed.length }),
   });
 }
 
-// After a rejected form, `errors` ({ title, dates, deadline, visibility }) shows under each field, and `title`,
-// `deadline` and `sharing` (who sees it, as posted) are kept. `groups` are mine: the ones a private poll can be
-// shared with.
-export const newPollPage = (user, { errors = {}, title = '', deadline = '', groups = [], sharing = {} } = {}) =>
-  page(t(user.lang, 'newPoll.title'), user, 'new-poll', {
+// Six rows of each kind of choice: the no-JS fallback (public/app.js keeps the filled ones and one empty), the
+// choices a rejected form posted first.
+const choiceRows = values => [...values, ...Array(Math.max(0, 6 - values.length)).fill('')].map(value => ({ value }));
+
+// After a rejected form, `errors` ({ title, choices, deadline, visibility }) shows under each field, and what was
+// posted is kept. `groups` are mine: the ones a private poll can be shared with. `from` ({ id, title, activity }):
+// the activity poll whose winner this date poll is for.
+export function newPollPage(user, {
+  errors = {}, title = '', kind = 'date', choices = [], openChoices = 0, deadline = '', groups = [], sharing = {},
+  from = null,
+} = {}) {
+  const { lang } = user;
+  return page(t(lang, 'newPoll.title'), user, 'new-poll', {
     errors,
     title,
+    isActivity: kind === 'activity',
+    dates: choiceRows(kind === 'date' ? choices : []),
+    activities: choiceRows(kind === 'activity' ? choices : []),
+    openChoices: Boolean(openChoices),
     deadline,
     today: today(),
-    maxDates: MAX_DATES,
-    datesLegend: t(user.lang, 'newPoll.dates', { max: MAX_DATES }),
+    maxChoices: MAX_CHOICES,
+    maxActivity: MAX_ACTIVITY,
+    datesLegend: t(lang, 'newPoll.dates', { max: MAX_CHOICES }),
+    activitiesLegend: t(lang, 'newPoll.activities', { max: MAX_CHOICES }),
+    from,
+    fromHint: from && t(lang, 'newPoll.planFrom', { activity: from.activity, title: from.title }),
     ...sharingValues(sharing.isPrivate, sharing.groupIds, groups),
   });
+}
 
-// `errors` after a rejected form: `answers` shows under the title, `result` in the result section,
-// `visibility` in Who sees it. `event` is null until confirmed, and when I may not see it (it can be made
-// private later): then only the confirmed date shows. `creatorGroups` and `groupIds` fill Who sees it.
+// `errors` after a rejected form: `answers` shows under the title, `choice` under Add, `result` in the result,
+// `deadline` and `visibility` in Manage. What the winner became once acted on, each null while I may not see it
+// (it can be made private): `event` for a date poll, `datePoll` ({ id, title }) for an activity poll; then only
+// the winner shows. `creatorGroups` and `groupIds` fill Who sees it.
 export function pollPage(user, {
-  poll, dates, members, votes, missing, complete, best, event, groupIds = [], creatorGroups = [], errors = {},
-  suggested = {}, msg,
+  poll, choices, members, votes, missing, complete, best, event, datePoll, groupIds = [], creatorGroups = [],
+  errors = {}, suggested = {}, msg,
 }) {
   const { lang } = user;
-  const answers = {}; // user_id -> { date: answer }
+  const isDate = poll.kind !== 'activity';
+  const label = choice => choiceLabel(user, poll, choice);
+  const answers = {}; // user_id -> { choice: answer }
   for (const vote of votes) {
-    (answers[vote.user_id] ??= {})[vote.date] = vote.answer;
+    (answers[vote.user_id] ??= {})[vote.choice] = vote.answer;
   }
   const myAnswers = answers[user.id] || {};
-  const countAnswer = (date, answer) => votes.filter(vote => vote.date === date && vote.answer === answer).length;
+  const countAnswer = (choice, answer) => votes.filter(vote => vote.choice === choice && vote.answer === answer).length;
   const formatted = date => formatDate(date, user.date_format, lang);
+  const weekdays = weekdayNames(0, lang); // by day number
 
   const isOpen = !poll.closed_at;
   const canManage = poll.created_by === user.id || Boolean(user.is_admin);
   // The result only makes sense once everyone answered, or the poll was closed early.
   const showResult = (complete || !isOpen) && best.length > 0;
+  const isBest = choice => showResult && best.includes(choice);
   // You first, then everyone else A to Z. localeCompare puts "Élodie" next to "Eric", not after "Zoé".
   const sortedMembers = members.toSorted((a, b) =>
     (b.id === user.id) - (a.id === user.id) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
@@ -603,60 +648,89 @@ export function pollPage(user, {
   const rows = sortedMembers.map(member => {
     const isMe = member.id === user.id;
     return {
+      isMe,
       name: isMe ? t(lang, 'poll.you', { name: member.name }) : member.name,
-      cells: dates.map(date => {
-        const answer = answers[member.id]?.[date];
+      initials: initials(member.name),
+      color: member.color ?? 0,
+      cells: choices.map(choice => {
+        const answer = answers[member.id]?.[choice];
         // not answered yet: starts on what my free time that day says (loadPoll), saved with the rest
-        const suggestion = myAnswers[date] ? null : suggested[date];
+        const suggestion = myAnswers[choice] ? null : suggested[choice];
         return {
-          date,
+          choice,
+          choiceLabel: label(choice),
+          classes: isBest(choice) ? 'best' : '',
           editable: isMe && isOpen,
-          current: myAnswers[date] ?? null,
           suggested: Boolean(suggestion),
           options: ANSWERS.map(value => ({
-            value, label: t(lang, `poll.answers.${value}`), selected: (myAnswers[date] ?? suggestion) === value,
+            value, icon: ANSWER_ICONS[value], label: t(lang, `poll.answers.${value}`),
+            checked: (myAnswers[choice] ?? suggestion) === value,
           })),
           answerClass: answer || 'none',
-          answerText: answer ? t(lang, `poll.answers.${answer}`) : '–',
+          answerText: t(lang, answer ? `poll.answers.${answer}` : 'poll.noAnswer'),
+          icon: answer && ANSWER_ICONS[answer],
         };
       }),
     };
   });
 
+  // What the winner became, and while nothing yet, what to do with it: an event for a date, a date poll for an
+  // activity. Shown unescaped (bold in it), so the values going into it are escaped here.
+  const done = Boolean(event || datePoll || poll.chosen);
   const result = showResult && {
-    heading: t(lang, best.length > 1 ? 'poll.bestDates' : 'poll.bestDate', { dates: best.map(formatted).join(', ') }),
+    heading: t(lang, isDate ? (best.length > 1 ? 'poll.bestDates' : 'poll.bestDate')
+      : (best.length > 1 ? 'poll.bestActivities' : 'poll.bestActivity'), { choices: best.map(label).join(', ') }),
     tied: best.length > 1,
-    // a text with bold in it, so shown unescaped: the values going into it are escaped here
+    tiedText: t(lang, isDate ? 'poll.tied' : 'poll.tiedActivity'),
     addedAs: event && t(lang, 'poll.addedAs', {
       title: Mustache.escape(event.title), date: Mustache.escape(formatted(event.date)),
     }),
     eventMonth: event && event.date.slice(0, 7),
-    confirmedFor: !event && poll.chosen_date ? t(lang, 'poll.confirmedFor', { date: formatted(poll.chosen_date) }) : null,
-    choices: best.map(date => ({
-      pollId: poll.id, date, label: t(lang, 'poll.addToCalendar', { date: formatted(date) }),
-    })),
+    planned: datePoll && t(lang, 'poll.planned', { title: Mustache.escape(datePoll.title) }),
+    datePollId: datePoll?.id,
+    // done, but I may not see what it became: only the winner
+    chosenText: event || datePoll || !poll.chosen ? null : isDate
+      ? t(lang, 'poll.confirmedFor', { date: label(poll.chosen) })
+      : t(lang, 'poll.pickedActivity', { activity: poll.chosen }),
+    actions: done ? [] : best.map(choice => (isDate
+      ? { pollId: poll.id, date: choice, label: t(lang, 'poll.addToCalendar', { date: label(choice) }) }
+      : { planUrl: `/polls/new?from=${poll.id}&activity=${encodeURIComponent(choice)}`,
+        label: t(lang, 'poll.planDates', { activity: choice }) })),
   };
 
+  const sharing = canManage && groupsEnabled(user) && sharingValues(poll.is_private, groupIds, creatorGroups);
   return page(poll.title, user, 'poll', {
     ...notices(msg, lang),
     errors,
     id: poll.id,
     title: poll.title,
+    isDate,
+    kindLabel: t(lang, isDate ? 'polls.kindDate' : 'polls.kindActivity'),
     status,
     isOpen,
-    hasSuggestions: isOpen && dates.some(date => !myAnswers[date] && suggested[date]),
+    hasSuggestions: isOpen && choices.some(choice => !myAnswers[choice] && suggested[choice]),
+    // more choices: its creator or an admin, or everyone when it lets them (the route checks it again)
+    canAdd: isOpen && (Boolean(poll.open_choices) || canManage) && choices.length < MAX_CHOICES,
+    addLabel: t(lang, isDate ? 'poll.addDate' : 'poll.addActivity'),
+    maxActivity: MAX_ACTIVITY,
     canClose: isOpen && canManage,
+    showManage: (isOpen && canManage) || Boolean(sharing),
     deadline: poll.deadline ?? '',
     today: today(),
     visibilityLabel: t(lang, 'poll.whoSees', { label: t(lang, poll.is_private ? 'poll.private' : 'poll.public') }),
     // the creator (or an admin) can change who sees it, as on the event page
-    sharing: canManage && sharingValues(poll.is_private, groupIds, creatorGroups),
-    columns: dates.map(date => ({ label: formatted(date), classes: showResult && best.includes(date) ? 'best' : '' })),
+    sharing,
+    columns: choices.map(choice => ({
+      label: label(choice),
+      weekday: isDate && weekdays[new Date(choice + 'T00:00:00Z').getUTCDay()],
+      classes: [isDate ? '' : 'activity', isBest(choice) ? 'best' : ''].join(' ').trim(),
+    })),
     rows,
-    totals: dates.map(date => ({
-      yes: countAnswer(date, 'yes'),
-      maybe: countAnswer(date, 'maybe'),
-      no: countAnswer(date, 'no'),
+    totals: choices.map(choice => ({
+      classes: isBest(choice) ? 'best' : '',
+      yes: countAnswer(choice, 'yes'),
+      maybe: countAnswer(choice, 'maybe'),
+      no: countAnswer(choice, 'no'),
     })),
     result,
   });

@@ -7,7 +7,7 @@ import { join } from 'node:path';
 // Poll deadlines and the count of polls waiting for me, against a throwaway DB (each test file runs in its own
 // process, so this one is all ours).
 process.env.DB_PATH = join(mkdtempSync(join(tmpdir(), 'meshtime-')), 'app.db');
-const { get, run, now } = await import('../src/db.js');
+const { all, get, run, now } = await import('../src/db.js');
 const auth = await import('../src/auth.js');
 const { routes, pendingPolls } = await import('../src/routes.js');
 const { pollsPage, pollPage } = await import('../src/views.js');
@@ -97,12 +97,75 @@ test('the nav counts them, the list marks them, the poll says until when', () =>
     { id: 3, title: 'Old', closed_at: '2026-09-01', i_owe: 1 },
   ]);
   assert.match(list, /<a href="\/polls">Polls \(2\)<\/a>/);
-  assert.match(list, /open until 30 Oct 2026 · 1\/3 answered<\/small>\s*<b class="to-answer">to answer<\/b>/);
-  assert.equal(list.match(/to-answer/g).length, 1, 'not for one I answered, nor a closed one');
+  assert.match(list, /open until 30 Oct 2026 · 1\/3 answered<\/small>\s*<\/span>\s*<a class="pill" href="\/polls\/1">to answer/);
+  assert.equal(list.match(/>to answer</g).length, 1, 'not for one I answered, nor a closed one');
+  assert.match(list, /<h2>Closed \(1\)<\/h2>[^]*Old/, 'closed ones apart');
   assert.doesNotMatch(pollsPage({ ...user, pending_polls: 0 }, []), /Polls \(/);
 
   const page = pollPage(user, { poll: { id: 1, title: 't', created_by: 1, deadline: '2026-10-30' },
-    dates: ['2026-11-02'], members: [], votes: [], missing: ['Bob'], complete: false, best: [], event: null });
+    choices: ['2026-11-02'], members: [], votes: [], missing: ['Bob'], complete: false, best: [], event: null });
   assert.match(page, /Waiting for: Bob Answers until 30 Oct 2026\./);
   assert.match(page, /action="\/polls\/1\/deadline"[^]*?name="deadline" min="[\d-]+" value="2026-10-30"/);
+});
+
+const newActivityPoll = (userId, fields = []) => request('POST', '/polls/new', userId, [['title', 'Saturday?'],
+  ['kind', 'activity'], ['activities', 'Bowling'], ['activities', ' bowling '], ['activities', 'Climb'],
+  ['dates', 'ignored'], ['visibility', 'public'], ...fields]);
+const idOf = answer => Number(answer.location.split('/').pop());
+
+test('an activity poll: its activities once each, whatever their case; answered like dates', async () => {
+  const poll = idOf(await newActivityPoll(ada));
+  assert.deepEqual(all('SELECT choice FROM poll_choices WHERE poll_id = ? ORDER BY choice', poll).map(row => row.choice),
+    ['Bowling', 'Climb']);
+  assert.equal(get('SELECT kind FROM polls WHERE id = ?', poll).kind, 'activity');
+  await request('POST', `/polls/${poll}`, bob, [['v_Bowling', 'yes'], ['v_Climb', 'no']]);
+  assert.equal(get('SELECT COUNT(*) AS n FROM poll_votes WHERE poll_id = ? AND user_id = ?', poll, bob).n, 2);
+  assert.equal((await request('POST', '/polls/new', ada, [['title', 'x'], ['kind', 'activity'],
+    ['visibility', 'public']])).status, 400, 'at least one activity');
+});
+
+test('adding a choice: its creator or an admin, everyone once the poll lets them; not twice, not once closed', async () => {
+  const poll = idOf(await newActivityPoll(ada));
+  assert.equal((await request('POST', `/polls/${poll}/choices`, bob, [['choice', 'Swim']])).status, 403);
+  assert.equal((await request('POST', `/polls/${poll}/choices`, ada, [['choice', 'Swim']])).location,
+    `/polls/${poll}?msg=choice_added`);
+  run('UPDATE polls SET open_choices = 1 WHERE id = ?', poll);
+  await request('POST', `/polls/${poll}/choices`, bob, [['choice', 'swim']]);
+  await request('POST', `/polls/${poll}/choices`, bob, [['choice', 'Ski']]);
+  assert.deepEqual(all('SELECT choice FROM poll_choices WHERE poll_id = ? ORDER BY choice', poll).map(row => row.choice),
+    ['Bowling', 'Climb', 'Ski', 'Swim']);
+  assert.equal((await request('POST', `/polls/${poll}/choices`, bob, [['choice', ' ']])).status, 400);
+
+  const dates = idOf(await request('POST', '/polls/new', ada, [['title', 'When'], ['dates', day(3)],
+    ['open_choices', '1'], ['visibility', 'public']]));
+  assert.equal((await request('POST', `/polls/${dates}/choices`, bob, [['choice', 'soon']])).status, 400);
+  await request('POST', `/polls/${dates}/choices`, bob, [['choice', day(4)]]);
+  assert.equal(get('SELECT COUNT(*) AS n FROM poll_choices WHERE poll_id = ?', dates).n, 2);
+  await request('POST', `/polls/${dates}/close`, ada);
+  assert.equal((await request('POST', `/polls/${dates}/choices`, bob, [['choice', day(5)]])).status, 409);
+});
+
+test('an activity poll\'s winner gets a date poll: once, after everyone answered, and it closes the first', async () => {
+  run('DELETE FROM polls');
+  const poll = idOf(await newActivityPoll(ada));
+  const plan = (userId, activity) => request('POST', '/polls/new', userId, [['from', String(poll)],
+    ['activity', activity], ['title', activity], ['kind', 'activity'], ['dates', day(8)], ['visibility', 'public']]);
+  assert.equal((await plan(ada, 'Bowling')).status, 409, 'not everyone answered yet');
+  for (const { id: member } of all('SELECT id FROM users')) { // Root, the admin above, too
+    await request('POST', `/polls/${poll}`, member, [['v_Bowling', 'yes'], ['v_Climb', 'maybe']]);
+  }
+  assert.equal((await plan(ada, 'Climb')).status, 409, 'not the winner');
+  const confirm = await request('POST', `/polls/${poll}/confirm`, ada, [['date', 'Bowling']]);
+  assert.equal(confirm.status, 400, 'an activity is no event');
+
+  const datePoll = idOf(await plan(bob, 'Bowling'));
+  assert.deepEqual({ ...get('SELECT kind, title, from_poll_id, created_by FROM polls WHERE id = ?', datePoll) },
+    { kind: 'date', title: 'Bowling', from_poll_id: poll, created_by: bob });
+  const first = get('SELECT chosen, closed_at FROM polls WHERE id = ?', poll);
+  assert.equal(first.chosen, 'Bowling');
+  assert.ok(first.closed_at, 'decided, so closed');
+  assert.equal((await plan(ada, 'Bowling')).location, `/polls/${datePoll}`, 'a second time: the one made');
+  assert.match((await request('GET', `/polls/${poll}`, cy)).html, new RegExp(`href="/polls/${datePoll}"`));
+  const prefilled = (await request('GET', `/polls/new?from=${poll}&activity=Bowling`, ada)).html;
+  assert.doesNotMatch(prefilled, /name="from"/, 'planned already: a plain new poll');
 });

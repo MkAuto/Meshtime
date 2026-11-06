@@ -77,15 +77,14 @@ test('Fill ahead: the sync fills sync_days days from today, and lets go of the d
   run('INSERT INTO manual_days(user_id, date) VALUES (?, ?)', fay, day(30)); // set to nothing by hand
   const poll = run(`INSERT INTO polls(title, created_by, created_at) VALUES ('Climb', ?, ?)`, fay, now()).lastInsertRowid;
   for (const offset of [1, 2, 8, 25, 30]) {
-    run('INSERT INTO poll_dates(poll_id, date) VALUES (?, ?)', poll, day(offset));
+    run('INSERT INTO poll_choices(poll_id, choice) VALUES (?, ?)', poll, day(offset));
   }
   const url = new URL(`http://x.test/polls/${poll}`);
   const route = routes.find(r => r.method === 'GET' && r.path.test(url.pathname));
   let html = '';
   await route.handler({ url, params: { id: String(poll) }, user: auth.userFromSession(auth.createSession(fay)),
     html: body => { html = body; } });
-  const startsOn = offset => html.match(new RegExp(`name="v_${day(offset)}"[^]*?</select>`))[0]
-    .match(/value="(\w*)"[^>]* selected/)[1];
+  const startsOn = offset => html.match(new RegExp(`name="v_${day(offset)}" value="(\\w+)"[^>]* checked`))?.[1] ?? '';
   assert.deepEqual([1, 2, 8, 25, 30].map(startsOn), ['yes', 'no', '', 'maybe', 'no'],
     'free all day, busy by the calendar, past what it fills (not known), free one part, set to nothing by hand');
 });

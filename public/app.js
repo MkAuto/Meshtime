@@ -309,17 +309,18 @@ if (clearPlace) {
   });
 }
 
-const dates = document.querySelector('.dates');
-if (dates) {
-  const rows = () => dates.querySelectorAll('input');
-  for (const extra of [...rows()].slice(1)) {
+// New poll: its dates and its activities (templates/new-poll.html) come as six rows each, for when JS is off. Here
+// each keeps the rows filled in (a rejected form) and one empty, and focusing the last grows one more, up to data-max.
+for (const choices of document.querySelectorAll('.choices')) {
+  const rows = () => choices.querySelectorAll('input');
+  for (const extra of [...rows()].filter(row => !row.value).slice(1)) {
     extra.remove();
   }
-  dates.addEventListener('focusin', event => {
-    const last = dates.lastElementChild;
+  choices.addEventListener('focusin', event => {
+    const last = choices.lastElementChild;
     // cloneNode copies the value (spec: input cloning propagates value + dirty flag), so blank it.
-    if (event.target === last && rows().length < Number(dates.dataset.max)) {
-      dates.append(Object.assign(last.cloneNode(), { value: '' }));
+    if (event.target === last && rows().length < Number(choices.dataset.max)) {
+      choices.append(Object.assign(last.cloneNode(), { value: '' }));
     }
   });
 }

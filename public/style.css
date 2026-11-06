@@ -345,6 +345,8 @@ label.pref { cursor: pointer; }
 }
 .action-row:first-child, h3 + .action-row { margin-top: 0; padding-top: 0; border-top: none; }
 .action-row > input:not([type=hidden]), .action-row > select { flex: 1; min-width: 8rem; }
+/* a date needs no more room than this (Polls → Add a date, Deadline) */
+.action-row > input[type=date] { flex: 0 1 12rem; }
 /* a card's later headings (Groups → Invited under Members): room above, as .integration h3 has none */
 .integration > * > h3:not(:first-child) { margin-top: 1.4rem; }
 /* Groups: one group's cards. On a wider screen Members on the left, Next event and its Calendar feed on the right,
@@ -590,28 +592,78 @@ label.pref { cursor: pointer; }
 .events { --panel-edge: var(--accent); }
 .events > li { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .9rem; }
 
-/* polls */
-.polls li { margin: .4rem 0; }
-.polls a { color: var(--accent); }
-.polls small { color: var(--muted); margin-left: .5rem; }
-.polls .to-answer { color: var(--accent); font-size: .9rem; margin-left: .5rem; }
+/* polls: their panels, like Settings' (the open ones / the answers, the closed ones, the result, Manage) */
+.panel-poll     { --panel-edge: #5b7a9a; } /* dusty blue */
+.panel-closed   { --panel-edge: #7a6f66; } /* stone */
+.panel-result   { --panel-edge: #3f6b3a; } /* moss, the yes green */
+.panel-manage   { --panel-edge: #b8862b; } /* ochre */
+/* the list (poll-row.html): title over its kind and status, "to answer" at the right end */
+.poll-name { display: grid; line-height: 1.35; }
+.poll-name a { color: var(--fg); font-weight: 600; text-decoration: none; }
+.poll-name a:hover { color: var(--accent); }
+.poll-name small { font-size: .82rem; }
+.pref > .pill { margin-left: auto; }
+/* New poll: the kind chips show its choices only, dates or activities. A fieldset each, its legend like a card's h3. */
+.poll-form:has(input[name=kind][value=activity]:checked) .dates,
+.poll-form:not(:has(input[name=kind][value=activity]:checked)) .activities { display: none; }
+/* the rows side by side, as many as fit, wrapping */
+.choices {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: .5rem;
+  border: none; padding: 0; margin: 0 0 .4rem; min-width: 0;
+}
+.choices.activities { grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); }
+.choices legend {
+  padding: 0; margin-bottom: .45rem; font-size: .72rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .14em; color: var(--panel-edge);
+}
+/* Who sees it (share-with.html) in a .pref row: beside its icon, its error under both */
+.pref > .visibility { flex: 1; min-width: 12rem; }
+.pref > .err { flex-basis: 100%; margin: 0; }
+.panel-result .row { margin-top: .8rem; }
 /* The card is the wrapper, so a table wider than a phone scrolls sideways inside it, and the names column stays put. */
-.poll-wrap { overflow-x: auto; margin: 1rem 0; background: var(--card); border-radius: 12px; box-shadow: var(--shadow); }
+.poll-wrap { overflow-x: auto; margin: .8rem 0; background: var(--card); border-radius: 14px; box-shadow: var(--shadow); }
 table.poll { border-collapse: collapse; width: 100%; }
-table.poll tr > :first-child { position: sticky; left: 0; background: var(--card); }
-table.poll th, table.poll td { border-bottom: 1px solid var(--line); padding: .6rem .7rem; text-align: center; font-size: .9rem; }
-table.poll th { font-weight: 600; color: var(--muted); white-space: nowrap; }
-table.poll th.best { background: var(--ok-bg); color: var(--ok); }
-table.poll td:first-child { text-align: left; }
-/* an answer filled in from my free days, not saved yet (poll.suggested) */
-table.poll select.suggested { border-style: dashed; border-color: var(--muted); }
-table.poll tr.tot td { color: var(--muted); font-size: .8rem; border: 0; }
-.a.yes { color: var(--ok); font-weight: 600; }
-.a.no { color: var(--err); }
-.a.maybe { color: var(--maybe); }
-.a.none { color: var(--muted); }
-.result { background: var(--ok-bg); padding: 1rem 1.2rem; border-radius: 12px; margin: 1rem 0; }
-.result h2 { margin-top: 0; }
+table.poll tr > :first-child { position: sticky; left: 0; z-index: 1; background: var(--card); text-align: left; }
+table.poll th, table.poll td { border-bottom: 1px solid var(--line); padding: .55rem .6rem; text-align: center; font-size: .9rem; }
+table.poll thead th { font-size: .82rem; font-weight: 600; color: var(--muted); white-space: nowrap; vertical-align: bottom; }
+/* a date's weekday over it */
+table.poll thead th small { display: block; font-size: .68rem; text-transform: uppercase; letter-spacing: .1em; }
+/* an activity's name wraps instead of widening its column */
+table.poll thead th.activity { white-space: normal; min-width: 6.5rem; max-width: 11rem; }
+/* the winner's column, once the result is out */
+table.poll tr > .best { background: color-mix(in srgb, var(--ok) 10%, var(--card)); }
+table.poll thead th.best { color: var(--ok); }
+/* my row, tinted in the panel's color (its sticky name cell too) */
+table.poll tr.me > * { background: color-mix(in srgb, var(--panel-edge) 7%, var(--card)); }
+table.poll tbody th { font-weight: 500; }
+.poll-who { display: flex; align-items: center; gap: .5rem; white-space: nowrap; }
+table.poll .avatar { width: 1.8rem; height: 1.8rem; font-size: .68rem; }
+table.poll tr.tot > * { color: var(--muted); font-size: .78rem; border: 0; }
+/* an answer: a round icon in its color, yes green, maybe amber, no red; none yet a faint dash */
+.a { display: inline-grid; place-items: center; width: 1.8rem; height: 1.8rem; border-radius: 50%; color: var(--muted); }
+.a svg, .vote svg { width: 1.05rem; height: 1.05rem; fill: currentColor; }
+.a.yes { color: var(--ok); background: color-mix(in srgb, var(--ok) 15%, var(--card)); }
+.a.maybe { color: var(--maybe); background: color-mix(in srgb, var(--maybe) 16%, var(--card)); }
+.a.no { color: var(--err); background: color-mix(in srgb, var(--err) 13%, var(--card)); }
+/* my answers: three round buttons, the picked one filled; the radio over each, unseen but still there (.chips) */
+.vote { display: inline-flex; gap: .25rem; }
+.vote label { position: relative; }
+.vote input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.vote span {
+  display: grid; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: 50%;
+  color: var(--muted); background: var(--code-bg); transition: background .15s ease, color .15s ease;
+}
+.vote label:hover span { background: var(--line); }
+.vote .yes input:checked + span { background: var(--ok); color: var(--card); }
+.vote .maybe input:checked + span { background: var(--maybe); color: var(--card); }
+.vote .no input:checked + span { background: var(--err); color: var(--card); }
+.vote input:focus-visible + span { outline: 2px solid var(--panel-edge); outline-offset: 2px; }
+/* filled in from my free days, not saved yet (poll.suggested): paler, ringed with dashes */
+.vote.suggested input:checked + span { opacity: .6; outline: 2px dashed var(--fg); outline-offset: 2px; }
+.tally { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tally .yes { color: var(--ok); }
+.tally .maybe { color: var(--maybe); }
+.tally .no { color: var(--err); }
 /* Settings → Calendar feeds (feed-card.html): a card per feed, its address hidden behind Add to calendar.
    Two columns on a wider screen, like Calendar Integration; the no-group hint takes the whole width. */
 .feeds { list-style: none; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: .6rem; }
@@ -734,4 +786,8 @@ a { color: var(--accent); }
   .panel-options  { --panel-edge: #b0c97e; }
   .panel-log      { --panel-edge: #b5a7d8; }
   .panel-group    { --panel-edge: var(--cd); }
+  .panel-poll     { --panel-edge: #9ab6d3; }
+  .panel-closed   { --panel-edge: #b3a79c; }
+  .panel-result   { --panel-edge: #9bcf8a; }
+  .panel-manage   { --panel-edge: #e0b35a; }
 }

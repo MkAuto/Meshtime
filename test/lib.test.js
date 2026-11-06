@@ -2,7 +2,7 @@ import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   isValidDate, birthdayIn, isValidTime, eventError, formatEventWhen, eventLanes, isValidWeekStart,
-  formatDate, isValidDateFormat, bestDates, dayClass, monthInfo, weekdayNames, toggleSlot, today, occurrences,
+  formatDate, isValidDateFormat, bestChoices, dayClass, monthInfo, weekdayNames, toggleSlot, today, occurrences,
   parseRrule, formatRrule, repeatRule, repeatForm, firstTime, timesBefore, timeOn,
 } from '../src/lib.js';
 
@@ -35,34 +35,34 @@ test('isValidDate: old dates and leap days (birthdays)', () => {
   assert.ok(!isValidDate(''));
 });
 
-test('bestDates: most yes, then fewest no', () => {
+test('bestChoices: most yes, then fewest no', () => {
   const dates = ['2026-10-03', '2026-10-01', '2026-10-02'];
-  assert.deepEqual(bestDates(dates, [
-    { date: '2026-10-01', answer: 'yes' }, { date: '2026-10-01', answer: 'no' },
-    { date: '2026-10-02', answer: 'yes' }, { date: '2026-10-02', answer: 'yes' },
-    { date: '2026-10-03', answer: 'yes' }, { date: '2026-10-03', answer: 'maybe' },
+  assert.deepEqual(bestChoices(dates, [
+    { choice: '2026-10-01', answer: 'yes' }, { choice: '2026-10-01', answer: 'no' },
+    { choice: '2026-10-02', answer: 'yes' }, { choice: '2026-10-02', answer: 'yes' },
+    { choice: '2026-10-03', answer: 'yes' }, { choice: '2026-10-03', answer: 'maybe' },
   ]), ['2026-10-02']);
   // tie on yes: fewer "no" wins outright
-  assert.deepEqual(bestDates(dates, [
-    { date: '2026-10-01', answer: 'yes' }, { date: '2026-10-01', answer: 'no' },
-    { date: '2026-10-03', answer: 'yes' }, { date: '2026-10-03', answer: 'maybe' },
+  assert.deepEqual(bestChoices(dates, [
+    { choice: '2026-10-01', answer: 'yes' }, { choice: '2026-10-01', answer: 'no' },
+    { choice: '2026-10-03', answer: 'yes' }, { choice: '2026-10-03', answer: 'maybe' },
   ]), ['2026-10-03']);
 });
 
-test('bestDates: every date tied on yes and no is proposed, earliest first', () => {
+test('bestChoices: every date tied on yes and no is proposed, earliest first', () => {
   const dates = ['2026-10-03', '2026-10-01', '2026-10-02'];
   // 10-01 and 10-03 both 2 yes / 1 no; 10-02 has fewer yes
-  assert.deepEqual(bestDates(dates, [
-    { date: '2026-10-01', answer: 'yes' }, { date: '2026-10-01', answer: 'yes' }, { date: '2026-10-01', answer: 'no' },
-    { date: '2026-10-02', answer: 'yes' }, { date: '2026-10-02', answer: 'maybe' },
-    { date: '2026-10-03', answer: 'yes' }, { date: '2026-10-03', answer: 'yes' }, { date: '2026-10-03', answer: 'no' },
+  assert.deepEqual(bestChoices(dates, [
+    { choice: '2026-10-01', answer: 'yes' }, { choice: '2026-10-01', answer: 'yes' }, { choice: '2026-10-01', answer: 'no' },
+    { choice: '2026-10-02', answer: 'yes' }, { choice: '2026-10-02', answer: 'maybe' },
+    { choice: '2026-10-03', answer: 'yes' }, { choice: '2026-10-03', answer: 'yes' }, { choice: '2026-10-03', answer: 'no' },
   ]), ['2026-10-01', '2026-10-03']);
   // nobody voted: all tied at 0/0
-  assert.deepEqual(bestDates(dates, []), ['2026-10-01', '2026-10-02', '2026-10-03']);
+  assert.deepEqual(bestChoices(dates, []), ['2026-10-01', '2026-10-02', '2026-10-03']);
   // a "maybe" does not break a tie, it is neither yes nor no
-  assert.deepEqual(bestDates(['2026-10-01', '2026-10-02'], [{ date: '2026-10-01', answer: 'maybe' }]),
+  assert.deepEqual(bestChoices(['2026-10-01', '2026-10-02'], [{ choice: '2026-10-01', answer: 'maybe' }]),
     ['2026-10-01', '2026-10-02']);
-  assert.deepEqual(bestDates([], []), []);
+  assert.deepEqual(bestChoices([], []), []);
 });
 
 test('eventError: every rule', () => {
