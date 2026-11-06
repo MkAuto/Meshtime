@@ -235,7 +235,7 @@ code { word-break: break-all; font-size: .85rem; background: var(--code-bg); pad
 .panel h2 { font-size: 1.3rem; color: var(--panel-edge); margin: .6rem 0; }
 /* section headings inside a panel (Members, Next event, Name…): small spaced capitals in the panel's color,
    so they read as labels and stand apart from the text under them. */
-.panel > h3, .panel > form > h3 {
+.panel > h3, .panel > form > h3, .integration h3 {
   font-size: .72rem;
   text-transform: uppercase;
   letter-spacing: .14em;
@@ -283,6 +283,36 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 .panel-admin    { --panel-edge: #9c3a2e; } /* brick */
 .panel-invites  { --panel-edge: #b8862b; } /* ochre */
 .panel-integration { --panel-edge: #3f7a6e; } /* sage */
+/* Calendar Integration (settings.html): my calendars, Rules, Add a calendar, one under the other on a phone, each a
+   card like the Calendar feeds' (.feed-card). On a wider screen, once a calendar is connected (so there are Rules),
+   two columns: my calendars with Add a calendar under them, and the Rules beside both. 1fr on the second row soaks
+   up the height the Rules have over my calendars; the cards stretch, so both columns end level. */
+.integration { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; margin-top: 1rem; }
+.integration > * { padding: 1rem 1.2rem 1.2rem; background: var(--card); border-radius: 14px; box-shadow: var(--shadow); }
+/* each card opens with its heading: the card's padding is the room above it */
+.integration h3 { margin-top: 0; }
+/* nor room under the last thing in a card: the padding again */
+.integration > * > :last-child, .integration > * > form:last-child > :last-child { margin-bottom: 0; }
+@media (min-width: 760px) {
+  .integration:has(> .integration-rules) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: auto 1fr;
+    grid-template-areas: "calendars rules" "add rules";
+  }
+  .integration:has(> .integration-rules) > .integration-calendars { grid-area: calendars; }
+  .integration:has(> .integration-rules) > .integration-rules { grid-area: rules; }
+  .integration:has(> .integration-rules) > .integration-add { grid-area: add; }
+}
+/* my connected calendars, inside their card: a tinted row each, name and last sync on top, its options under */
+.calendar-list { list-style: none; padding: 0; margin: 0 0 .8rem; display: grid; gap: .5rem; }
+.calendar-list li {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .8rem;
+  padding: .6rem .8rem; background: var(--panel); border-radius: 10px;
+}
+.calendar-list .calendar-name, .calendar-list .err { flex-basis: 100%; }
+.calendar-list .calendar-name .hint { margin-left: .3rem; }
+/* Remove at the far right of its card */
+.calendar-list form:last-child { margin-left: auto; }
 /* Calendar Integration rules: always-busy days × slots */
 .busy-grid th, .busy-grid td { padding: .1rem .6rem; text-align: center; font-weight: normal; }
 .busy-grid tr > th:first-child { text-align: left; }
@@ -496,7 +526,62 @@ table.poll tr.tot td { color: var(--muted); font-size: .8rem; border: 0; }
 .a.none { color: var(--muted); }
 .result { background: var(--ok-bg); padding: 1rem 1.2rem; border-radius: 12px; margin: 1rem 0; }
 .result h2 { margin-top: 0; }
-.feeds li { margin: .8rem 0; }
+/* Settings → Calendar feeds (feed-card.html): a card per feed, its address hidden behind Add to calendar.
+   Two columns on a wider screen, like Calendar Integration; the no-group hint takes the whole width. */
+.feeds { list-style: none; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: .6rem; }
+@media (min-width: 760px) {
+  .feeds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .feeds > .hint { grid-column: 1 / -1; }
+}
+.feed-card {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .6rem .9rem;
+  padding: .7rem .9rem; background: var(--card); border-radius: 14px; box-shadow: var(--shadow);
+}
+/* a round badge: an emoji on a tint of the panel, or a group's initial on its own color (.cN) */
+.feed-badge {
+  display: grid; place-items: center; flex: none; width: 2.4rem; height: 2.4rem; border-radius: 50%;
+  font: 700 1.15rem var(--display); background: color-mix(in srgb, var(--panel-edge) 16%, var(--card));
+}
+.feed-badge.group { background: var(--c); color: #fff; }
+.feed-name { flex: 1; min-width: 8rem; display: grid; line-height: 1.3; }
+.feed-name .hint { font-size: .8rem; }
+/* a soft rounded button in the panel's color. Its text is the panel color pulled toward --fg: the plain
+   color is under 4.5:1 on the tint, in light mode. */
+.pill {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .3rem .8rem; border-radius: 999px; text-decoration: none; font-weight: 600; font-size: .85rem;
+  white-space: nowrap; cursor: pointer;
+  color: color-mix(in srgb, var(--panel-edge) 70%, var(--fg));
+  background: color-mix(in srgb, var(--panel-edge) 14%, var(--card));
+  transition: background .15s ease;
+}
+.pill:hover, details[open] > .pill { background: color-mix(in srgb, var(--panel-edge) 24%, var(--card)); }
+.pill svg { width: 1rem; height: 1rem; fill: currentColor; }
+/* Add to calendar: the pill opens a small list under it, against its right edge, like the language menu.
+   On a phone it wraps under the name, against the card's right edge. */
+.add-menu { position: relative; margin: 0 0 0 auto; }
+.add-menu > summary { list-style: none; }
+.add-menu > summary::-webkit-details-marker { display: none; }
+/* the panels' own triangle (some fonts lack ▾), turned to point down, and up while open */
+.add-menu > summary::after { content: "▶"; font-size: .55rem; transform: rotate(90deg); transition: transform .15s ease; }
+.add-menu[open] > summary::after { transform: rotate(-90deg); }
+.add-menu ul {
+  position: absolute; right: 0; top: calc(100% + .3rem); z-index: 10;
+  list-style: none; margin: 0; padding: .3rem; min-width: 12rem;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow);
+}
+.add-menu a {
+  display: flex; align-items: center; gap: .45rem;
+  padding: .4rem .7rem; border-radius: 8px; color: var(--fg); text-decoration: none; white-space: nowrap;
+}
+.add-menu a:hover, .add-menu a:focus-visible { background: var(--accent-soft); }
+.add-menu a svg { width: 1rem; height: 1rem; fill: currentColor; }
+/* Apple Calendar copies the link: a faint copy icon at its right end says so */
+.add-menu a svg.copies { margin-left: auto; opacity: .55; }
+/* Copy link, for any other app: set apart under the three calendars, green for a moment once copied */
+.add-menu .sep { border-top: 1px solid var(--line); margin-top: .3rem; padding-top: .3rem; }
+.add-menu .sep a { color: var(--muted); }
+.add-menu a.copied { color: var(--ok); }
 details { margin: .8rem 0; }
 a { color: var(--accent); }
 @media (max-width: 600px) {
@@ -535,6 +620,7 @@ a { color: var(--accent); }
   .day.mine { box-shadow: var(--shadow), inset 0 0 0 2px var(--cd, var(--accent)); }
   .ev.colored { background: color-mix(in srgb, var(--cd) 20%, var(--card)); color: var(--cd); }
   .swatch-pick { background: var(--cd, var(--ev-bg)); border-color: var(--cd, var(--ev-fg)); }
+  .feed-badge.group { background: var(--cd); color: var(--bg); }
   /* the same earth tones, lifted so they read on the dark card; the fill tints a little stronger.
      Dark needs no --muted bump: #a1958a clears 4.5:1 on all of them. */
   .panel { --muted: #a1958a; --panel: color-mix(in srgb, var(--panel-edge) 10%, var(--card)); }

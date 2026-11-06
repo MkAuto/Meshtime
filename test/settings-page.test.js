@@ -9,13 +9,20 @@ test('settingsPage: Disable border of free days is off by default and ticked onc
   assert.equal(settingsPage({ ...user, hide_free_border: 1 }, { base: '' }).match(box)[1], ' checked');
 });
 
-test('settingsPage: one feed per group I am in, with Copy and webcal, and the birthdays feed', () => {
+test('settingsPage: one feed card per group I am in, with Add to calendar, and the birthdays feed', () => {
   const user = { id: 1, feed_token: 'tok', week_start: 0, date_format: undefined, show_birthdays: 1 };
-  const page = settingsPage(user, { base: 'https://x.test', groups: [{ id: 7, name: 'Climbers' }] });
-  assert.match(page, /<b>Climbers<\/b> \(group events\)/);
-  assert.match(page, /data-copy="https:\/\/x\.test\/feed\/tok\/groups\/7\.ics" hidden>Copy/);
-  assert.match(page, /href="webcal:\/\/x\.test\/feed\/tok\/groups\/7\.ics"/);
-  assert.match(page, /data-copy="https:\/\/x\.test\/feed\/tok\/birthdays\.ics" hidden>Copy/, 'same box and button');
+  const page = settingsPage(user, { base: 'https://x.test', groups: [{ id: 7, name: 'climbers & co', color: 5 }] });
+  assert.match(page, /<span class="feed-badge group c5" aria-hidden="true">C<\/span>/, 'initial on the group color');
+  assert.match(page, /<b>climbers &amp; co<\/b>\s*<span class="hint">group events<\/span>/);
+  assert.match(page, /<summary class="pill">[\s\S]*?Add to calendar\s*<\/summary>/);
+  // each calendar's subscribe page with the feed filled in: Google the webcal form, Outlook the https one and the name
+  assert.match(page, /<a href="https:\/\/calendar\.google\.com\/calendar\/r\?cid=webcal%3A%2F%2Fx\.test%2Ffeed%2Ftok%2Fgroups%2F7\.ics" target="_blank" rel="noopener">Google Calendar<\/a>/);
+  assert.match(page, /<a href="https:\/\/x\.test\/feed\/tok\/groups\/7\.ics" title="Copy link" data-copy="https:\/\/x\.test\/feed\/tok\/groups\/7\.ics"[^>]*>\s*<span>Apple Calendar<\/span>/, 'Apple copies the link');
+  assert.match(page, /<a href="https:\/\/outlook\.live\.com\/calendar\/0\/addfromweb\?url=https%3A%2F%2Fx\.test%2Ffeed%2Ftok%2Fgroups%2F7\.ics&amp;name=climbers%20%26%20co" target="_blank" rel="noopener">Outlook<\/a>/);
+  assert.match(page, /<a href="https:\/\/x\.test\/feed\/tok\/groups\/7\.ics" data-copy="https:\/\/x\.test\/feed\/tok\/groups\/7\.ics"[^>]*>[\s\S]*?<span>Copy link<\/span>/);
+  assert.match(page, /data-copy="https:\/\/x\.test\/feed\/tok\/birthdays\.ics"/, 'same card');
+  assert.match(page, /<span class="feed-badge " aria-hidden="true">🎉<\/span>/);
+  assert.doesNotMatch(page, /<input class="feed-link"/, 'the address itself is not shown');
   assert.ok(page.indexOf('birthdays.ics') < page.indexOf('groups/7.ics'), 'birthdays first');
   assert.doesNotMatch(page, /events\.ics/, 'no all-events feed any more');
   assert.match(settingsPage(user, { base: 'https://x.test' }), /each <a href="\/groups">group<\/a> you are in/);
@@ -28,6 +35,12 @@ test('settingsPage: Rules once a calendar is connected, days in my week order, m
   };
   assert.doesNotMatch(settingsPage(user, { base: '' }), /settings\/calendars\/rules/, 'no calendar, no rules');
   const page = settingsPage(user, { base: '', calendarLinks: [{ id: 4, url: 'https://x.test/a.ics', label: 'Work' }] });
+  // style.css puts the Rules in a column of their own (beside my calendars and Add a calendar): it needs all three
+  // directly in .integration, and the Rules to say which they are
+  const blocks = ['class="integration-calendars"', 'class="integration-rules"', 'class="integration-add"']
+    .map(block => page.indexOf(block));
+  assert.ok(blocks.every(at => at > page.indexOf('class="integration"')), 'all three in .integration');
+  assert.deepEqual(blocks, [...blocks].sort((a, b) => a - b), 'in phone order: calendars, Rules, Add');
   assert.match(page, /<option value="60" selected>1h<\/option>/);
   assert.match(page, /<option value="45" selected>45 days \(1.5 months\)<\/option>/);
   assert.match(page, /name="ignore_words" maxlength="500" value="gym, lunch"/);

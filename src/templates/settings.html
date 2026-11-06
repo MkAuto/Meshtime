@@ -50,133 +50,129 @@
   </form>
 </details>
 
-{{! Calendar Integration: my own calendars, read every hour to fill in my free days (src/sync.js). }}
+{{! Calendar Integration: my own calendars, read every hour to fill in my free days (src/sync.js).
+    Three blocks in .integration, a card each like the Calendar feeds': my calendars, their Rules, Add a calendar.
+    On a wide screen (style.css) the Rules get a column of their own, beside the other two; on a phone they stay
+    in this order. }}
 <details class="panel panel-integration" open data-remember="settings-integration">
   <summary><h2>{{t.settings.integration}}</h2></summary>
   <label class="hint"> {{t.settings.integrationHint}}
   </label>
-  <h3>{{t.settings.activeIntegration}}</h3>
-  {{#calendarLinks.length}}
-  <ul>
-    {{#calendarLinks}}
-    <li>
-      <b>{{name}}</b>
-      {{#synced}}<span class="hint">{{synced}}</span>{{/synced}}
-      {{#error}}<span class="err">{{error}}</span>{{/error}}
-      {{! data-autosubmit: ticking saves at once; the button is only there with JS off (app.js). }}
-      <form method="post" action="/settings/calendars/{{id}}" class="inline" data-autosubmit>
+  <div class="integration">
+    {{! My calendars and their Rules: only once one is connected (without, nothing syncs). }}
+    {{#calendarLinks.length}}
+    <div class="integration-calendars">
+      <h3>{{t.settings.activeIntegration}}</h3>
+      <ul class="calendar-list">
+        {{#calendarLinks}}
+        <li>
+          <span class="calendar-name">
+            <b>{{name}}</b>
+            {{#synced}}<span class="hint">{{synced}}</span>{{/synced}}
+          </span>
+          {{#error}}<span class="err">{{error}}</span>{{/error}}
+          {{! data-autosubmit: ticking saves at once; the button is only there with JS off (app.js). }}
+          <form method="post" action="/settings/calendars/{{id}}" class="inline" data-autosubmit>
+            <label>
+              <input type="checkbox" name="count_free" value="1"{{#countFree}} checked{{/countFree}}>
+              {{t.settings.countFree}}
+            </label>
+            <button>{{t.common.save}}</button>
+          </form>
+          <form method="post" action="/settings/calendars/{{id}}/delete" class="inline">
+            <button class="danger">{{t.settings.remove}}</button>
+          </form>
+        </li>
+        {{/calendarLinks}}
+      </ul>
+      <form method="post" action="/settings/calendars/sync"><button>{{t.settings.syncNow}}</button></form>
+    </div>
+    {{! Rules: mine, for all my calendars (users row). }}
+    <div class="integration-rules">
+      <form method="post" action="/settings/calendars/rules" class="stack">
+        <h3>{{t.settings.rules}}</h3>
         <label>
-          <input type="checkbox" name="count_free" value="1"{{#countFree}} checked{{/countFree}}>
-          {{t.settings.countFree}}
+          {{t.settings.syncDays}}
+          <select name="sync_days">
+            {{#syncDaysChoices}}
+            <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
+            {{/syncDaysChoices}}
+          </select>
         </label>
-        <button>{{t.common.save}}</button>
+        <label>
+          {{t.settings.busyFrom}}
+          <select name="busy_minutes">
+            {{#busyChoices}}
+            <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
+            {{/busyChoices}}
+          </select>
+          <span class="hint">{{t.settings.busyHint}}</span>
+        </label>
+        <label>
+          {{t.settings.ignoreWords}}
+          <input name="ignore_words" maxlength="500" value="{{ignoreWords}}" placeholder="{{t.settings.ignorePlaceholder}}">
+          <span class="hint">{{t.settings.ignoreHint}}</span>
+        </label>
+        <fieldset>
+          <legend>{{t.settings.alwaysBusy}}</legend>
+          <table class="busy-grid">
+            <tr><th></th>{{#slotNames}}<th>{{.}}</th>{{/slotNames}}</tr>
+            {{#busyGrid}}
+            <tr>
+              <th>{{name}}</th>
+              {{#slots}}
+              <td><input type="checkbox" name="busy" value="{{value}}" aria-label="{{label}}"{{#checked}} checked{{/checked}}></td>
+              {{/slots}}
+            </tr>
+            {{/busyGrid}}
+          </table>
+        </fieldset>
+        {{#errors.rules}}<p class="err">{{errors.rules}}</p>{{/errors.rules}}
+        <p><button>{{t.settings.saveRules}}</button></p>
       </form>
-      <form method="post" action="/settings/calendars/{{id}}/delete" class="inline">
-        <button class="danger">{{t.settings.remove}}</button>
+    </div>
+    {{/calendarLinks.length}}
+    <div class="integration-add">
+      <form method="post" action="/settings/calendars" class="stack">
+        <h3>{{t.settings.addCalendar}}</h3>
+        <label>{{t.settings.secretLink}} <input name="url" required placeholder="https://… .ics"></label>
+        <label>{{t.settings.nameOptional}} <input name="label" maxlength="60" placeholder="{{t.settings.namePlaceholder}}"></label>
+        <label class="check">
+          <input type="checkbox" name="count_free" value="1">
+          {{t.settings.countFreeLong}}
+        </label>
+        {{#errors.calendar}}<p class="err">{{errors.calendar}}</p>{{/errors.calendar}}
+        <p><button>{{t.settings.connect}}</button></p>
       </form>
-    </li>
-    {{/calendarLinks}}
-  </ul>
-  <form method="post" action="/settings/calendars/sync"><button>{{t.settings.syncNow}}</button></form>
-  {{! Rules: mine, for all my calendars (users row). Only once one is connected: without, nothing syncs. }}
-  <form method="post" action="/settings/calendars/rules" class="stack">
-    <h3>{{t.settings.rules}}</h3>
-    <label>
-      {{t.settings.syncDays}}
-      <select name="sync_days">
-        {{#syncDaysChoices}}
-        <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
-        {{/syncDaysChoices}}
-      </select>
-    </label>
-    <label>
-      {{t.settings.busyFrom}}
-      <select name="busy_minutes">
-        {{#busyChoices}}
-        <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
-        {{/busyChoices}}
-      </select>
-      <span class="hint">{{t.settings.busyHint}}</span>
-    </label>
-    <label>
-      {{t.settings.ignoreWords}}
-      <input name="ignore_words" maxlength="500" value="{{ignoreWords}}" placeholder="{{t.settings.ignorePlaceholder}}">
-      <span class="hint">{{t.settings.ignoreHint}}</span>
-    </label>
-    <fieldset>
-      <legend>{{t.settings.alwaysBusy}}</legend>
-      <table class="busy-grid">
-        <tr><th></th>{{#slotNames}}<th>{{.}}</th>{{/slotNames}}</tr>
-        {{#busyGrid}}
-        <tr>
-          <th>{{name}}</th>
-          {{#slots}}
-          <td><input type="checkbox" name="busy" value="{{value}}" aria-label="{{label}}"{{#checked}} checked{{/checked}}></td>
-          {{/slots}}
-        </tr>
-        {{/busyGrid}}
-      </table>
-    </fieldset>
-    {{#errors.rules}}<p class="err">{{errors.rules}}</p>{{/errors.rules}}
-    <p><button>{{t.settings.saveRules}}</button></p>
-  </form>
-  {{/calendarLinks.length}}
-  <form method="post" action="/settings/calendars" class="stack">
-    <h3>{{t.settings.addCalendar}}</h3>
-    <label>{{t.settings.secretLink}} <input name="url" required placeholder="https://… .ics"></label>
-    <label>{{t.settings.nameOptional}} <input name="label" maxlength="60" placeholder="{{t.settings.namePlaceholder}}"></label>
-    <label class="check">
-      <input type="checkbox" name="count_free" value="1">
-      {{t.settings.countFreeLong}}
-    </label>
-    {{#errors.calendar}}<p class="err">{{errors.calendar}}</p>{{/errors.calendar}}
-    <p><button>{{t.settings.connect}}</button></p>
-  </form>
-  <details id="integration-help" data-remember="settings-integration-help">
-    <summary>{{t.settings.whereLink}}</summary>
-    <ul>
-      <li>{{{t.settings.whereGoogle}}}</li>
-      <li>{{{t.settings.whereOutlook}}}</li>
-      <li>{{{t.settings.whereApple}}}</li>
-    </ul>
-  </details>
+      <details id="integration-help" data-remember="settings-integration-help">
+        <summary>{{t.settings.whereLink}}</summary>
+        <ul>
+          <li>{{{t.settings.whereGoogle}}}</li>
+          <li>{{{t.settings.whereOutlook}}}</li>
+          <li>{{{t.settings.whereApple}}}</li>
+        </ul>
+      </details>
+    </div>
+  </div>
 </details>
 
 <details class="panel panel-feeds" open data-remember="settings-feeds">
   <summary><h2>{{t.settings.feeds}}</h2></summary>
   <label class="hint">{{t.settings.feedsHint}}</label>
   <ul class="feeds">
-    {{! A section, so feed-link finds this feed's feed and linkLabel the same way it does for each group's. }}
-    {{#birthdays}}
-    <li>
-      <b>{{name}}</b> ({{t.settings.repeatYearly}})<br>
-      {{> feed-link}}
-      <a href="{{webcal}}">{{t.settings.webcal}}</a>
-    </li>
-    {{/birthdays}}
+    {{! A section, so feed-card finds this feed's values the same way it does for each group's. }}
+    {{#birthdays}}{{> feed-card}}{{/birthdays}}
     {{! One feed per group I am in: that group's events only (members' events, no outsiders). None while
         groups are off (Administration → Options). }}
     {{#groupsEnabled}}
-    {{#groupFeeds}}
-    <li>
-      <b>{{name}}</b> ({{t.settings.groupEvents}})<br>
-      {{> feed-link}}
-      <a href="{{webcal}}">{{t.settings.webcal}}</a>
-    </li>
-    {{/groupFeeds}}
+    {{#groupFeeds}}{{> feed-card}}{{/groupFeeds}}
     {{^groupFeeds}}
     <li class="hint">{{{t.settings.groupFeedsHint}}}</li>
     {{/groupFeeds}}
     {{/groupsEnabled}}
     {{! Groups off (Administration → Options): one feed with every event instead of one per group. }}
     {{^groupsEnabled}}
-    {{#allEvents}}
-    <li>
-      <b>{{name}}</b><br>
-      {{> feed-link}}
-      <a href="{{webcal}}">{{t.settings.webcal}}</a>
-    </li>
-    {{/allEvents}}
+    {{#allEvents}}{{> feed-card}}{{/allEvents}}
     {{/groupsEnabled}}
   </ul>
   <details id="subscribe-help" data-remember="settings-subscribe-help">

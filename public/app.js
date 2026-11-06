@@ -79,21 +79,32 @@ if (linkedPanel?.matches('details')) {
   linkedPanel.scrollIntoView();
 }
 
-// Copy buttons (data-copy: the text to copy) start hidden, since they need JS and a secure page (https or
-// localhost) for the clipboard. Without either, the link next to them can still be selected and copied.
-// data-copied / data-copy-failed: what the button says for a moment after, in the page's language.
+// Copy buttons (data-copy: the text to copy) need JS and a secure page (https or localhost) for the clipboard.
+// A <button> starts hidden: without either, the link next to it can still be selected and copied. An <a> (the
+// Settings feed cards) is a link to what it copies: without either, it stays a link, to right-click and copy.
+// data-copied / data-copy-failed: what the button says for a moment after, in the page's language. A button
+// with an icon keeps it: only its <span> changes.
 if (navigator.clipboard) {
-  for (const button of document.querySelectorAll('button[data-copy]')) {
+  for (const button of document.querySelectorAll('[data-copy]')) {
     button.hidden = false;
-    button.addEventListener('click', async () => {
-      const label = button.textContent;
+    if (button.matches('a')) button.setAttribute('role', 'button');
+    const text = button.querySelector('span') ?? button;
+    const label = text.textContent;
+    let restore;
+    button.addEventListener('click', async event => {
+      event.preventDefault(); // an <a> would open the feed
+      clearTimeout(restore);
       try {
         await navigator.clipboard.writeText(button.dataset.copy);
-        button.textContent = button.dataset.copied;
+        text.textContent = button.dataset.copied;
+        button.classList.add('copied');
       } catch {
-        button.textContent = button.dataset.copyFailed;
+        text.textContent = button.dataset.copyFailed;
       }
-      setTimeout(() => { button.textContent = label; }, 1500);
+      restore = setTimeout(() => {
+        text.textContent = label;
+        button.classList.remove('copied');
+      }, 1500);
     });
   }
 }
@@ -420,17 +431,24 @@ onPasskeyButton('passkey-login', async () => {
   location.href = '/';
 });
 
-// The language menu (templates/language-menu.html) is a details element: a click outside it or Esc folds it.
-const languageMenu = document.querySelector('.lang-menu');
-if (languageMenu) {
+// Dropdown menus are details elements: the language menu (templates/language-menu.html) and each feed's Add to
+// calendar (templates/feed-card.html). A click outside one or Esc folds it; so does picking Google or Outlook in Add
+// to calendar, but not the ones that copy (Apple Calendar, Copy link): they say Copied in place. Esc puts the focus
+// back on the menu's button.
+const menus = document.querySelectorAll('.lang-menu, .add-menu');
+if (menus.length) {
   document.addEventListener('click', event => {
-    if (!languageMenu.contains(event.target)) {
-      languageMenu.open = false;
+    for (const menu of menus) {
+      if (!menu.contains(event.target) || event.target.closest('.add-menu a:not([data-copy])')) {
+        menu.open = false;
+      }
     }
   });
   document.addEventListener('keydown', event => {
-    if (event.key === 'Escape') {
-      languageMenu.open = false;
+    if (event.key !== 'Escape') return;
+    for (const menu of menus) {
+      if (menu.open && menu.contains(document.activeElement)) menu.querySelector('summary').focus();
+      menu.open = false;
     }
   });
 }

@@ -636,6 +636,19 @@ export function pollPage(user, {
 // webcal:// makes desktop calendar apps subscribe instead of downloading the file once.
 const webcal = url => url.replace(/^https?:\/\//, 'webcal://');
 
+/**
+ * One card of Settings → Calendar feeds (templates/feed-card.html): feedLink's values, `kind` (the line under the
+ * name), its badge (an emoji, or a group's initial on the group's color: `badgeClass`), and where its Add to calendar
+ * menu goes: Google's and Outlook's own subscribe-by-URL pages with the feed filled in (Apple Calendar copies the
+ * link instead). Google takes the webcal form (it reads it as a subscription), Outlook the https one; Outlook's is
+ * Outlook.com's (personal accounts), so a work account pastes the link instead (Copy link).
+ */
+const feedCard = (lang, name, feed, { kind = '', badge, badgeClass = '' }) => ({
+  ...feedLink(lang, name, feed), kind, badge, badgeClass,
+  google: `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcal(feed))}`,
+  outlook: `https://outlook.live.com/calendar/0/addfromweb?url=${encodeURIComponent(feed)}&name=${encodeURIComponent(name)}`,
+});
+
 /** My own link to one group's events feed (routes.js, "ICS feeds"); Rotate in Settings replaces it. */
 const groupFeedUrl = (base, user, groupId) => `${base}/feed/${user.feed_token}/groups/${groupId}.ics`;
 
@@ -689,13 +702,15 @@ export function settingsPage(user, { base, groups = [], invites = [], calendarLi
     }),
     // shown under the title; bump it in package.json
     versionLabel: t(lang, 'settings.version', { version: packageJson.version }),
-    birthdays: { ...feedLink(lang, t(lang, 'feeds.birthdays'), birthdaysFeed), webcal: webcal(birthdaysFeed) },
+    // the same 🎉 the calendar puts in front of a birthday
+    birthdays: feedCard(lang, t(lang, 'feeds.birthdays'), birthdaysFeed,
+      { kind: t(lang, 'settings.repeatYearly'), badge: '🎉' }),
     // only offered while groups are off, when there are no group feeds (the route refuses it otherwise)
-    allEvents: { ...feedLink(lang, t(lang, 'feeds.allEvents'), allEventsFeed), webcal: webcal(allEventsFeed) },
-    groupFeeds: groups.map(group => {
-      const feed = groupFeedUrl(base, user, group.id);
-      return { ...feedLink(lang, group.name, feed), webcal: webcal(feed) };
-    }),
+    allEvents: feedCard(lang, t(lang, 'feeds.allEvents'), allEventsFeed, { badge: '📅' }),
+    // [...name][0]: the first character, whole even when it is an emoji (two UTF-16 units)
+    groupFeeds: groups.map(group => feedCard(lang, group.name, groupFeedUrl(base, user, group.id), {
+      kind: t(lang, 'settings.groupEvents'), badge: [...group.name][0].toUpperCase(), badgeClass: `group c${group.color}`,
+    })),
     weekStarts: options(WEEK_START_CHOICES.map(day => [day, weekdays[day]]), user.week_start),
     // Each format is shown as today's date written that way.
     dateFormats: options(Object.keys(DATE_FORMATS).map(key => [key, formatDate(today(), key, lang)]), user.date_format),
