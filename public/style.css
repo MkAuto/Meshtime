@@ -200,6 +200,10 @@ form:not(:has(#visibility-private:checked)) .share-groups { display: none; }
 .visibility { border: none; padding: 0; margin: 0; }
 .visibility legend { padding: 0; margin-bottom: .3rem; }
 .share-groups { padding-left: 1.6rem; }
+/* The calendar's Custom view: the people to tick, side by side, wrapping onto as many lines as it takes. */
+.custom-pick fieldset { display: flex; flex-wrap: wrap; gap: .3rem 1rem; border: none; padding: 0; margin: .5rem 0 0; }
+.custom-pick legend { padding: 0; margin-bottom: .3rem; }
+.custom-pick label.check { display: flex; align-items: center; gap: .3rem; }
 .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
 .inline { display: inline; }
 form { margin: 0; }
@@ -233,7 +237,7 @@ code { word-break: break-all; font-size: .85rem; background: var(--code-bg); pad
 .panel h2 { font-size: 1.3rem; color: var(--panel-edge); margin: .6rem 0; }
 /* section headings inside a panel (Members, Next event, Name…): small spaced capitals in the panel's color,
    so they read as labels and stand apart from the text under them. */
-.panel > h3, .panel > form > h3 {
+.panel > h3, .panel > form > h3, .integration h3 {
   font-size: .72rem;
   text-transform: uppercase;
   letter-spacing: .14em;
@@ -281,9 +285,121 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 .panel-admin    { --panel-edge: #9c3a2e; } /* brick */
 .panel-invites  { --panel-edge: #b8862b; } /* ochre */
 .panel-integration { --panel-edge: #3f7a6e; } /* sage */
+/* Calendar Integration (settings.html): my calendars, Rules, Add a calendar, one under the other on a phone, each a
+   card like the Calendar feeds' (.feed-card). On a wider screen, once a calendar is connected (so there are Rules),
+   two columns: my calendars with Add a calendar under them, and the Rules beside both. 1fr on the second row soaks
+   up the height the Rules have over my calendars; the cards stretch, so both columns end level. */
+.integration { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; margin-top: 1rem; }
+.integration > * { padding: 1rem 1.2rem 1.2rem; background: var(--card); border-radius: 14px; box-shadow: var(--shadow); }
+/* each card opens with its heading: the card's padding is the room above it */
+.integration h3 { margin-top: 0; }
+/* nor room under the last thing in a card: the padding again */
+.integration > * > :last-child, .integration > * > form:last-child > :last-child { margin-bottom: 0; }
+@media (min-width: 760px) {
+  .integration:has(> .integration-rules) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: auto 1fr;
+    grid-template-areas: "calendars rules" "add rules";
+  }
+  .integration:has(> .integration-rules) > .integration-calendars { grid-area: calendars; }
+  .integration:has(> .integration-rules) > .integration-rules { grid-area: rules; }
+  .integration:has(> .integration-rules) > .integration-add { grid-area: add; }
+}
+/* my connected calendars, inside their card: a tinted row each, name and last sync on top, its options under */
+.calendar-list { list-style: none; padding: 0; margin: 0 0 .8rem; display: grid; gap: .5rem; }
+.calendar-list li {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .8rem;
+  padding: .6rem .8rem; background: var(--panel); border-radius: 10px;
+}
+.calendar-list .calendar-name, .calendar-list .err { flex-basis: 100%; }
+.calendar-list .calendar-name .hint { margin-left: .3rem; }
+/* Remove at the far right of its card */
+.calendar-list form:last-child { margin-left: auto; }
 /* Calendar Integration rules: always-busy days × slots */
 .busy-grid th, .busy-grid td { padding: .1rem .6rem; text-align: center; font-weight: normal; }
 .busy-grid tr > th:first-child { text-align: left; }
+/* Settings → Customisation, Profile → About me and Security: an option per row in its card, a faint line between rows
+   (~: an error between two rows keeps it): an icon in the panel's color on a tinted circle (it tilts on hover), its
+   words, then its control at the right end, under the words when there is no room. A note (.pref-note) goes under it
+   all, lined up with the words. */
+.pref { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .8rem; padding: .65rem 0; }
+label.pref { cursor: pointer; }
+.pref ~ .pref { border-top: 1px solid color-mix(in srgb, var(--panel-edge) 18%, transparent); }
+.pref > .pref-icon + span { flex: 1; min-width: 9rem; }
+.pref > input:not([type=checkbox]) { margin-left: auto; width: min(100%, 16rem); }
+.pref-color { display: flex; align-items: center; gap: .5rem; margin-left: auto; max-width: 100%; }
+.pref-color .hue { width: min(240px, 100%); min-width: 0; }
+.pref-note { flex-basis: 100%; margin: 0; padding-left: 2.9rem; font-size: .85rem; }
+/* rows as a list (Profile → my passkeys): no bullets; a row's own form (Remove) at its right end */
+.pref-list { list-style: none; padding: 0; margin: .5rem 0; }
+.pref { margin: 0; }
+.pref > form:last-child, .pref-actions { margin-left: auto; }
+/* a row's buttons side by side (Groups → Accept / Decline), the plain one a little smaller than a form's */
+.pref-actions { display: flex; align-items: center; gap: .8rem; }
+.pref-actions button:not(.link) { padding: .3rem .9rem; }
+/* a form in a row (Groups → Invite, Rename, Delete, New group): an icon, its field taking what is left, its buttons.
+   A faint line above, like between .pref rows, except right under a heading or first in its card. */
+.action-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .6rem;
+  margin-top: .4rem; padding-top: .8rem; border-top: 1px solid color-mix(in srgb, var(--panel-edge) 18%, transparent);
+}
+.action-row:first-child, h3 + .action-row { margin-top: 0; padding-top: 0; border-top: none; }
+.action-row > input:not([type=hidden]), .action-row > select { flex: 1; min-width: 8rem; }
+/* a date needs no more room than this (Polls → Add a date, Deadline) */
+.action-row > input[type=date] { flex: 0 1 12rem; }
+/* a card's later headings (Groups → Invited under Members): room above, as .integration h3 has none */
+.integration > * > h3:not(:first-child) { margin-top: 1.4rem; }
+/* Groups: one group's cards. On a wider screen Members on the left, Next event and its Calendar feed on the right,
+   Manage under both. The feed card (feed-card.html) sits flat in its card. */
+@media (min-width: 760px) {
+  .group-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: auto 1fr;
+    grid-template-areas: "members event" "members feed";
+  }
+  .group-members { grid-area: members; }
+  .group-event { grid-area: event; }
+  .group-feed { grid-area: feed; }
+  .group-manage { grid-column: 1 / -1; }
+}
+.group-cards .feeds { grid-template-columns: minmax(0, 1fr); margin: .6rem 0 0; }
+.group-cards .feed-card { padding: 0; background: none; box-shadow: none; }
+.group-event .pill { margin-left: 2.9rem; }
+.pref-icon {
+  display: grid; place-items: center; flex: none; width: 2.1rem; height: 2.1rem; border-radius: 50%;
+  font-size: 1.05rem; background: color-mix(in srgb, var(--panel-edge) 14%, var(--card)); transition: transform .2s ease;
+}
+.pref:hover .pref-icon { transform: rotate(-10deg) scale(1.08); }
+.pref-icon svg { width: 1.3rem; height: 1.3rem; fill: var(--panel-edge); }
+/* a person (Groups → Members): their initials on their color, in place of an icon (after .pref-icon, so it wins).
+   Invited, not in yet: dashed. */
+.avatar { background: var(--c); color: #fff; font-size: .78rem; font-weight: 700; }
+.avatar svg { fill: currentColor; }
+.avatar.pending { background: none; color: var(--muted); border: 2px dashed color-mix(in srgb, var(--panel-edge) 45%, transparent); }
+/* on / off: a switch in the panel's color, the checkbox itself redrawn (so it still posts, and Space toggles it) */
+.pref input[type=checkbox] {
+  appearance: none; flex: none; position: relative; width: 2.6rem; height: 1.5rem; margin: 0 0 0 auto; padding: 0;
+  border: none; border-radius: 999px; cursor: pointer;
+  background: color-mix(in srgb, var(--panel-edge) 22%, var(--card)); transition: background .2s ease;
+}
+.pref input[type=checkbox]::before {
+  content: ""; position: absolute; top: .2rem; left: .2rem; width: 1.1rem; height: 1.1rem; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / .3); transition: translate .2s ease;
+}
+.pref input[type=checkbox]:checked { background: var(--panel-edge); }
+.pref input[type=checkbox]:checked::before { translate: 1.1rem 0; }
+/* one of a few: rounded chips, the picked one filled; the radio over each, unseen but still there (.repeat-weekdays) */
+.chips { display: flex; flex-wrap: wrap; gap: .4rem; margin-left: auto; }
+.chips label { position: relative; }
+.chips input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.chips span {
+  display: block; padding: .35rem .85rem; border-radius: 999px; font-size: .9rem; font-weight: 600;
+  color: color-mix(in srgb, var(--panel-edge) 70%, var(--fg));
+  background: color-mix(in srgb, var(--panel-edge) 12%, var(--card)); transition: background .15s ease;
+}
+.chips label:hover span { background: color-mix(in srgb, var(--panel-edge) 22%, var(--card)); }
+.chips input:checked + span { background: var(--panel-edge); color: var(--card); }
+.pref input:focus-visible, .chips input:focus-visible + span { outline: 2px solid var(--panel-edge); outline-offset: 2px; }
 .panel-options  { --panel-edge: #6b8a3f; } /* olive */
 .panel-log      { --panel-edge: #6f5e8f; } /* heather */
 /* one group on the groups page: stripe and title in the group's own color (member_groups.color) */
@@ -365,10 +481,6 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 .day.all { background: var(--ok-bg); }
 .day.all .num::after { content: " ✓"; color: var(--ok); font-size: .7rem; }
 .who { display: flex; flex-wrap: wrap; gap: 2px; }
-/* a group's feed link: as wide as the panel allows, so the whole URL is visible on a computer */
-.feed-link { flex: 1; min-width: 0; font-family: ui-monospace, monospace; font-size: .85rem; }
-/* the groups page puts initials in front of a name, on the same line */
-.group-members .who { display: inline-flex; }
 /* user colors: 13 distinct colors, index stored in users.color. --c is for light mode, --cd for dark.
    To add one: a .cN line here, a stop in the .hue gradient below, and bump COLORS in src/lib.js. */
 .c0  { --c: #dc2626; --cd: #f87171; }
@@ -472,33 +584,142 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 .day button { overflow-wrap: anywhere; }
 /* one card per event, like the days above */
 .events { list-style: none; padding: 0; }
-.events li { margin: .4rem 0; padding: .6rem .9rem; background: var(--card); border-radius: 10px; box-shadow: var(--shadow); }
-.events li.past { opacity: .6; } /* its last day is before today */
-.events li a { color: var(--accent); }
+/* > li: the rows only, not the items of their Add to calendar menu, which stays as in Settings (.add-menu) */
+.events > li { margin: .4rem 0; padding: .6rem .9rem; background: var(--card); border-radius: 10px; box-shadow: var(--shadow); }
+.events > li.past { opacity: .6; } /* its last day is before today */
+.events > li > span a { color: var(--accent); }
+/* its Add to calendar pill (.add-menu) at the right end, in the accent; under the text on a phone */
+.events { --panel-edge: var(--accent); }
+.events > li { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .9rem; }
 
-/* polls */
-.polls li { margin: .4rem 0; }
-.polls a { color: var(--accent); }
-.polls small { color: var(--muted); margin-left: .5rem; }
-.polls .to-answer { color: var(--accent); font-size: .9rem; margin-left: .5rem; }
+/* polls: their panels, like Settings' (the open ones / the answers, the closed ones, the result, Manage) */
+.panel-poll     { --panel-edge: #5b7a9a; } /* dusty blue */
+.panel-closed   { --panel-edge: #7a6f66; } /* stone */
+.panel-result   { --panel-edge: #3f6b3a; } /* moss, the yes green */
+.panel-manage   { --panel-edge: #b8862b; } /* ochre */
+/* the list (poll-row.html): title over its kind and status, "to answer" at the right end */
+.poll-name { display: grid; line-height: 1.35; }
+.poll-name a { color: var(--fg); font-weight: 600; text-decoration: none; }
+.poll-name a:hover { color: var(--accent); }
+.poll-name small { font-size: .82rem; }
+.pref > .pill { margin-left: auto; }
+/* New poll: the kind chips show its choices only, dates or activities. A fieldset each, its legend like a card's h3. */
+.poll-form:has(input[name=kind][value=activity]:checked) .dates,
+.poll-form:not(:has(input[name=kind][value=activity]:checked)) .activities { display: none; }
+/* the rows side by side, as many as fit, wrapping */
+.choices {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: .5rem;
+  border: none; padding: 0; margin: 0 0 .4rem; min-width: 0;
+}
+.choices.activities { grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); }
+.choices legend {
+  padding: 0; margin-bottom: .45rem; font-size: .72rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .14em; color: var(--panel-edge);
+}
+/* Who sees it (share-with.html) in a .pref row: beside its icon, its error under both */
+.pref > .visibility { flex: 1; min-width: 12rem; }
+.pref > .err { flex-basis: 100%; margin: 0; }
+.panel-result .row { margin-top: .8rem; }
 /* The card is the wrapper, so a table wider than a phone scrolls sideways inside it, and the names column stays put. */
-.poll-wrap { overflow-x: auto; margin: 1rem 0; background: var(--card); border-radius: 12px; box-shadow: var(--shadow); }
+.poll-wrap { overflow-x: auto; margin: .8rem 0; background: var(--card); border-radius: 14px; box-shadow: var(--shadow); }
 table.poll { border-collapse: collapse; width: 100%; }
-table.poll tr > :first-child { position: sticky; left: 0; background: var(--card); }
-table.poll th, table.poll td { border-bottom: 1px solid var(--line); padding: .6rem .7rem; text-align: center; font-size: .9rem; }
-table.poll th { font-weight: 600; color: var(--muted); white-space: nowrap; }
-table.poll th.best { background: var(--ok-bg); color: var(--ok); }
-table.poll td:first-child { text-align: left; }
-/* an answer filled in from my free days, not saved yet (poll.suggested) */
-table.poll select.suggested { border-style: dashed; border-color: var(--muted); }
-table.poll tr.tot td { color: var(--muted); font-size: .8rem; border: 0; }
-.a.yes { color: var(--ok); font-weight: 600; }
-.a.no { color: var(--err); }
-.a.maybe { color: var(--maybe); }
-.a.none { color: var(--muted); }
-.result { background: var(--ok-bg); padding: 1rem 1.2rem; border-radius: 12px; margin: 1rem 0; }
-.result h2 { margin-top: 0; }
-.feeds li { margin: .8rem 0; }
+table.poll tr > :first-child { position: sticky; left: 0; z-index: 1; background: var(--card); text-align: left; }
+table.poll th, table.poll td { border-bottom: 1px solid var(--line); padding: .55rem .6rem; text-align: center; font-size: .9rem; }
+table.poll thead th { font-size: .82rem; font-weight: 600; color: var(--muted); white-space: nowrap; vertical-align: bottom; }
+/* a date's weekday over it */
+table.poll thead th small { display: block; font-size: .68rem; text-transform: uppercase; letter-spacing: .1em; }
+/* an activity's name wraps instead of widening its column */
+table.poll thead th.activity { white-space: normal; min-width: 6.5rem; max-width: 11rem; }
+/* the winner's column, once the result is out */
+table.poll tr > .best { background: color-mix(in srgb, var(--ok) 10%, var(--card)); }
+table.poll thead th.best { color: var(--ok); }
+/* my row, tinted in the panel's color (its sticky name cell too) */
+table.poll tr.me > * { background: color-mix(in srgb, var(--panel-edge) 7%, var(--card)); }
+table.poll tbody th { font-weight: 500; }
+.poll-who { display: flex; align-items: center; gap: .5rem; white-space: nowrap; }
+table.poll .avatar { width: 1.8rem; height: 1.8rem; font-size: .68rem; }
+table.poll tr.tot > * { color: var(--muted); font-size: .78rem; border: 0; }
+/* an answer: a round icon in its color, yes green, maybe amber, no red; none yet a faint dash */
+.a { display: inline-grid; place-items: center; width: 1.8rem; height: 1.8rem; border-radius: 50%; color: var(--muted); }
+.a svg, .vote svg { width: 1.05rem; height: 1.05rem; fill: currentColor; }
+.a.yes { color: var(--ok); background: color-mix(in srgb, var(--ok) 15%, var(--card)); }
+.a.maybe { color: var(--maybe); background: color-mix(in srgb, var(--maybe) 16%, var(--card)); }
+.a.no { color: var(--err); background: color-mix(in srgb, var(--err) 13%, var(--card)); }
+/* my answers: three round buttons, the picked one filled; the radio over each, unseen but still there (.chips) */
+.vote { display: inline-flex; gap: .25rem; }
+.vote label { position: relative; }
+.vote input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.vote span {
+  display: grid; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: 50%;
+  color: var(--muted); background: var(--code-bg); transition: background .15s ease, color .15s ease;
+}
+.vote label:hover span { background: var(--line); }
+.vote .yes input:checked + span { background: var(--ok); color: var(--card); }
+.vote .maybe input:checked + span { background: var(--maybe); color: var(--card); }
+.vote .no input:checked + span { background: var(--err); color: var(--card); }
+.vote input:focus-visible + span { outline: 2px solid var(--panel-edge); outline-offset: 2px; }
+/* filled in from my free days, not saved yet (poll.suggested): paler, ringed with dashes */
+.vote.suggested input:checked + span { opacity: .6; outline: 2px dashed var(--fg); outline-offset: 2px; }
+.tally { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tally .yes { color: var(--ok); }
+.tally .maybe { color: var(--maybe); }
+.tally .no { color: var(--err); }
+/* Settings → Calendar feeds (feed-card.html): a card per feed, its address hidden behind Add to calendar.
+   Two columns on a wider screen, like Calendar Integration; the no-group hint takes the whole width. */
+.feeds { list-style: none; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: .6rem; }
+@media (min-width: 760px) {
+  .feeds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .feeds > .hint { grid-column: 1 / -1; }
+}
+.feed-card {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .6rem .9rem;
+  padding: .7rem .9rem; background: var(--card); border-radius: 14px; box-shadow: var(--shadow);
+}
+/* a round badge: an emoji on a tint of the panel, or a group's initial on its own color (.cN) */
+.feed-badge {
+  display: grid; place-items: center; flex: none; width: 2.4rem; height: 2.4rem; border-radius: 50%;
+  font: 700 1.15rem var(--display); background: color-mix(in srgb, var(--panel-edge) 16%, var(--card));
+}
+.feed-badge.group { background: var(--c); color: #fff; }
+.feed-name { flex: 1; min-width: 8rem; display: grid; line-height: 1.3; }
+.feed-name .hint { font-size: .8rem; }
+/* a soft rounded button in the panel's color. Its text is the panel color pulled toward --fg: the plain
+   color is under 4.5:1 on the tint, in light mode. */
+.pill {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .3rem .8rem; border-radius: 999px; text-decoration: none; font-weight: 600; font-size: .85rem;
+  white-space: nowrap; cursor: pointer;
+  color: color-mix(in srgb, var(--panel-edge) 70%, var(--fg));
+  background: color-mix(in srgb, var(--panel-edge) 14%, var(--card));
+  transition: background .15s ease;
+}
+.pill:hover, details[open] > .pill { background: color-mix(in srgb, var(--panel-edge) 24%, var(--card)); }
+.pill svg { width: 1rem; height: 1rem; fill: currentColor; }
+/* Add to calendar: the pill opens a small list under it, against its right edge, like the language menu.
+   On a phone it wraps under the name, against the card's right edge. */
+.add-menu { position: relative; margin: 0 0 0 auto; }
+.add-menu > summary { list-style: none; }
+.add-menu > summary::-webkit-details-marker { display: none; }
+/* the panels' own triangle (some fonts lack ▾), turned to point down, and up while open */
+.add-menu > summary::after { content: "▶"; font-size: .55rem; transform: rotate(90deg); transition: transform .15s ease; }
+.add-menu[open] > summary::after { transform: rotate(-90deg); }
+.add-menu ul {
+  position: absolute; right: 0; top: calc(100% + .3rem); z-index: 10;
+  list-style: none; margin: 0; padding: .3rem; min-width: 12rem;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow);
+}
+.add-menu a {
+  display: flex; align-items: center; gap: .45rem;
+  padding: .4rem .7rem; border-radius: 8px; color: var(--fg); text-decoration: none; white-space: nowrap;
+}
+.add-menu a:hover, .add-menu a:focus-visible { background: var(--accent-soft); }
+.add-menu a svg { width: 1rem; height: 1rem; fill: currentColor; }
+/* Apple Calendar copies the link: a faint copy icon at its right end says so */
+.add-menu a svg.copies { margin-left: auto; opacity: .55; }
+/* Copy link, for any other app: set apart under the three calendars, green for a moment once copied */
+.add-menu .sep { border-top: 1px solid var(--line); margin-top: .3rem; padding-top: .3rem; }
+.add-menu .sep a { color: var(--muted); }
+.add-menu a.copied { color: var(--ok); }
 details { margin: .8rem 0; }
 a { color: var(--accent); }
 @media (max-width: 600px) {
@@ -511,6 +732,15 @@ a { color: var(--accent); }
   .day .day-events { min-height: 1.8rem; }
   .day .ev:not(.bar) { white-space: nowrap; overflow: hidden; padding: 0 .15rem; }
   .ev-time { display: none; }
+  /* .pref rows: a field or chips that do not fit beside the words go under them, lined up with them, full width
+     (switches stay beside) */
+  .pref > input:not([type=checkbox]), .pref > .chips, .pref-color { margin-left: 2.9rem; width: calc(100% - 2.9rem); }
+  .pref-color .hue { flex: 1; width: auto; }
+  /* an event's Add to calendar: just the icon, beside its text instead of under it */
+  .events .add-label, .events .add-menu > summary::after { display: none; }
+  .events .add-menu > summary { padding: .4rem; }
+  .events > li { flex-wrap: nowrap; }
+  .events > li > span { flex: 1; min-width: 0; }
   /* initials and their am / pm wrap as one */
   .who span { padding: 0 .15rem; white-space: nowrap; }
   h1 { font-size: 1.8rem; }
@@ -542,6 +772,7 @@ a { color: var(--accent); }
   .day.mine { box-shadow: var(--shadow), inset 0 0 0 2px var(--cd, var(--accent)); }
   .ev.colored { background: color-mix(in srgb, var(--cd) 20%, var(--card)); color: var(--cd); }
   .swatch-pick { background: var(--cd, var(--ev-bg)); border-color: var(--cd, var(--ev-fg)); }
+  .feed-badge.group, .avatar { background: var(--cd); color: var(--bg); }
   /* the same earth tones, lifted so they read on the dark card; the fill tints a little stronger.
      Dark needs no --muted bump: #a1958a clears 4.5:1 on all of them. */
   .panel { --muted: #a1958a; --panel: color-mix(in srgb, var(--panel-edge) 10%, var(--card)); }
@@ -555,4 +786,8 @@ a { color: var(--accent); }
   .panel-options  { --panel-edge: #b0c97e; }
   .panel-log      { --panel-edge: #b5a7d8; }
   .panel-group    { --panel-edge: var(--cd); }
+  .panel-poll     { --panel-edge: #9ab6d3; }
+  .panel-closed   { --panel-edge: #b3a79c; }
+  .panel-result   { --panel-edge: #9bcf8a; }
+  .panel-manage   { --panel-edge: #e0b35a; }
 }

@@ -44,7 +44,7 @@ const gymLink =
 
 /** This month's list under the calendar, as "date · details — title" for each time shown. */
 const listed = async (yearMonth = '2026-10') => [...(await request('GET', `/?m=${yearMonth}`, ada)).html
-  .matchAll(/<li class="[^"]*">\s*(.+?) — <b>(.+?)<\/b>/g)].map(([, when, title]) => `${when} — ${title}`);
+  .matchAll(/<li class="[^"]*">\s*<span>\s*(.+?) — <b>(.+?)<\/b>/g)].map(([, when, title]) => `${when} — ${title}`);
 /** A new event from the event form (`fields` over climb's); its row. */
 const addEvent = async fields => {
   await request('POST', '/events', ada, { ...climb, ...fields });
@@ -175,4 +175,21 @@ test('a group\'s next event is a repeating one\'s next time; its feed has RRULE,
     + 'LOCATION:Gym\r\nSUMMARY:Board games'));
   assert.match(feed, new RegExp(`RECURRENCE-ID;VALUE=DATE:${day(today())}\r\nDTSTART:${day(today())}T190000\r\n`),
     'today\'s, at 19:00 instead of all day');
+});
+
+test('Add to calendar in the list: one time of a repeating event, as Google, Outlook and an .ics have it', async () => {
+  const group = run(`INSERT INTO member_groups(name, created_by, created_at) VALUES ('Swimmers', ?, ?)`, ada, now())
+    .lastInsertRowid;
+  run('INSERT INTO group_members(group_id, user_id, joined_at) VALUES (?, ?, ?)', group, ada, now());
+  const event = await addEvent({ title: 'Swim', date: '2026-10-07', all_day: '', start_time: '10:00',
+    end_time: '12:00', ends: 'never', visibility: 'private', group_ids: String(group) });
+  const { html } = await request('GET', '/?m=2026-10', ada);
+  assert.match(html, /calendar\.google\.com\/calendar\/render\?action=TEMPLATE&amp;text=Swim&amp;location=Gym&amp;dates=20261014T100000%2F20261014T120000/);
+  assert.match(html, /outlook\.live\.com[^"]+startdt=2026-10-14T10%3A00%3A00&amp;enddt=2026-10-14T12%3A00%3A00/);
+  assert.match(html, new RegExp(`href="/events/${event.id}\\.ics\\?on=2026-10-14" download`));
+
+  const ics = await request('GET', `/events/${event.id}.ics?on=2026-10-14`, ada);
+  assert.match(ics.text, /UID:event-\d+-2026-10-14@[^\r]+\r\nDTSTAMP:\w+\r\nDTSTART:20261014T100000\r\nDTEND:20261014T120000\r\n/);
+  assert.doesNotMatch(ics.text, /RRULE/, 'only this time');
+  assert.equal((await request('GET', `/events/${event.id}.ics`, addUser('Eve'))).status, 404, 'private: not hers');
 });

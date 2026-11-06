@@ -1,14 +1,30 @@
+{{! Open polls, then the closed ones, folded away until opened (data-remember: app.js reopens it the way you last
+    left it, in this browser). A row each (poll-row.html), like the rows of Groups. }}
 <h1>{{t.polls.title}}</h1>
+<p class="hint">{{t.polls.intro}}</p>
 <p><a class="btn" href="/polls/new">{{t.polls.new}}</a></p>
-<ul class="polls">
-  {{#polls}}
-  <li>
-    <a href="/polls/{{id}}">{{title}}</a>
-    <small>{{status}}</small>
-    {{#toAnswer}}<b class="to-answer">{{t.polls.toAnswer}}</b>{{/toAnswer}}
-  </li>
-  {{/polls}}
-  {{^polls}}
-  <li class="hint">{{t.polls.none}}</li>
-  {{/polls}}
-</ul>
+
+<section class="panel panel-poll">
+  <h2>{{t.polls.openHeading}}</h2>
+  <div class="integration">
+    <div>
+      <ul class="pref-list">
+        {{#open}}{{> poll-row}}{{/open}}
+        {{^open}}<li class="hint">{{t.polls.none}}</li>{{/open}}
+      </ul>
+    </div>
+  </div>
+</section>
+
+{{#closed.length}}
+<details class="panel panel-closed" data-remember="polls-closed">
+  <summary><h2>{{closedHeading}}</h2></summary>
+  <div class="integration">
+    <div>
+      <ul class="pref-list">
+        {{#closed}}{{> poll-row}}{{/closed}}
+      </ul>
+    </div>
+  </div>
+</details>
+{{/closed.length}}

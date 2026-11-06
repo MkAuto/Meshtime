@@ -1,0 +1,40 @@
+{{! Partial: one feed in Settings → Calendar feeds, as a small card: a badge, the feed's name, and Add to calendar
+    instead of its address. Expects name, feed (the https URL), kind (the line under the name, may be empty), badge,
+    badgeClass, and the menu's links: google, apple, outlook (feedCard in views.js).
+    Add to calendar is a details element, like the language menu: it opens with no JS, and app.js folds it again on
+    a click outside or Esc. Google and Outlook open their subscribe page in a new tab.
+    Apple Calendar, and Copy link last (for any other app, and a work Outlook), copy the feed's address: each is a
+    real link to the feed, which app.js turns into a copy button (data-copy). Without JS, or where the clipboard is
+    refused (plain http), right-click → Copy link. data-copied / data-copy-failed: what app.js shows on it for a
+    moment after a click.
+    The icons are Material Icons "calendar_today" with a plus, "content_copy" and "link" (Apache License 2.0). }}
+<li class="feed-card">
+  <span class="feed-badge {{badgeClass}}" aria-hidden="true">{{badge}}</span>
+  <span class="feed-name">
+    <b>{{name}}</b>
+    {{#kind}}<span class="hint">{{kind}}</span>{{/kind}}
+  </span>
+  <details class="add-menu">
+    <summary class="pill">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 3h-1V1h-2v2H7V1H5v2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 18H4V8h16v13zM11 10h2v3.5h3.5v2H13V19h-2v-3.5H7.5v-2H11z"/></svg>
+      {{t.settings.addToCalendar}}
+    </summary>
+    <ul>
+      <li><a href="{{google}}" target="_blank" rel="noopener">{{t.settings.googleCalendar}}</a></li>
+      {{! Apple Calendar copies the link, to paste in a new subscription (How to subscribe): the copy icon says so }}
+      <li>
+        <a href="{{feed}}" title="{{t.settings.copyLink}}" data-copy="{{feed}}" data-copied="{{t.common.copied}}" data-copy-failed="{{t.common.copyFailed}}">
+          <span>{{t.settings.appleCalendar}}</span>
+          <svg class="copies" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+        </a>
+      </li>
+      <li><a href="{{outlook}}" target="_blank" rel="noopener">{{t.settings.outlook}}</a></li>
+      <li class="sep">
+        <a href="{{feed}}" data-copy="{{feed}}" data-copied="{{t.common.copied}}" data-copy-failed="{{t.common.copyFailed}}">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>
+          <span>{{t.settings.copyLink}}</span>
+        </a>
+      </li>
+    </ul>
+  </details>
+</li>

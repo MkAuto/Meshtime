@@ -1,106 +1,138 @@
-{{! A grid of members × proposed dates: my row holds selects, everyone else's is read-only. }}
+{{! One poll: its result once out, the grid of members × choices (my row answers, everyone else's is read-only),
+    then Manage for its creator or an admin (the routes check it again). Panels like Settings and Groups; the icons
+    are Material Design Icons by Pictogrammers (Apache License 2.0). }}
 <h1>{{title}}</h1>
-<p class="hint">{{status}}</p>
-{{#groupsEnabled}}
-<p class="hint">{{visibilityLabel}}</p>
-{{/groupsEnabled}}
+<p class="hint">{{kindLabel}}{{#groupsEnabled}} · {{visibilityLabel}}{{/groupsEnabled}}</p>
 {{> notices}}
 {{#errors.answers}}<p class="err">{{errors.answers}}</p>{{/errors.answers}}
-{{#hasSuggestions}}<p class="hint">{{t.poll.suggested}}</p>{{/hasSuggestions}}
-<form method="post" action="/polls/{{id}}">
-  {{! scrolls sideways on a phone when the dates do not fit; the names stay put (style.css) }}
-  <div class="poll-wrap">
-  <table class="poll">
-    <thead>
-      <tr>
-        <th></th>
-        {{#columns}}
-        <th class="{{classes}}">{{label}}</th>
-        {{/columns}}
-      </tr>
-    </thead>
-    <tbody>
-      {{#rows}}
-      <tr><td>{{name}}</td>
-        {{#cells}}
-        <td>
-          {{#editable}}
-          <select name="v_{{date}}"{{#suggested}} class="suggested"{{/suggested}}>
-            {{^current}}<option value=""{{^suggested}} selected{{/suggested}}>—</option>{{/current}}
-            {{#options}}
-            <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
-            {{/options}}
-          </select>
-          {{/editable}}
-          {{^editable}}<span class="a {{answerClass}}">{{answerText}}</span>{{/editable}}
-        </td>
-        {{/cells}}
-      </tr>
-      {{/rows}}
-      <tr class="tot">
-        <td>{{t.poll.totals}}</td>
-        {{#totals}}
-        <td>{{yes}} / {{maybe}} / {{no}}</td>
-        {{/totals}}
-      </tr>
-    </tbody>
-  </table>
-  </div>
-  {{#isOpen}}
-  <button>{{t.poll.save}}</button>
-  {{/isOpen}}
-</form>
 
 {{#result}}
-<section class="result">
+<section class="panel panel-result">
   <h2>{{heading}}</h2>
   {{#errors.result}}<p class="err">{{errors.result}}</p>{{/errors.result}}
-  {{#tied}}
-  <p class="hint">{{t.poll.tied}}</p>
-  {{/tied}}
-  {{! addedAs holds bold, so it is not escaped here: pollPage escaped the title and date going into it. }}
+  {{#tied}}<p class="hint">{{tiedText}}</p>{{/tied}}
+  {{! addedAs and planned hold bold, so they are not escaped here: pollPage escaped the values going into them. }}
   {{#addedAs}}
-  <p>{{{addedAs}}} <a href="/?m={{eventMonth}}">{{t.poll.view}}</a></p>
+  <p class="pref">
+    <span class="pref-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M19,19H5V8H19M16,1V3H8V1H6V3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3H18V1M17,12H12V17H17V12Z"/></svg></span>
+    <span>{{{addedAs}}}</span>
+    <a class="pill" href="/?m={{eventMonth}}">{{t.poll.view}}</a>
+  </p>
   {{/addedAs}}
-  {{! Confirmed, but its event was made private since and I am not in its groups: only the poll's own date. }}
-  {{#confirmedFor}}
-  <p>{{confirmedFor}}</p>
-  {{/confirmedFor}}
-  {{^addedAs}}{{^confirmedFor}}
+  {{#planned}}
+  <p class="pref">
+    <span class="pref-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M19,19H5V8H19M16,1V3H8V1H6V3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3H18V1M17,12H12V17H17V12Z"/></svg></span>
+    <span>{{{planned}}}</span>
+    <a class="pill" href="/polls/{{datePollId}}">{{t.poll.openPoll}}</a>
+  </p>
+  {{/planned}}
+  {{! Done, but what it became was made private since and I am not in its groups: only the winner. }}
+  {{#chosenText}}<p>{{chosenText}}</p>{{/chosenText}}
+  {{#actions.length}}
   <div class="row">
-    {{#choices}}
+    {{#actions}}
+    {{#isDate}}
     <form method="post" action="/polls/{{pollId}}/confirm">
       <input type="hidden" name="date" value="{{date}}">
       <button>{{label}}</button>
     </form>
-    {{/choices}}
+    {{/isDate}}
+    {{^isDate}}<a class="btn" href="{{planUrl}}">{{label}}</a>{{/isDate}}
+    {{/actions}}
   </div>
-  {{/confirmedFor}}{{/addedAs}}
+  {{/actions.length}}
 </section>
 {{/result}}
 
-{{! Creator or admin only (the route checks it again). Inside, Who sees it reads this poll's sharing values.
-    Nothing to choose while groups are off: every poll is public. }}
-{{#groupsEnabled}}
-{{#sharing}}
-<form method="post" action="/polls/{{id}}/visibility" class="stack">
-  {{> share-with}}
-  <button>{{t.poll.saveSharing}}</button>
-</form>
-{{/sharing}}
-{{/groupsEnabled}}
+<section class="panel panel-poll">
+  <h2>{{t.poll.answersHeading}}</h2>
+  <p class="hint">{{status}}</p>
+  {{#hasSuggestions}}<p class="hint">{{t.poll.suggested}}</p>{{/hasSuggestions}}
+  <form method="post" action="/polls/{{id}}">
+    {{! scrolls sideways on a phone when the choices do not fit; the names stay put (style.css) }}
+    <div class="poll-wrap">
+    <table class="poll">
+      <thead>
+        <tr>
+          <th></th>
+          {{#columns}}
+          <th class="{{classes}}" scope="col">{{#weekday}}<small>{{weekday}}</small>{{/weekday}}{{label}}</th>
+          {{/columns}}
+        </tr>
+      </thead>
+      <tbody>
+        {{#rows}}
+        <tr{{#isMe}} class="me"{{/isMe}}>
+          <th scope="row"><span class="poll-who"><span class="pref-icon avatar c{{color}}" aria-hidden="true">{{initials}}</span>{{name}}</span></th>
+          {{#cells}}
+          <td class="{{classes}}">
+            {{! My answer: three round buttons, the radios over them unseen but still there (style.css .vote).
+                Dashed: filled in from my free days, not saved yet. }}
+            {{#editable}}
+            <span class="vote{{#suggested}} suggested{{/suggested}}" role="radiogroup" aria-label="{{choiceLabel}}">
+              {{#options}}
+              <label class="{{value}}" title="{{label}}"><input type="radio" name="v_{{choice}}" value="{{value}}" aria-label="{{label}}"{{#checked}} checked{{/checked}}><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="{{icon}}"/></svg></span></label>
+              {{/options}}
+            </span>
+            {{/editable}}
+            {{^editable}}<span class="a {{answerClass}}" role="img" aria-label="{{answerText}}" title="{{answerText}}">{{#icon}}<svg viewBox="0 0 24 24"><path d="{{icon}}"/></svg>{{/icon}}{{^icon}}–{{/icon}}</span>{{/editable}}
+          </td>
+          {{/cells}}
+        </tr>
+        {{/rows}}
+        <tr class="tot">
+          <th scope="row">{{t.poll.totals}}</th>
+          {{#totals}}
+          <td class="{{classes}}"><span class="tally"><span class="yes">{{yes}}</span> / <span class="maybe">{{maybe}}</span> / <span class="no">{{no}}</span></span></td>
+          {{/totals}}
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    {{#isOpen}}<p><button>{{t.poll.save}}</button></p>{{/isOpen}}
+  </form>
 
-{{#canClose}}
-<form method="post" action="/polls/{{id}}/deadline" class="stack">
-  <label>
-    {{t.newPoll.deadline}}
-    <span class="hint">{{t.poll.deadlineHint}}</span>
-    <input type="date" name="deadline" min="{{today}}" value="{{deadline}}">
-  </label>
-  {{#errors.deadline}}<p class="err">{{errors.deadline}}</p>{{/errors.deadline}}
-  <button>{{t.poll.saveDeadline}}</button>
-</form>
-<form method="post" action="/polls/{{id}}/close" data-confirm="{{t.poll.confirmClose}}">
-  <p><button class="link danger">{{t.poll.close}}</button></p>
-</form>
-{{/canClose}}
+  {{! One more date or activity: its own form, so answers not saved yet are left behind (the hint says so). }}
+  {{#canAdd}}
+  <form method="post" action="/polls/{{id}}/choices" class="action-row">
+    <span class="pref-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"/></svg></span>
+    {{#isDate}}<input type="date" name="choice" min="{{today}}" required aria-label="{{addLabel}}">{{/isDate}}
+    {{^isDate}}<input name="choice" required maxlength="{{maxActivity}}" placeholder="{{t.poll.activityPlaceholder}}" aria-label="{{addLabel}}">{{/isDate}}
+    <button>{{addLabel}}</button>
+    <span class="hint pref-note">{{t.poll.addHint}}</span>
+  </form>
+  {{/canAdd}}
+  {{#errors.choice}}<p class="err">{{errors.choice}}</p>{{/errors.choice}}
+</section>
+
+{{! Its creator or an admin: when it stops taking answers, and who sees it (nothing to choose while groups are off:
+    every poll is public). }}
+{{#showManage}}
+<details class="panel panel-manage" open data-remember="poll-manage">
+  <summary><h2>{{t.poll.manage}}</h2></summary>
+  <div class="integration">
+    {{#canClose}}
+    <div>
+      <h3>{{t.poll.deadlineHeading}}</h3>
+      <form method="post" action="/polls/{{id}}/deadline" class="action-row">
+        <span class="pref-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22C6.47,22 2,17.5 2,12A10,10 0 0,1 12,2M12.5,7V12.25L17,14.92L16.25,16.15L11,13V7H12.5Z"/></svg></span>
+        <input type="date" name="deadline" min="{{today}}" value="{{deadline}}" aria-label="{{t.newPoll.deadline}}">
+        <button>{{t.poll.saveDeadline}}</button>
+        <span class="hint pref-note">{{t.poll.deadlineHint}}</span>
+      </form>
+      {{#errors.deadline}}<p class="err">{{errors.deadline}}</p>{{/errors.deadline}}
+      <form method="post" action="/polls/{{id}}/close" data-confirm="{{t.poll.confirmClose}}" class="action-row">
+        <span class="pref-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12,17A2,2 0 0,0 14,15C14,13.89 13.1,13 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10C4,8.89 4.9,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z"/></svg></span>
+        <button class="danger">{{t.poll.close}}</button>
+      </form>
+    </div>
+    {{/canClose}}
+    {{#sharing}}
+    <form method="post" action="/polls/{{id}}/visibility">
+      {{> share-with}}
+      <p><button>{{t.poll.saveSharing}}</button></p>
+    </form>
+    {{/sharing}}
+  </div>
+</details>
+{{/showManage}}

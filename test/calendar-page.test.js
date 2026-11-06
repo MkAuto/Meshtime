@@ -77,6 +77,35 @@ test('calendarPage: a location links to a map search for it, encoded in the link
   assert.doesNotMatch(page, /<b>&<\/b>/);
 });
 
+test('calendarPage: Custom in the picker, its list only in the Custom view, Make default by the saved view', () => {
+  const user = { id: 1, feed_token: 'tok', week_start: 0, show_birthdays: 1, color: 3 };
+  const month = { free: new Map(), mine: new Map(), events: [], birthdays: [], today: '2026-10-04', members: 1,
+    groups: [{ id: 7, name: 'Climbers' }] };
+  const everyone = calendarPage(user, '2026-10', month);
+  assert.match(everyone, /<option value="7" >Climbers<\/option>\s*<option value="custom" >Custom…<\/option>/);
+  assert.doesNotMatch(everyone, /action="\/calendar\/custom"/);
+
+  const customView = { ...month, group: { id: 'custom', custom: true },
+    customChoices: [{ id: 2, name: 'Bob Kay', color: 5, checked: 1 }, { id: 3, name: 'Cy', color: 0, checked: 0 }] };
+  const custom = calendarPage(user, '2026-10', customView);
+  assert.match(custom, /<option value="custom" selected>Custom…/);
+  assert.match(custom, /name="u" value="2" checked>\s*<span class="who"><span class="c5">Bob Kay<\/span>/);
+  assert.match(custom, /name="u" value="3">/, 'not ticked');
+  assert.match(custom, /name="g" value="custom"/, 'the day forms stay in the Custom view');
+  assert.match(custom, /href="\/\?m=2026-09&amp;g=custom"/, 'so do the month links');
+  assert.match(custom, /Make default/);
+  assert.doesNotMatch(calendarPage({ ...user, default_custom: 1 }, '2026-10', customView), /Make default/);
+  assert.match(calendarPage({ ...user, default_custom: 1 }, '2026-10', month), /Make default/,
+    'everyone is not the default then');
+  assert.match(calendarPage(user, '2026-10', { ...month, group: { id: 'custom', custom: true } }),
+    /<p class="hint">Nobody else to pick for now\.<\/p>/);
+
+  const groupsOff = calendarPage({ ...user, groups_enabled: 0, default_group_id: 7 }, '2026-10', month);
+  assert.doesNotMatch(groupsOff, /Climbers/);
+  assert.match(groupsOff, /<option value="custom" >Custom…/, 'Custom is not a group: it stays');
+  assert.doesNotMatch(groupsOff, /Make default/, 'a default group is not one while groups are off');
+});
+
 test('calendarPage: Today only on another month, keeping the group; ?msg= shows its notice', () => {
   const user = { id: 1, feed_token: 'tok', week_start: 0, show_birthdays: 1, color: 3 };
   const month = { free: new Map(), mine: new Map(), events: [], birthdays: [], today: '2026-10-04', members: 1 };

@@ -10,7 +10,7 @@ test('profilePage: a rejected form keeps what was typed and opens the panel hold
     about: { name: 'Ada L', birthday: '2999-01-01', color: 5 },
   });
   assert.match(page, /value="Ada L"/);
-  assert.match(page, /aria-label="Birthday">\s*<p class="err">Invalid date\.<\/p>/);
+  assert.match(page, /aria-label="Birthday">\s*<\/label>\s*<p class="err">Invalid date\.<\/p>/);
   assert.match(page, /value="5" aria-label="Color"/);
   assert.match(page, /<details class="panel panel-security" open data-remember="profile-security">/);
   assert.match(page, /autocomplete="new-password">\s*<\/label>\s*<p class="err">Too short\.<\/p>/);

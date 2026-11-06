@@ -4,19 +4,20 @@
   <a href="/?m={{month.next}}{{groupQuery}}" title="{{t.calendar.nextMonth}}">&rsaquo;</a>
   {{#todayMonth}}<a href="/?m={{todayMonth}}{{groupQuery}}" class="today-link">{{t.calendar.today}}</a>{{/todayMonth}}
 </h1>
-{{! Whose free time is shown: everyone I can see, or one of my groups. A plain GET form, so it works
-    without JS; app.js submits it as soon as the choice changes and hides the Show button.
-    Not shown while groups are off (Administration → Options). }}
-{{#groupsEnabled}}
-{{#groupChoices.length}}
+{{! Whose free time is shown: everyone I can see, one of my groups, or Custom (the people I tick). A plain GET
+    form, so it works without JS; app.js submits it as soon as the choice changes and hides the Show button.
+    No groups in it while groups are off (Administration → Options); Custom stays, as it is not one. }}
 <div class="row group-pick">
 <form method="get" action="/" class="row" data-autosubmit>
   <input type="hidden" name="m" value="{{yearMonth}}">
   <select name="g" aria-label="{{t.calendar.whoseFreeTime}}">
     <option value="">{{t.calendar.everyone}}</option>
+    {{#groupsEnabled}}
     {{#groupChoices}}
     <option value="{{value}}" {{#selected}}selected{{/selected}}>{{label}}</option>
     {{/groupChoices}}
+    {{/groupsEnabled}}
+    <option value="custom" {{#isCustomView}}selected{{/isCustomView}}>{{t.calendar.custom}}</option>
   </select>
   <button>{{t.calendar.show}}</button>
 </form>
@@ -29,8 +30,26 @@
 </form>
 {{/isDefaultView}}
 </div>
-{{/groupChoices.length}}
-{{/groupsEnabled}}
+{{! The Custom view's list: everyone else I can see, to tick (/calendar/custom keeps it for next time). I am always
+    in the view, so I am not in the list. Submitted on each change by app.js, like the picker above. }}
+{{#isCustomView}}
+<form method="post" action="/calendar/custom" class="custom-pick" data-autosubmit>
+  <input type="hidden" name="m" value="{{yearMonth}}">
+  <fieldset>
+    <legend>{{t.calendar.customLegend}}</legend>
+    {{#customChoices}}
+    <label class="check">
+      <input type="checkbox" name="u" value="{{id}}"{{#checked}} checked{{/checked}}>
+      <span class="who"><span class="c{{color}}">{{name}}</span></span>
+    </label>
+    {{/customChoices}}
+    {{^customChoices}}
+    <p class="hint">{{t.calendar.customNobody}}</p>
+    {{/customChoices}}
+  </fieldset>
+  <button>{{t.calendar.show}}</button>
+</form>
+{{/isCustomView}}
 {{> notices}}
 <details class="hint">
   <summary>{{t.calendar.howToUse}}</summary>
@@ -38,6 +57,7 @@
   {{#groupsEnabled}}
   {{{t.calendar.howToGroups}}}
   {{/groupsEnabled}}
+  {{t.calendar.howToCustom}}
 </details>
 
 {{! cN: my color, so .day.mine outlines my own free days in it (style.css "day states"); no-free-border
@@ -130,9 +150,26 @@
   <ul class="events">
     {{#events}}
     <li class="{{classes}}">
-      {{when}}{{#place}} · <a href="{{url}}" target="_blank" rel="noopener">{{name}}</a>{{/place}} — <b>{{title}}</b>
-      <small class="hint">{{by}}</small>
-      {{#canEdit}}<a href="/events/{{id}}{{#on}}?on={{on}}{{/on}}">{{t.calendar.edit}}</a>{{/canEdit}}
+      <span>
+        {{when}}{{#place}} · <a href="{{url}}" target="_blank" rel="noopener">{{name}}</a>{{/place}} — <b>{{title}}</b>
+        <small class="hint">{{by}}</small>
+        {{#canEdit}}<a href="/events/{{id}}{{#on}}?on={{on}}{{/on}}">{{t.calendar.edit}}</a>{{/canEdit}}
+      </span>
+      {{! Add to calendar, like a feed's (feed-card.html), for this one time: Apple Calendar downloads its .ics. }}
+      {{#add}}
+      <details class="add-menu">
+        {{! on a phone only the icon shows (style.css .add-label): aria-label keeps its name }}
+        <summary class="pill" aria-label="{{t.settings.addToCalendar}}">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 3h-1V1h-2v2H7V1H5v2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 18H4V8h16v13zM11 10h2v3.5h3.5v2H13V19h-2v-3.5H7.5v-2H11z"/></svg>
+          <span class="add-label">{{t.settings.addToCalendar}}</span>
+        </summary>
+        <ul>
+          <li><a href="{{google}}" target="_blank" rel="noopener">{{t.settings.googleCalendar}}</a></li>
+          <li><a href="{{ics}}" download>{{t.settings.appleCalendar}}</a></li>
+          <li><a href="{{outlook}}" target="_blank" rel="noopener">{{t.settings.outlook}}</a></li>
+        </ul>
+      </details>
+      {{/add}}
     </li>
     {{/events}}
     {{^events}}

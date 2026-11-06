@@ -5,10 +5,10 @@ import Mustache from 'mustache';
 import packageJson from '../package.json' with { type: 'json' };
 import {
   monthInfo, addDays, formatDate, formatMonthDay, formatTime, formatEventWhen, eventLanes, dayClass, weekdayNames, today,
-  wallClock, BUSY_CHOICES, DEFAULT_BUSY_MINUTES, SLOTS, DATE_FORMATS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_DATES,
+  wallClock, BUSY_CHOICES, DEFAULT_BUSY_MINUTES, SLOTS, DATE_FORMATS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_CHOICES,
   SYNC_DAYS_CHOICES, DEFAULT_SYNC_DAYS, MIN_PASSWORD, LANGUAGES, DEFAULT_LANGUAGE, isValidLanguage, randomColor,
   DEFAULT_WEEK_START, REPEAT_PRESETS, FREQS, WEEKDAY_CODES, parseRrule, repeatForm, weekdayInMonth, formatMonthDayLong,
-  isValidDate,
+  isValidDate, MAX_ACTIVITY,
 } from './lib.js';
 import { t, dictionary, hasText, syncErrorText } from './i18n.js';
 
@@ -81,9 +81,6 @@ const page = (title, user, name, values, visitor = user ?? {}) =>
 
 /** Options for a <select>: `selected` marks the current one. */
 const options = (entries, current) => entries.map(([value, label]) => ({ value, label, selected: value === current }));
-
-/** The feed-link partial's values for one feed: its URL, its name, and the label of its box. */
-const feedLink = (lang, name, feed) => ({ name, feed, linkLabel: t(lang, 'feeds.linkFor', { name }) });
 
 /**
  * `message` is a key in src/locales, or a text already in the visitor's language. `visitor` ({ lang, path }) is
@@ -210,12 +207,40 @@ const place = location => location && {
   name: location, url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`,
 };
 
+/**
+ * Add to calendar for one event of the list: Google's and Outlook.com's new-event pages, filled in. Floating times,
+ * like the feeds (lib.js icsLocalTime): each app reads them in its own zone. An all-day one ends the day after its
+ * last, as both expect. No end time: it ends when it starts. Apple Calendar gets the .ics (routes.js).
+ */
+function addLinks(event) {
+  const end = event.start_time ? event.end_time || event.start_time : null;
+  const compact = (date, time) => date.replaceAll('-', '') + (time ? `T${time.replace(':', '')}00` : '');
+  const google = new URLSearchParams({
+    action: 'TEMPLATE', text: event.title, location: event.location || '',
+    dates: event.start_time
+      ? `${compact(event.date, event.start_time)}/${compact(event.end_date, end)}`
+      : `${compact(event.date)}/${compact(addDays(event.end_date, 1))}`,
+  });
+  const outlook = new URLSearchParams({
+    rru: 'addevent', subject: event.title, location: event.location || '', allday: String(!event.start_time),
+    startdt: event.start_time ? `${event.date}T${event.start_time}:00` : event.date,
+    enddt: event.start_time ? `${event.end_date}T${end}:00` : addDays(event.end_date, 1),
+  });
+  return {
+    google: `https://calendar.google.com/calendar/render?${google}`,
+    outlook: `https://outlook.live.com/calendar/0/action/compose?${outlook}`,
+    ics: `/events/${event.id}.ics${event.rrule ? `?on=${event.on}` : ''}`,
+  };
+}
+
 // `error` is set when a /free post was rejected: it shows under the month title.
 // `group` is the one group shown on its own (null: everyone I can see); `groups` fills the selector.
 export function calendarPage(user, yearMonth, {
   free, mine, events, birthdays, today, members, error, msg, group = null, groups = [], manualDays = null,
+  customChoices = [],
 }) {
   // manualDays: the dates I set by hand, or null without a calendar connected (no Automatic in the menu)
+  // group: a group, the Custom view ({ custom: true }, customChoices its list), or null for everyone
   const { lang } = user;
   const month = monthInfo(yearMonth, user.week_start, lang);
   const lanes = eventLanes(events);
@@ -321,9 +346,15 @@ export function calendarPage(user, yearMonth, {
     gridClasses: `grid c${user.color}${user.hide_free_border ? ' no-free-border' : ''}`,
     // always set, empty for everyone: a link without g would open the default group instead
     groupQuery: `&g=${group ? group.id : ''}`,
-    // "Make default" is offered only when the view on screen is not already the default
-    isDefaultView: (group ? group.id : null) === (user.default_group_id ?? null),
+    // "Make default" is offered only when the view on screen is not already the default. A default group is
+    // not one while groups are off: the calendar opens on everyone then.
+    isDefaultView: group?.custom
+      ? Boolean(user.default_custom)
+      : !user.default_custom
+        && (group ? group.id : null) === (groupsEnabled(user) ? user.default_group_id ?? null : null),
     groupChoices: groups.map(choice => ({ value: choice.id, label: choice.name, selected: choice.id === group?.id })),
+    isCustomView: Boolean(group?.custom),
+    customChoices: customChoices.map(member => ({ ...member, checked: Boolean(member.checked) })),
     weekdays: weekdayNames(user.week_start, lang),
     padding: Array.from({ length: leadingBlanks }, () => ({})),
     days,
@@ -342,6 +373,7 @@ export function calendarPage(user, yearMonth, {
         classes: event.end_date < today ? 'past' : '', // its last day is before today
         canEdit: event.created_by === user.id || Boolean(user.is_admin),
         on: event.rrule ? event.on : '', // which time of a repeating one its Edit link is for
+        add: addLinks(event),
       })),
   });
 }
@@ -365,7 +397,8 @@ export function groupsPage(user, { groups, invites, base, msg, invitedName, erro
     isAdmin: Boolean(user.is_admin),
     groups: groups.map(group => ({
       id: group.id,
-      ...feedLink(lang, group.name, groupFeedUrl(base, user, group.id)),
+      name: group.name,
+      feedCard: groupFeedCard(lang, base, user, group),
       color: group.color,
       ownedBy: t(lang, 'groups.ownedBy', { name: group.creator ?? t(lang, 'groups.removedMember') }),
       error: errors[group.id],
@@ -382,7 +415,7 @@ export function groupsPage(user, { groups, invites, base, msg, invitedName, erro
         removable: group.canManage && member.id !== user.id,
         confirmRemove: t(lang, 'groups.confirmRemove', { name: member.name }),
       })),
-      invited: group.invited.map(person => ({ ...person, groupId: group.id })),
+      invited: group.invited.map(person => ({ ...person, groupId: group.id, initials: initials(person.name) })),
       // "Next event", or "Last event" when none is coming; still "Next event" (with a placeholder) for none at all
       eventHeading: t(lang, group.headlineEvent?.isLast ? 'groups.lastEvent' : 'groups.nextEvent'),
       headlineEvent: group.headlineEvent && {
@@ -503,6 +536,20 @@ export function eventPage(user, { event, errors = {}, groups = [] }) {
 
 // ---- polls ----
 
+// The answers as icons (Material Design Icons by Pictogrammers, Apache License 2.0): check, help, close. Paths only,
+// as each one is drawn once per cell of the poll table.
+const ANSWER_ICONS = {
+  yes: 'M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z',
+  maybe: 'M10,19H13V22H10V19M12,2C17.35,2.22 19.68,7.62 16.5,11.67C15.67,12.67 14.33,13.33 13.67,14.17C13,15 13,16 13,'
+    + '17H10C10,15.33 10,13.92 10.67,12.92C11.33,11.92 12.67,11.33 13.5,10.67C15.92,8.43 15.32,5.26 12,5A3,3 0 0,0 9,'
+    + '8H6A6,6 0 0,1 12,2Z',
+  no: 'M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z',
+};
+
+/** A poll's choice as shown: a date in my format, an activity as typed. */
+const choiceLabel = (user, poll, choice) =>
+  poll.kind === 'activity' ? choice : formatDate(choice, user.date_format, user.lang);
+
 export function pollsPage(user, polls) {
   const { lang } = user;
   const status = poll => {
@@ -512,49 +559,80 @@ export function pollsPage(user, polls) {
         ? t(lang, 'polls.openUntil', { ...values, date: formatDate(poll.deadline, user.date_format, lang) })
         : t(lang, 'polls.open', values);
     }
-    return poll.chosen_date ? `✓ ${formatDate(poll.chosen_date, user.date_format, lang)}` : t(lang, 'polls.closed');
+    return poll.chosen ? `✓ ${choiceLabel(user, poll, poll.chosen)}` : t(lang, 'polls.closed');
   };
+  const row = poll => ({
+    id: poll.id,
+    title: poll.title,
+    isActivity: poll.kind === 'activity',
+    kind: t(lang, poll.kind === 'activity' ? 'polls.kindActivity' : 'polls.kindDate'),
+    status: status(poll),
+    toAnswer: !poll.closed_at && Boolean(poll.i_owe),
+  });
+  const closed = polls.filter(poll => poll.closed_at).map(row);
   return page(t(lang, 'polls.title'), user, 'polls', {
-    polls: polls.map(poll => ({
-      id: poll.id, title: poll.title, status: status(poll), toAnswer: !poll.closed_at && Boolean(poll.i_owe),
-    })),
+    open: polls.filter(poll => !poll.closed_at).map(row),
+    closed,
+    closedHeading: t(lang, 'polls.closedHeading', { count: closed.length }),
   });
 }
 
-// After a rejected form, `errors` ({ title, dates, deadline, visibility }) shows under each field, and `title`,
-// `deadline` and `sharing` (who sees it, as posted) are kept. `groups` are mine: the ones a private poll can be
-// shared with.
-export const newPollPage = (user, { errors = {}, title = '', deadline = '', groups = [], sharing = {} } = {}) =>
-  page(t(user.lang, 'newPoll.title'), user, 'new-poll', {
+// Six rows of each kind of choice: the no-JS fallback (public/app.js keeps the filled ones and one empty), the
+// choices a rejected form posted first.
+const choiceRows = values => [...values, ...Array(Math.max(0, 6 - values.length)).fill('')].map(value => ({ value }));
+
+// After a rejected form, `errors` ({ title, choices, deadline, visibility }) shows under each field, and what was
+// posted is kept. `groups` are mine: the ones a private poll can be shared with. `from` ({ id, title, activity }):
+// the activity poll whose winner this date poll is for.
+export function newPollPage(user, {
+  errors = {}, title = '', kind = 'date', choices = [], openChoices = 0, deadline = '', groups = [], sharing = {},
+  from = null,
+} = {}) {
+  const { lang } = user;
+  return page(t(lang, 'newPoll.title'), user, 'new-poll', {
     errors,
     title,
+    isActivity: kind === 'activity',
+    dates: choiceRows(kind === 'date' ? choices : []),
+    activities: choiceRows(kind === 'activity' ? choices : []),
+    openChoices: Boolean(openChoices),
     deadline,
     today: today(),
-    maxDates: MAX_DATES,
-    datesLegend: t(user.lang, 'newPoll.dates', { max: MAX_DATES }),
+    maxChoices: MAX_CHOICES,
+    maxActivity: MAX_ACTIVITY,
+    datesLegend: t(lang, 'newPoll.dates', { max: MAX_CHOICES }),
+    activitiesLegend: t(lang, 'newPoll.activities', { max: MAX_CHOICES }),
+    from,
+    fromHint: from && t(lang, 'newPoll.planFrom', { activity: from.activity, title: from.title }),
     ...sharingValues(sharing.isPrivate, sharing.groupIds, groups),
   });
+}
 
-// `errors` after a rejected form: `answers` shows under the title, `result` in the result section,
-// `visibility` in Who sees it. `event` is null until confirmed, and when I may not see it (it can be made
-// private later): then only the confirmed date shows. `creatorGroups` and `groupIds` fill Who sees it.
+// `errors` after a rejected form: `answers` shows under the title, `choice` under Add, `result` in the result,
+// `deadline` and `visibility` in Manage. What the winner became once acted on, each null while I may not see it
+// (it can be made private): `event` for a date poll, `datePoll` ({ id, title }) for an activity poll; then only
+// the winner shows. `creatorGroups` and `groupIds` fill Who sees it.
 export function pollPage(user, {
-  poll, dates, members, votes, missing, complete, best, event, groupIds = [], creatorGroups = [], errors = {},
-  suggested = {}, msg,
+  poll, choices, members, votes, missing, complete, best, event, datePoll, groupIds = [], creatorGroups = [],
+  errors = {}, suggested = {}, msg,
 }) {
   const { lang } = user;
-  const answers = {}; // user_id -> { date: answer }
+  const isDate = poll.kind !== 'activity';
+  const label = choice => choiceLabel(user, poll, choice);
+  const answers = {}; // user_id -> { choice: answer }
   for (const vote of votes) {
-    (answers[vote.user_id] ??= {})[vote.date] = vote.answer;
+    (answers[vote.user_id] ??= {})[vote.choice] = vote.answer;
   }
   const myAnswers = answers[user.id] || {};
-  const countAnswer = (date, answer) => votes.filter(vote => vote.date === date && vote.answer === answer).length;
+  const countAnswer = (choice, answer) => votes.filter(vote => vote.choice === choice && vote.answer === answer).length;
   const formatted = date => formatDate(date, user.date_format, lang);
+  const weekdays = weekdayNames(0, lang); // by day number
 
   const isOpen = !poll.closed_at;
   const canManage = poll.created_by === user.id || Boolean(user.is_admin);
   // The result only makes sense once everyone answered, or the poll was closed early.
   const showResult = (complete || !isOpen) && best.length > 0;
+  const isBest = choice => showResult && best.includes(choice);
   // You first, then everyone else A to Z. localeCompare puts "Élodie" next to "Eric", not after "Zoé".
   const sortedMembers = members.toSorted((a, b) =>
     (b.id === user.id) - (a.id === user.id) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
@@ -570,60 +648,89 @@ export function pollPage(user, {
   const rows = sortedMembers.map(member => {
     const isMe = member.id === user.id;
     return {
+      isMe,
       name: isMe ? t(lang, 'poll.you', { name: member.name }) : member.name,
-      cells: dates.map(date => {
-        const answer = answers[member.id]?.[date];
+      initials: initials(member.name),
+      color: member.color ?? 0,
+      cells: choices.map(choice => {
+        const answer = answers[member.id]?.[choice];
         // not answered yet: starts on what my free time that day says (loadPoll), saved with the rest
-        const suggestion = myAnswers[date] ? null : suggested[date];
+        const suggestion = myAnswers[choice] ? null : suggested[choice];
         return {
-          date,
+          choice,
+          choiceLabel: label(choice),
+          classes: isBest(choice) ? 'best' : '',
           editable: isMe && isOpen,
-          current: myAnswers[date] ?? null,
           suggested: Boolean(suggestion),
           options: ANSWERS.map(value => ({
-            value, label: t(lang, `poll.answers.${value}`), selected: (myAnswers[date] ?? suggestion) === value,
+            value, icon: ANSWER_ICONS[value], label: t(lang, `poll.answers.${value}`),
+            checked: (myAnswers[choice] ?? suggestion) === value,
           })),
           answerClass: answer || 'none',
-          answerText: answer ? t(lang, `poll.answers.${answer}`) : '–',
+          answerText: t(lang, answer ? `poll.answers.${answer}` : 'poll.noAnswer'),
+          icon: answer && ANSWER_ICONS[answer],
         };
       }),
     };
   });
 
+  // What the winner became, and while nothing yet, what to do with it: an event for a date, a date poll for an
+  // activity. Shown unescaped (bold in it), so the values going into it are escaped here.
+  const done = Boolean(event || datePoll || poll.chosen);
   const result = showResult && {
-    heading: t(lang, best.length > 1 ? 'poll.bestDates' : 'poll.bestDate', { dates: best.map(formatted).join(', ') }),
+    heading: t(lang, isDate ? (best.length > 1 ? 'poll.bestDates' : 'poll.bestDate')
+      : (best.length > 1 ? 'poll.bestActivities' : 'poll.bestActivity'), { choices: best.map(label).join(', ') }),
     tied: best.length > 1,
-    // a text with bold in it, so shown unescaped: the values going into it are escaped here
+    tiedText: t(lang, isDate ? 'poll.tied' : 'poll.tiedActivity'),
     addedAs: event && t(lang, 'poll.addedAs', {
       title: Mustache.escape(event.title), date: Mustache.escape(formatted(event.date)),
     }),
     eventMonth: event && event.date.slice(0, 7),
-    confirmedFor: !event && poll.chosen_date ? t(lang, 'poll.confirmedFor', { date: formatted(poll.chosen_date) }) : null,
-    choices: best.map(date => ({
-      pollId: poll.id, date, label: t(lang, 'poll.addToCalendar', { date: formatted(date) }),
-    })),
+    planned: datePoll && t(lang, 'poll.planned', { title: Mustache.escape(datePoll.title) }),
+    datePollId: datePoll?.id,
+    // done, but I may not see what it became: only the winner
+    chosenText: event || datePoll || !poll.chosen ? null : isDate
+      ? t(lang, 'poll.confirmedFor', { date: label(poll.chosen) })
+      : t(lang, 'poll.pickedActivity', { activity: poll.chosen }),
+    actions: done ? [] : best.map(choice => (isDate
+      ? { pollId: poll.id, date: choice, label: t(lang, 'poll.addToCalendar', { date: label(choice) }) }
+      : { planUrl: `/polls/new?from=${poll.id}&activity=${encodeURIComponent(choice)}`,
+        label: t(lang, 'poll.planDates', { activity: choice }) })),
   };
 
+  const sharing = canManage && groupsEnabled(user) && sharingValues(poll.is_private, groupIds, creatorGroups);
   return page(poll.title, user, 'poll', {
     ...notices(msg, lang),
     errors,
     id: poll.id,
     title: poll.title,
+    isDate,
+    kindLabel: t(lang, isDate ? 'polls.kindDate' : 'polls.kindActivity'),
     status,
     isOpen,
-    hasSuggestions: isOpen && dates.some(date => !myAnswers[date] && suggested[date]),
+    hasSuggestions: isOpen && choices.some(choice => !myAnswers[choice] && suggested[choice]),
+    // more choices: its creator or an admin, or everyone when it lets them (the route checks it again)
+    canAdd: isOpen && (Boolean(poll.open_choices) || canManage) && choices.length < MAX_CHOICES,
+    addLabel: t(lang, isDate ? 'poll.addDate' : 'poll.addActivity'),
+    maxActivity: MAX_ACTIVITY,
     canClose: isOpen && canManage,
+    showManage: (isOpen && canManage) || Boolean(sharing),
     deadline: poll.deadline ?? '',
     today: today(),
     visibilityLabel: t(lang, 'poll.whoSees', { label: t(lang, poll.is_private ? 'poll.private' : 'poll.public') }),
     // the creator (or an admin) can change who sees it, as on the event page
-    sharing: canManage && sharingValues(poll.is_private, groupIds, creatorGroups),
-    columns: dates.map(date => ({ label: formatted(date), classes: showResult && best.includes(date) ? 'best' : '' })),
+    sharing,
+    columns: choices.map(choice => ({
+      label: label(choice),
+      weekday: isDate && weekdays[new Date(choice + 'T00:00:00Z').getUTCDay()],
+      classes: [isDate ? '' : 'activity', isBest(choice) ? 'best' : ''].join(' ').trim(),
+    })),
     rows,
-    totals: dates.map(date => ({
-      yes: countAnswer(date, 'yes'),
-      maybe: countAnswer(date, 'maybe'),
-      no: countAnswer(date, 'no'),
+    totals: choices.map(choice => ({
+      classes: isBest(choice) ? 'best' : '',
+      yes: countAnswer(choice, 'yes'),
+      maybe: countAnswer(choice, 'maybe'),
+      no: countAnswer(choice, 'no'),
     })),
     result,
   });
@@ -634,8 +741,26 @@ export function pollPage(user, {
 // webcal:// makes desktop calendar apps subscribe instead of downloading the file once.
 const webcal = url => url.replace(/^https?:\/\//, 'webcal://');
 
-/** My own link to one group's events feed (routes.js, "ICS feeds"); Rotate in Settings replaces it. */
-const groupFeedUrl = (base, user, groupId) => `${base}/feed/${user.feed_token}/groups/${groupId}.ics`;
+/**
+ * One card of Settings → Calendar feeds and of each group on the Groups page (templates/feed-card.html): its `name`,
+ * `feed` (the URL), `kind` (the line under the name), its badge (an emoji, or a group's initial on the group's color:
+ * `badgeClass`), and where its Add to calendar
+ * menu goes: Google's and Outlook's own subscribe-by-URL pages with the feed filled in (Apple Calendar copies the
+ * link instead). Google takes the webcal form (it reads it as a subscription), Outlook the https one; Outlook's is
+ * Outlook.com's (personal accounts), so a work account pastes the link instead (Copy link).
+ */
+const feedCard = (name, feed, { kind = '', badge, badgeClass = '' }) => ({
+  name, feed, kind, badge, badgeClass,
+  google: `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcal(feed))}`,
+  outlook: `https://outlook.live.com/calendar/0/addfromweb?url=${encodeURIComponent(feed)}&name=${encodeURIComponent(name)}`,
+});
+
+/** My own link to one group's events feed (routes.js, "ICS feeds"); Rotate in Settings replaces it. As a feed card:
+ *  the group's initial on its color. [...name][0]: the first character, whole even when it is an emoji. */
+const groupFeedCard = (lang, base, user, group) =>
+  feedCard(group.name, `${base}/feed/${user.feed_token}/groups/${group.id}.ics`, {
+    kind: t(lang, 'settings.groupEvents'), badge: [...group.name][0].toUpperCase(), badgeClass: `group c${group.color}`,
+  });
 
 // `errors` after a rejected Customisation form ({ weekStart, dateFormat }): shown under each field.
 // `groups` are the ones I am in: each gets its events feed in the Calendar feeds panel.
@@ -687,13 +812,12 @@ export function settingsPage(user, { base, groups = [], invites = [], calendarLi
     }),
     // shown under the title; bump it in package.json
     versionLabel: t(lang, 'settings.version', { version: packageJson.version }),
-    birthdays: { ...feedLink(lang, t(lang, 'feeds.birthdays'), birthdaysFeed), webcal: webcal(birthdaysFeed) },
+    // the same 🎉 the calendar puts in front of a birthday
+    birthdays: feedCard(t(lang, 'feeds.birthdays'), birthdaysFeed,
+      { kind: t(lang, 'settings.repeatYearly'), badge: '🎉' }),
     // only offered while groups are off, when there are no group feeds (the route refuses it otherwise)
-    allEvents: { ...feedLink(lang, t(lang, 'feeds.allEvents'), allEventsFeed), webcal: webcal(allEventsFeed) },
-    groupFeeds: groups.map(group => {
-      const feed = groupFeedUrl(base, user, group.id);
-      return { ...feedLink(lang, group.name, feed), webcal: webcal(feed) };
-    }),
+    allEvents: feedCard(t(lang, 'feeds.allEvents'), allEventsFeed, { badge: '📅' }),
+    groupFeeds: groups.map(group => groupFeedCard(lang, base, user, group)),
     weekStarts: options(WEEK_START_CHOICES.map(day => [day, weekdays[day]]), user.week_start),
     // Each format is shown as today's date written that way.
     dateFormats: options(Object.keys(DATE_FORMATS).map(key => [key, formatDate(today(), key, lang)]), user.date_format),

@@ -29,7 +29,7 @@ test('groups off: Settings offers the All events feed instead of group feeds', (
     { base: 'https://x.test', groups: [{ id: 7, name: 'Climbers' }] });
   assert.match(settings(1), /feed\/tok\/groups\/7\.ics/);
   assert.doesNotMatch(settings(1), /events\.ics/);
-  assert.match(settings(0), /value="https:\/\/x\.test\/feed\/tok\/events\.ics" readonly/);
+  assert.match(settings(0), /data-copy="https:\/\/x\.test\/feed\/tok\/events\.ics"/);
   assert.doesNotMatch(settings(0), /groups\/7\.ics/);
 });
 

@@ -7,9 +7,9 @@ import { fetchCalendar, syncUser, freePartsAround } from './sync.js';
 import { t, syncErrorText } from './i18n.js';
 import {
   isValidDate, isValidMonth, monthInfo, isValidWeekStart, isValidDateFormat, isValidColor, eventError,
-  bestDates, buildIcs, birthdayIn, birthdayRrule, today, addDays, DEFAULT_SYNC_DAYS, randomColor, occurrences,
+  bestChoices, buildIcs, birthdayIn, birthdayRrule, today, addDays, DEFAULT_SYNC_DAYS, randomColor, occurrences,
   eventRrule, parseRrule, formatRrule, sameRule, repeatRule, timeOn, firstTime, timesBefore, daysBetween, ANSWERS,
-  MAX_DATES, MIN_PASSWORD, BASE_URL,
+  MAX_CHOICES, MAX_ACTIVITY, MIN_PASSWORD, BASE_URL,
   RP_ID, SLOTS, MAX_SLOTS_PER_DAY, toggleSlot, isValidBusyMinutes, isValidSyncDays, isValidLanguage,
 } from './lib.js';
 
@@ -216,6 +216,10 @@ const VISIBLE_TO_ME = visibleTo('?');
 const BIRTHDAY_VISIBLE_TO_ME = `(${GROUPS_OFF} OR u.id = ? OR ${sharesGroupWith('?')})`;
 // The one-group view: only that group's members, public or not. Takes the group id.
 const IN_GROUP = 'EXISTS (SELECT 1 FROM group_members m WHERE m.group_id = ? AND m.user_id = u.id)';
+// The Custom view: me and the people I ticked in its list (custom_view_members). Takes my user id twice. Only ever
+// ANDed with one of the *_VISIBLE_TO_ME above, so someone I ticked and can no longer see drops out of it.
+const IN_MY_CUSTOM_VIEW = `(u.id = ? OR EXISTS (
+  SELECT 1 FROM custom_view_members c WHERE c.user_id = ? AND c.member_id = u.id))`;
 
 // Events, for events `e` joined to their creator `u`. A public event (is_private = 0) is seen by everyone
 // who sees its creator; a private one only by its creator and the members of the groups it is shared with.
@@ -239,23 +243,30 @@ const myGroups = userId => all(`SELECT g.* FROM member_groups g
                                 JOIN group_members m ON m.group_id = g.id
                                 WHERE m.user_id = ? ORDER BY g.name COLLATE NOCASE, g.id`, userId);
 
+/** The calendar's Custom view, in place of a group: g=custom picks it, and its id carries it in links and forms. */
+const CUSTOM_VIEW = { id: 'custom', custom: true };
+
 /**
- * The group the calendar shows on its own (?g= on a page, a posted g from its forms), or null for
- * "everyone I can see". A page opened with no g at all shows my default group (users.default_group_id);
- * an empty g is an explicit "everyone". A group I am not in is ignored, so a stale or guessed id shows
- * nothing extra, and a default group I have since left falls back to everyone. Groups off: always everyone.
+ * The group the calendar shows on its own (?g= on a page, a posted g from its forms), CUSTOM_VIEW, or null for
+ * "everyone I can see". A page opened with no g at all shows my default (users.default_custom, else
+ * users.default_group_id); an empty g is an explicit "everyone". A group I am not in is ignored, so a stale or
+ * guessed id shows nothing extra, and a default group I have since left falls back to everyone. Groups off: no
+ * group, but the Custom view stays, as it is not one.
  */
 function calendarGroup(ctx) {
-  if (!ctx.user.groups_enabled) {
-    return null; // groups are off (Administration → Options): always everyone
-  }
   let requested;
   if (ctx.body) {
     requested = ctx.body.get('g');
   } else if (ctx.url.searchParams.has('g')) {
     requested = ctx.url.searchParams.get('g');
   } else {
-    requested = ctx.user.default_group_id;
+    requested = ctx.user.default_custom ? CUSTOM_VIEW.id : ctx.user.default_group_id;
+  }
+  if (requested === CUSTOM_VIEW.id) {
+    return CUSTOM_VIEW;
+  }
+  if (!ctx.user.groups_enabled) {
+    return null; // groups are off (Administration → Options): everyone
   }
   const groupId = Number(requested);
   if (!groupId) {
@@ -273,15 +284,25 @@ function showCalendar(ctx, yearMonth, { status = 200, error, msg } = {}) {
   // Every day of the weeks the month touches, so the continuous calendar can fill its first and last weeks
   // with the months around it. ISO dates compare as strings.
   const { gridStart, gridEnd, prev, next } = monthInfo(yearMonth, ctx.user.week_start);
-  // Whose free days and events are drawn, and who "everyone" is for the green days: one group, or
-  // everyone I can see. Events follow their creator too, unless they are private (see EVENT_VISIBLE_TO_ME).
+  // Whose free days and events are drawn, and who "everyone" is for the green days: one group, the people of my
+  // Custom view, or everyone I can see. Events follow their creator too, unless they are private (see
+  // EVENT_VISIBLE_TO_ME).
   const group = calendarGroup(ctx);
   const me = ctx.user.id;
-  const audience = group
-    ? { sql: IN_GROUP, params: [group.id], eventSql: EVENT_IN_GROUP, eventParams: [group.id, group.id],
-        birthdaySql: IN_GROUP, birthdayParams: [group.id] }
-    : { sql: VISIBLE_TO_ME, params: [me, me], eventSql: EVENT_VISIBLE_TO_ME, eventParams: [me, me, me, me],
-        birthdaySql: BIRTHDAY_VISIBLE_TO_ME, birthdayParams: [me, me] };
+  let audience;
+  if (group === CUSTOM_VIEW) {
+    audience = {
+      sql: `(${VISIBLE_TO_ME} AND ${IN_MY_CUSTOM_VIEW})`, params: [me, me, me, me],
+      eventSql: `(${EVENT_VISIBLE_TO_ME} AND ${IN_MY_CUSTOM_VIEW})`, eventParams: [me, me, me, me, me, me],
+      birthdaySql: `(${BIRTHDAY_VISIBLE_TO_ME} AND ${IN_MY_CUSTOM_VIEW})`, birthdayParams: [me, me, me, me],
+    };
+  } else if (group) {
+    audience = { sql: IN_GROUP, params: [group.id], eventSql: EVENT_IN_GROUP, eventParams: [group.id, group.id],
+      birthdaySql: IN_GROUP, birthdayParams: [group.id] };
+  } else {
+    audience = { sql: VISIBLE_TO_ME, params: [me, me], eventSql: EVENT_VISIBLE_TO_ME, eventParams: [me, me, me, me],
+      birthdaySql: BIRTHDAY_VISIBLE_TO_ME, birthdayParams: [me, me] };
+  }
 
   // Every event shown that touches those weeks, including ones that started before or end after them, and each
   // time a repeating one comes back in them (occurrences). All-day ones first.
@@ -352,8 +373,16 @@ function showCalendar(ctx, yearMonth, { status = 200, error, msg } = {}) {
     }
   }
 
+  // The Custom view's list: everyone else I can see, ticked when they are in it
+  const customChoices = group === CUSTOM_VIEW
+    ? all(`SELECT u.id, u.name, u.color, EXISTS (
+             SELECT 1 FROM custom_view_members c WHERE c.user_id = ? AND c.member_id = u.id) AS checked
+           FROM users u WHERE u.id != ? AND ${VISIBLE_TO_ME} ORDER BY u.name`, me, me, me, me)
+    : [];
+
   ctx.html(views.calendarPage(ctx.user, yearMonth, {
     free, mine, events, birthdays, today: today(), members, error, msg, group, groups: myGroups(ctx.user.id), manualDays,
+    customChoices,
   }), status);
 }
 
@@ -363,12 +392,29 @@ on('GET', '/', ctx => {
     { msg: ctx.url.searchParams.get('msg') });
 });
 
-// "Make default": the view on screen (a group, or everyone when g is empty) becomes the one the calendar
+// "Make default": the view on screen (a group, Custom, or everyone when g is empty) becomes the one the calendar
 // opens on. calendarGroup has already checked I am in the group, so a forged id saves "everyone".
 on('POST', '/calendar/default', ctx => {
   const group = calendarGroup(ctx);
-  run('UPDATE users SET default_group_id = ? WHERE id = ?', group ? group.id : null, ctx.user.id);
+  const custom = group === CUSTOM_VIEW;
+  run('UPDATE users SET default_group_id = ?, default_custom = ? WHERE id = ?',
+    group && !custom ? group.id : null, custom ? 1 : 0, ctx.user.id);
   ctx.redirect(backToMonth(ctx));
+});
+
+// The Custom view's list: the people ticked become the ones it shows, with me. Only people I can see count:
+// any other id is dropped, my own too (I am always in it).
+on('POST', '/calendar/custom', ctx => {
+  const me = ctx.user.id;
+  const ticked = new Set(ctx.body.getAll('u').map(Number));
+  const pickable = all(`SELECT u.id FROM users u WHERE u.id != ? AND ${VISIBLE_TO_ME}`, me, me, me);
+  tx(() => {
+    run('DELETE FROM custom_view_members WHERE user_id = ?', me);
+    for (const { id } of pickable.filter(member => ticked.has(member.id))) {
+      run('INSERT INTO custom_view_members(user_id, member_id) VALUES (?, ?)', me, id);
+    }
+  });
+  ctx.redirect(`/?m=${postedMonth(ctx)}&g=${CUSTOM_VIEW.id}`);
 });
 
 // Two ways in. A plain click on a day sends no `part` and toggles it: try the delete first, insert
@@ -639,6 +685,22 @@ on('GET', '/events/(?<id>\\d+)', ctx => {
   }
 });
 
+// One event as an .ics file, for Add to calendar → Apple Calendar in the calendar's list: imported once, not a
+// subscription. A repeating one: only the time its link is for (?on=), as the list shows it.
+on('GET', '/events/(?<id>\\d+)\\.ics', ctx => {
+  const me = ctx.user.id;
+  const event = get(`SELECT e.*, ${WITH_CHANGES} FROM events e JOIN users u ON u.id = e.created_by
+                     WHERE e.id = ? AND ${EVENT_VISIBLE_TO_ME}`, Number(ctx.params.id), me, me, me, me);
+  if (!event) {
+    return ctx.fail(404, 'errors.eventNotFound');
+  }
+  const { on } = pickedTime(ctx, event);
+  const shown = event.rrule ? timeOn(event, on) : event;
+  const item = { ...feedItem(shown), rrule: null, uid: `event-${event.id}${event.rrule ? '-' + on : ''}` };
+  ctx.text(buildIcs({ name: 'Meshtime', host: new URL(BASE_URL).host, items: [item] }), 200,
+    { ...ICS_HEADERS, 'Content-Disposition': `attachment; filename="event-${event.id}.ics"` });
+});
+
 // Like Google Calendar, a change to a repeating event is for this time, this and the following ones, or all of
 // them (pickedTime). This time: only what differs from what the event gives it is kept (OWN_FIELDS). The following
 // ones: the event ends before this time, and a new one starts from it. All: the event itself. The times changed or
@@ -712,6 +774,8 @@ on('POST', '/events/(?<id>\\d+)/delete', ctx => {
 // ---- polls ----
 // Same public / private rule as events (pollVisibleTo). A poll is for everyone who can see it: they are the
 // ones it waits for, and the only ones who can open, answer or confirm it.
+// Two kinds (polls.kind), both asking yes / maybe / no of each choice (poll_choices): on dates, whose winner becomes
+// an event (/confirm), and on activities, whose winner gets a date poll of its own (/polls/new?from=).
 
 // A poll past its deadline closes, as if closed by hand: done whenever polls are read, so no timer is needed.
 const closeExpiredPolls = () =>
@@ -723,9 +787,27 @@ const postedDeadline = ctx => {
   return deadline === null || (isValidDate(deadline) && deadline >= today()) ? deadline : undefined;
 };
 
-// Poll `p` still has a date I have not answered. Takes my user id.
-const I_STILL_OWE = `EXISTS (SELECT 1 FROM poll_dates d WHERE d.poll_id = p.id AND NOT EXISTS (
-  SELECT 1 FROM poll_votes pv WHERE pv.poll_id = p.id AND pv.date = d.date AND pv.user_id = ?))`;
+/**
+ * The choices posted for a `kind` poll, blanks dropped: dates once each, in order; activities trimmed and capped, the
+ * later of two that differ only in case dropped (the poll would ask the same thing twice). `valid`: all of them are
+ * what that kind takes.
+ */
+function postedChoices(kind, values) {
+  if (kind === 'date') {
+    const dates = [...new Set(values.filter(Boolean))].sort();
+    return { choices: dates, valid: dates.every(isValidDate) };
+  }
+  const seen = new Set();
+  const activities = values.map(value => cleanText(value, MAX_ACTIVITY))
+    .filter(activity => activity && !seen.has(activity.toLowerCase()) && seen.add(activity.toLowerCase()));
+  return { choices: activities, valid: true };
+}
+const choicesError = (lang, kind) =>
+  t(lang, kind === 'date' ? 'errors.pollDates' : 'errors.pollActivities', { max: MAX_CHOICES });
+
+// Poll `p` still has a choice I have not answered. Takes my user id.
+const I_STILL_OWE = `EXISTS (SELECT 1 FROM poll_choices c WHERE c.poll_id = p.id AND NOT EXISTS (
+  SELECT 1 FROM poll_votes pv WHERE pv.poll_id = p.id AND pv.choice = c.choice AND pv.user_id = ?))`;
 
 /** How many open polls wait for my answers: the count by Polls in every page's nav (server.js). */
 export const pendingPolls = userId => get(`SELECT COUNT(*) AS count FROM polls p JOIN users u ON u.id = p.created_by
@@ -733,9 +815,10 @@ export const pendingPolls = userId => get(`SELECT COUNT(*) AS count FROM polls p
 today(), userId, userId, userId, userId, userId).count;
 
 /**
- * Everything pollPage needs, if `user` may see the poll: the poll, its dates, the members it is for, their
+ * Everything pollPage needs, if `user` may see the poll: the poll, its choices, the members it is for, their
  * votes, who of them still owes an answer, the groups it is shared with and the ones it could be (its
- * creator's), and its event once confirmed, if `user` may see that event too.
+ * creator's), and what its winner became once acted on: its event (a date poll) or its date poll (an activity
+ * poll), each only if `user` may see that too.
  * null for a poll that does not exist or that `user` may not see: the same answer, so an id gives nothing away.
  */
 function loadPoll(pollId, user) {
@@ -747,49 +830,54 @@ function loadPoll(pollId, user) {
     return null;
   }
 
-  const dates = all('SELECT date FROM poll_dates WHERE poll_id = ? ORDER BY date', pollId).map(row => row.date);
+  // dates in order, activities A to Z
+  const choices = all('SELECT choice FROM poll_choices WHERE poll_id = ? ORDER BY choice COLLATE NOCASE', pollId)
+    .map(row => row.choice);
   // Who it is for: every user who can see it, worked out for all of them at once (v is each candidate).
-  const members = all(`SELECT v.id, v.name FROM users v
+  const members = all(`SELECT v.id, v.name, v.color FROM users v
                        JOIN polls p ON p.id = ? JOIN users u ON u.id = p.created_by
                        WHERE ${pollVisibleTo('v.id')} ORDER BY v.name`, pollId);
   // Answers from someone it is no longer for (they left the group it is shared with) no longer count.
   const memberIds = new Set(members.map(member => member.id));
-  const votes = all('SELECT date, user_id, answer FROM poll_votes WHERE poll_id = ?', pollId)
+  const votes = all('SELECT choice, user_id, answer FROM poll_votes WHERE poll_id = ?', pollId)
     .filter(vote => memberIds.has(vote.user_id));
 
-  // A member has finished only once they answered every proposed date.
-  const datesAnsweredBy = {}; // user_id -> Set of dates
+  // A member has finished only once they answered every choice.
+  const answeredBy = {}; // user_id -> Set of choices
   for (const vote of votes) {
-    (datesAnsweredBy[vote.user_id] ??= new Set()).add(vote.date);
+    (answeredBy[vote.user_id] ??= new Set()).add(vote.choice);
   }
   const missing = members
-    .filter(member => (datesAnsweredBy[member.id]?.size ?? 0) < dates.length)
+    .filter(member => (answeredBy[member.id]?.size ?? 0) < choices.length)
     .map(member => member.name);
 
   return {
     poll,
-    dates,
+    choices,
     members,
     votes,
     missing,
     complete: missing.length === 0,
-    best: poll.chosen_date ? [poll.chosen_date] : bestDates(dates, votes),
+    best: poll.chosen ? [poll.chosen] : bestChoices(choices, votes),
     // Set once the date is confirmed, and only if I may see the event: it can be edited to private later.
     event: get(`SELECT e.* FROM events e JOIN users u ON u.id = e.created_by
                 WHERE e.poll_id = ? AND ${EVENT_VISIBLE_TO_ME}`, pollId, me, me, me, me),
+    // Set once a date poll is made from this activity poll, if I may see it: whoever made it picked who sees it.
+    datePoll: get(`SELECT p.id, p.title FROM polls p JOIN users u ON u.id = p.created_by
+                   WHERE p.from_poll_id = ? AND ${pollVisibleTo('?')}`, pollId, me, me, me, me),
     groupIds: sharedGroupIds('poll', pollId),
     creatorGroups: myGroups(poll.created_by),
-    suggested: suggestedAnswers(user, pollId, dates),
+    suggested: poll.kind === 'date' ? suggestedAnswers(user, pollId, choices) : {},
   };
 }
 
 /**
  * date -> where my answer starts on a date I have not answered yet (views.pollPage), from my free time that day:
  * free all day 'yes', part of it 'maybe', and 'no' when I am known not to be free: a day I set by hand to nothing,
- * or one my Calendar Integration fills. Any other day nobody knows: left out, it stays on "—".
+ * or one my Calendar Integration fills. Any other day nobody knows: left out, it stays unanswered.
  */
 function suggestedAnswers(user, pollId, dates) {
-  const inPoll = 'date IN (SELECT date FROM poll_dates WHERE poll_id = ?)';
+  const inPoll = 'date IN (SELECT choice FROM poll_choices WHERE poll_id = ?)';
   const free = new Map(all(`SELECT date, part FROM free_days WHERE user_id = ? AND ${inPoll}`, user.id, pollId)
     .map(row => [row.date, row.part]));
   const setByHand = new Set(all(`SELECT date FROM manual_days WHERE user_id = ? AND ${inPoll}`, user.id, pollId)
@@ -809,34 +897,68 @@ function suggestedAnswers(user, pollId, dates) {
 }
 
 // The polls I may see, open first, newest first. `members` counts who each is for, `voters` those of them
-// who answered every date (v is each user, asked the same pollVisibleTo question as the page), `i_owe` whether
+// who answered every choice (v is each user, asked the same pollVisibleTo question as the page), `i_owe` whether
 // I am not one of them yet. Takes my user id five times.
 const POLL_LIST_SQL = `
 SELECT p.*, ${I_STILL_OWE} AS i_owe,
   (SELECT COUNT(*) FROM users v
      WHERE ${pollVisibleTo('v.id')} AND NOT EXISTS (
-       SELECT 1 FROM poll_dates d WHERE d.poll_id = p.id
+       SELECT 1 FROM poll_choices c WHERE c.poll_id = p.id
          AND NOT EXISTS (SELECT 1 FROM poll_votes pv
-                           WHERE pv.poll_id = p.id AND pv.date = d.date AND pv.user_id = v.id))) AS voters,
+                           WHERE pv.poll_id = p.id AND pv.choice = c.choice AND pv.user_id = v.id))) AS voters,
   (SELECT COUNT(*) FROM users v WHERE ${pollVisibleTo('v.id')}) AS members
 FROM polls p
 JOIN users u ON u.id = p.created_by
 WHERE ${pollVisibleTo('?')}
 ORDER BY p.closed_at IS NOT NULL, p.created_at DESC`;
 
-/** Only its creator or an admin may close a poll or change who sees it. */
+/** Only its creator or an admin may close a poll, change it or who sees it. */
 const managesPoll = (user, poll) => poll.created_by === user.id || Boolean(user.is_admin);
+
+/**
+ * The activity poll a new date poll is planned from (/polls/new?from=&activity=), as loadPoll gives it: if `user`
+ * may see it, its result is out (everyone answered, or it is closed), `activity` is one of its best, and no date
+ * poll was made from it yet. null otherwise.
+ */
+function planFrom(user, fromId, activity) {
+  const data = /^\d+$/.test(fromId ?? '') ? loadPoll(Number(fromId), user) : null;
+  const ready = data?.poll.kind === 'activity' && (data.complete || data.poll.closed_at)
+    && data.best.includes(activity) && !get('SELECT 1 FROM polls WHERE from_poll_id = ?', data.poll.id);
+  return ready ? data : null;
+}
 
 on('GET', '/polls', ctx => {
   const me = ctx.user.id;
   closeExpiredPolls();
   ctx.html(views.pollsPage(ctx.user, all(POLL_LIST_SQL, me, me, me, me, me)));
 });
-on('GET', '/polls/new', ctx => ctx.html(views.newPollPage(ctx.user, { groups: myGroups(ctx.user.id) })));
+
+// ?from=&activity=: dates for the winner of an activity poll, named after it and seen by the same people to start.
+on('GET', '/polls/new', ctx => {
+  const groups = myGroups(ctx.user.id);
+  const activity = ctx.url.searchParams.get('activity');
+  const from = planFrom(ctx.user, ctx.url.searchParams.get('from'), activity);
+  ctx.html(views.newPollPage(ctx.user, { groups, ...(from && {
+    from: { id: from.poll.id, title: from.poll.title, activity },
+    title: activity,
+    sharing: { isPrivate: from.poll.is_private, groupIds: from.groupIds },
+  }) }));
+});
 
 on('POST', '/polls/new', ctx => {
+  // Planned from an activity poll: always on dates, and that poll is decided then, so it closes, like a date poll
+  // once its event is made.
+  const [fromId, activity] = [ctx.body.get('from'), ctx.body.get('activity')];
+  const from = fromId ? planFrom(ctx.user, fromId, activity) : null;
+  if (fromId && !from) {
+    // made already (a double click, or someone else was first): that one, if I may see it
+    const made = /^\d+$/.test(fromId) && loadPoll(Number(fromId), ctx.user)?.datePoll;
+    return made ? ctx.redirect('/polls/' + made.id) : ctx.fail(409, 'errors.cannotPlan');
+  }
+  const kind = !from && ctx.body.get('kind') === 'activity' ? 'activity' : 'date';
   const title = cleanText(ctx.body.get('title'), 100);
-  const dates = [...new Set(ctx.body.getAll('dates').filter(Boolean))].sort(); // drop blanks and duplicates
+  const { choices, valid } = postedChoices(kind, ctx.body.getAll(kind === 'date' ? 'dates' : 'activities'));
+  const openChoices = ctx.body.get('open_choices') === '1' ? 1 : 0;
   const deadline = postedDeadline(ctx);
   const groups = myGroups(ctx.user.id);
   const sharing = readSharing(ctx, groups, 'poll');
@@ -844,8 +966,8 @@ on('POST', '/polls/new', ctx => {
   if (!title) {
     errors.title = t(ctx.lang, 'errors.titleRequired');
   }
-  if (!dates.length || dates.length > MAX_DATES || !dates.every(isValidDate)) {
-    errors.dates = t(ctx.lang, 'errors.pollDates', { max: MAX_DATES });
+  if (!valid || !choices.length || choices.length > MAX_CHOICES) {
+    errors.choices = choicesError(ctx.lang, kind);
   }
   if (deadline === undefined) {
     errors.deadline = t(ctx.lang, 'errors.pollDeadline');
@@ -854,17 +976,24 @@ on('POST', '/polls/new', ctx => {
     errors.visibility = sharing.error;
   }
   if (hasErrors(errors)) {
-    const posted = { title, deadline: ctx.body.get('deadline') ?? '', groups, sharing };
+    const posted = {
+      title, kind, choices, openChoices, deadline: ctx.body.get('deadline') ?? '', groups, sharing,
+      from: from && { id: from.poll.id, title: from.poll.title, activity },
+    };
     return ctx.html(views.newPollPage(ctx.user, { errors, ...posted }), 400);
   }
 
   const pollId = tx(() => {
-    const id = run('INSERT INTO polls(title, created_by, created_at, is_private, deadline) VALUES (?,?,?,?,?)',
-      title, ctx.user.id, now(), sharing.isPrivate, deadline).lastInsertRowid;
-    for (const date of dates) {
-      run('INSERT INTO poll_dates(poll_id, date) VALUES (?,?)', id, date);
+    const id = run(`INSERT INTO polls(title, created_by, created_at, is_private, deadline, kind, open_choices,
+                                      from_poll_id) VALUES (?,?,?,?,?,?,?,?)`,
+    title, ctx.user.id, now(), sharing.isPrivate, deadline, kind, openChoices, from?.poll.id ?? null).lastInsertRowid;
+    for (const choice of choices) {
+      run('INSERT INTO poll_choices(poll_id, choice) VALUES (?,?)', id, choice);
     }
     saveShares('poll', id, sharing.groupIds);
+    if (from) {
+      run('UPDATE polls SET chosen = ?, closed_at = COALESCE(closed_at, ?) WHERE id = ?', activity, now(), from.poll.id);
+    }
     return id;
   });
   ctx.redirect('/polls/' + pollId);
@@ -878,11 +1007,11 @@ on('GET', '/polls/(?<id>\\d+)', ctx => {
   ctx.html(views.pollPage(ctx.user, { ...data, msg: ctx.url.searchParams.get('msg') }));
 });
 
-/** The poll page again after a rejected form: errors.answers under the title, errors.result in the result,
- *  errors.visibility in Who sees it. */
+/** The poll page again after a rejected form: errors.answers under the title, errors.choice under Add a choice,
+ *  errors.result in the result, errors.deadline and errors.visibility in Manage. */
 const rejectPoll = (ctx, data, status, errors) => ctx.html(views.pollPage(ctx.user, { ...data, errors }), status);
 
-// Saving answers replaces this user's previous ones. Dates left on "—" stay unanswered.
+// Saving answers replaces this user's previous ones. Choices left unanswered stay so.
 on('POST', '/polls/(?<id>\\d+)', ctx => {
   const pollId = Number(ctx.params.id);
   const data = loadPoll(pollId, ctx.user);
@@ -894,16 +1023,40 @@ on('POST', '/polls/(?<id>\\d+)', ctx => {
   }
 
   tx(() => {
-    for (const date of data.dates) {
-      const answer = ctx.body.get('v_' + date);
+    for (const choice of data.choices) {
+      const answer = ctx.body.get('v_' + choice);
       if (!ANSWERS.includes(answer)) {
         continue;
       }
-      run(`INSERT INTO poll_votes(poll_id, date, user_id, answer) VALUES (?,?,?,?)
-           ON CONFLICT DO UPDATE SET answer = excluded.answer`, pollId, date, ctx.user.id, answer);
+      run(`INSERT INTO poll_votes(poll_id, choice, user_id, answer) VALUES (?,?,?,?)
+           ON CONFLICT DO UPDATE SET answer = excluded.answer`, pollId, choice, ctx.user.id, answer);
     }
   });
   ctx.redirect(`/polls/${pollId}?msg=answers_saved`);
+});
+
+// One more choice in an open poll: from its creator or an admin, or anyone it is for when it lets them
+// (polls.open_choices). Checked like the new-poll form's; one already there (in any case) is left as it is.
+on('POST', '/polls/(?<id>\\d+)/choices', ctx => {
+  const pollId = Number(ctx.params.id);
+  const data = loadPoll(pollId, ctx.user);
+  if (!data) {
+    return ctx.fail(404, 'errors.pollNotFound');
+  }
+  if (!data.poll.open_choices && !managesPoll(ctx.user, data.poll)) {
+    return ctx.fail(403, 'errors.pollForbidden');
+  }
+  if (data.poll.closed_at) {
+    return rejectPoll(ctx, data, 409, { choice: t(ctx.lang, 'errors.pollClosed') });
+  }
+  const { choices: [choice], valid } = postedChoices(data.poll.kind, [ctx.body.get('choice') ?? '']);
+  if (!choice || !valid || data.choices.length >= MAX_CHOICES) {
+    return rejectPoll(ctx, data, 400, { choice: choicesError(ctx.lang, data.poll.kind) });
+  }
+  if (!data.choices.some(saved => saved.toLowerCase() === choice.toLowerCase())) {
+    run('INSERT INTO poll_choices(poll_id, choice) VALUES (?,?)', pollId, choice);
+  }
+  ctx.redirect(`/polls/${pollId}?msg=choice_added`);
 });
 
 on('POST', '/polls/(?<id>\\d+)/close', ctx => {
@@ -977,8 +1130,8 @@ on('POST', '/polls/(?<id>\\d+)/confirm', ctx => {
   if (!data.complete && !data.poll.closed_at) {
     return rejectPoll(ctx, data, 409, { answers: t(ctx.lang, 'errors.notEveryoneAnswered') });
   }
-  // Only a winning date may be confirmed; the form offers exactly these, so this is the server-side twin.
-  if (!data.best.includes(date)) {
+  // Only a winning date of a date poll may be confirmed; the form offers exactly these, so this is the server-side twin.
+  if (data.poll.kind !== 'date' || !data.best.includes(date)) {
     return rejectPoll(ctx, data, 400, { result: t(ctx.lang, 'errors.notBestDate') });
   }
 
@@ -992,7 +1145,7 @@ on('POST', '/polls/(?<id>\\d+)/confirm', ctx => {
                          VALUES (?,?,?,?,?,?,?)`,
       data.poll.title, date, date, data.poll.created_by, pollId, now(), data.poll.is_private).lastInsertRowid;
     saveShares('event', eventId, data.groupIds);
-    run('UPDATE polls SET chosen_date = ?, closed_at = COALESCE(closed_at, ?) WHERE id = ?', date, now(), pollId);
+    run('UPDATE polls SET chosen = ?, closed_at = COALESCE(closed_at, ?) WHERE id = ?', date, now(), pollId);
   });
   ctx.redirect('/polls/' + pollId);
 });

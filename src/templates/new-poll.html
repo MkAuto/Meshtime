@@ -1,29 +1,80 @@
-{{! Six date rows are the no-JS fallback; public/app.js collapses them to one and grows rows on demand,
-    up to data-max. }}
+{{! Two panels of cards with rows like Profile's (.pref; icons: Material Design Icons by Pictogrammers, Apache License
+    2.0): what the poll is about, its choices and who may add more, then how it is answered.
+    Dates or activities: the kind chips switch which choices show (style.css, no JS); the server reads only that kind's.
+    Six rows of each are the no-JS fallback: public/app.js keeps the filled ones and one empty, and grows rows on
+    demand, up to data-max. Planned from an activity poll (from): always dates, so no kind to pick. }}
 <h1>{{t.newPoll.title}}</h1>
-<form method="post" action="/polls/new" class="stack">
-  <label>
-    {{t.newPoll.whatFor}}
-    <input name="title" required maxlength="100" placeholder="{{t.newPoll.placeholder}}" value="{{title}}" autofocus>
-  </label>
-  {{#errors.title}}<p class="err">{{errors.title}}</p>{{/errors.title}}
-  <fieldset class="stack dates" data-max="{{maxDates}}">
-    <legend>{{datesLegend}}</legend>
-    <noscript class="hint">{{t.newPoll.leaveEmpty}}</noscript>
-    <input type="date" name="dates" min="{{today}}">
-    <input type="date" name="dates" min="{{today}}">
-    <input type="date" name="dates" min="{{today}}">
-    <input type="date" name="dates" min="{{today}}">
-    <input type="date" name="dates" min="{{today}}">
-    <input type="date" name="dates" min="{{today}}">
-  </fieldset>
-  {{#errors.dates}}<p class="err">{{errors.dates}}</p>{{/errors.dates}}
-  <label>
-    {{t.newPoll.deadline}}
-    <span class="hint">{{t.newPoll.deadlineHint}}</span>
-    <input type="date" name="deadline" min="{{today}}" value="{{deadline}}">
-  </label>
-  {{#errors.deadline}}<p class="err">{{errors.deadline}}</p>{{/errors.deadline}}
-  {{> share-with}}
-  <button>{{t.newPoll.create}}</button>
+{{#from}}<p class="hint">{{fromHint}}</p>{{/from}}
+<form method="post" action="/polls/new" class="poll-form">
+  {{#from}}
+  <input type="hidden" name="from" value="{{id}}">
+  <input type="hidden" name="activity" value="{{activity}}">
+  {{/from}}
+  <section class="panel panel-poll">
+    <h2>{{t.newPoll.aboutHeading}}</h2>
+    <div class="integration">
+      <div>
+        {{^from}}
+        <div class="pref">
+          <span class="pref-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3,5H9V11H3V5M5,7V9H7V7H5M11,7H21V9H11V7M11,15H21V17H11V15M5,20L1.5,16.5L2.91,15.09L5,17.17L9.59,12.59L11,14L5,20Z"/></svg></span>
+          <span id="kind-label">{{t.newPoll.kind}}</span>
+          <span class="chips" role="radiogroup" aria-labelledby="kind-label">
+            <label><input type="radio" name="kind" value="date"{{^isActivity}} checked{{/isActivity}}><span>{{t.newPoll.kindDate}}</span></label>
+            <label><input type="radio" name="kind" value="activity"{{#isActivity}} checked{{/isActivity}}><span>{{t.newPoll.kindActivity}}</span></label>
+          </span>
+        </div>
+        {{/from}}
+        <label class="pref">
+          <span class="pref-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z"/></svg></span>
+          <span>{{t.newPoll.whatFor}}</span>
+          <input name="title" required maxlength="100" placeholder="{{t.newPoll.placeholder}}" value="{{title}}" autofocus>
+        </label>
+        {{#errors.title}}<p class="err">{{errors.title}}</p>{{/errors.title}}
+      </div>
+      <div>
+        <fieldset class="choices dates" data-max="{{maxChoices}}">
+          <legend>{{datesLegend}}</legend>
+          {{#dates}}
+          <input type="date" name="dates" min="{{today}}" value="{{value}}">
+          {{/dates}}
+        </fieldset>
+        <fieldset class="choices activities" data-max="{{maxChoices}}">
+          <legend>{{activitiesLegend}}</legend>
+          {{#activities}}
+          <input name="activities" maxlength="{{maxActivity}}" placeholder="{{t.poll.activityPlaceholder}}" value="{{value}}">
+          {{/activities}}
+        </fieldset>
+        <noscript><p class="hint">{{t.newPoll.leaveEmpty}}</p></noscript>
+        {{#errors.choices}}<p class="err">{{errors.choices}}</p>{{/errors.choices}}
+        <label class="pref">
+          <span class="pref-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M15,14C12.33,14 7,15.33 7,18V20H23V18C23,15.33 17.67,14 15,14M6,10V7H4V10H1V12H4V15H6V12H9V10M15,12A4,4 0 0,0 19,8A4,4 0 0,0 15,4A4,4 0 0,0 11,8A4,4 0 0,0 15,12Z"/></svg></span>
+          <span>{{t.newPoll.openChoices}}</span>
+          <input type="checkbox" name="open_choices" value="1"{{#openChoices}} checked{{/openChoices}}>
+          <span class="hint pref-note">{{t.newPoll.openChoicesHint}}</span>
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel panel-manage">
+    <h2>{{t.newPoll.answersHeading}}</h2>
+    <div class="integration">
+      <div>
+        <label class="pref">
+          <span class="pref-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22C6.47,22 2,17.5 2,12A10,10 0 0,1 12,2M12.5,7V12.25L17,14.92L16.25,16.15L11,13V7H12.5Z"/></svg></span>
+          <span>{{t.newPoll.deadline}}</span>
+          <input type="date" name="deadline" min="{{today}}" value="{{deadline}}">
+          <span class="hint pref-note">{{t.newPoll.deadlineHint}}</span>
+        </label>
+        {{#errors.deadline}}<p class="err">{{errors.deadline}}</p>{{/errors.deadline}}
+        {{#groupsEnabled}}
+        <div class="pref">
+          <span class="pref-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z"/></svg></span>
+          {{> share-with}}
+        </div>
+        {{/groupsEnabled}}
+      </div>
+    </div>
+  </section>
+  <p><button>{{t.newPoll.create}}</button></p>
 </form>
