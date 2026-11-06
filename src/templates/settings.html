@@ -91,17 +91,17 @@
     </label>
     <label>
       {{t.settings.busyFrom}}
-      <span class="hint">{{t.settings.busyHint}}</span>
       <select name="busy_minutes">
         {{#busyChoices}}
         <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
         {{/busyChoices}}
       </select>
+      <span class="hint">{{t.settings.busyHint}}</span>
     </label>
     <label>
       {{t.settings.ignoreWords}}
-      <span class="hint">{{t.settings.ignoreHint}}</span>
       <input name="ignore_words" maxlength="500" value="{{ignoreWords}}" placeholder="{{t.settings.ignorePlaceholder}}">
+      <span class="hint">{{t.settings.ignoreHint}}</span>
     </label>
     <fieldset>
       <legend>{{t.settings.alwaysBusy}}</legend>

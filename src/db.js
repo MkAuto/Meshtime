@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS users(
   is_private INTEGER NOT NULL DEFAULT 1, -- 1: only people sharing a group see my free days, 0: everyone does
   -- the group the calendar opens on; NULL = everyone I can see. Ignored while I am not in that group.
   default_group_id INTEGER REFERENCES member_groups(id) ON DELETE SET NULL,
+  default_custom INTEGER NOT NULL DEFAULT 0, -- 1: it opens on the Custom view instead (default_group_id is NULL)
   -- Calendar Integration rules (src/sync.js): minutes of events that make a slot busy (BUSY_CHOICES in src/lib.js),
   busy_minutes INTEGER NOT NULL DEFAULT ${DEFAULT_BUSY_MINUTES},
   busy_slots TEXT NOT NULL DEFAULT '', -- always busy, "<weekday><slot>" space-separated, 0 = Sunday: '1am 1pm'
@@ -104,6 +105,13 @@ CREATE TABLE IF NOT EXISTS group_invites(
   invited_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL,
   PRIMARY KEY(group_id, user_id));
+
+-- the people a member ticked for the calendar's Custom view (calendarGroup in src/routes.js). The member
+-- is always in it too, without a row: the list is for the others.
+CREATE TABLE IF NOT EXISTS custom_view_members(
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  member_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY(user_id, member_id));
 
 -- date polls. chosen_date is set when the winning date becomes an event.
 CREATE TABLE IF NOT EXISTS polls(
@@ -293,6 +301,10 @@ if (!userColumns.includes('is_private')) {
 // DBs created before the calendar's default group existed: everyone opens on "everyone I can see".
 if (!userColumns.includes('default_group_id')) {
   db.exec('ALTER TABLE users ADD COLUMN default_group_id INTEGER REFERENCES member_groups(id) ON DELETE SET NULL');
+}
+// DBs created before the Custom view existed: nobody opens on it.
+if (!userColumns.includes('default_custom')) {
+  db.exec('ALTER TABLE users ADD COLUMN default_custom INTEGER NOT NULL DEFAULT 0');
 }
 
 // DBs created before languages existed: everyone follows their browser until they pick one.

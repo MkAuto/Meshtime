@@ -216,6 +216,10 @@ const VISIBLE_TO_ME = visibleTo('?');
 const BIRTHDAY_VISIBLE_TO_ME = `(${GROUPS_OFF} OR u.id = ? OR ${sharesGroupWith('?')})`;
 // The one-group view: only that group's members, public or not. Takes the group id.
 const IN_GROUP = 'EXISTS (SELECT 1 FROM group_members m WHERE m.group_id = ? AND m.user_id = u.id)';
+// The Custom view: me and the people I ticked in its list (custom_view_members). Takes my user id twice. Only ever
+// ANDed with one of the *_VISIBLE_TO_ME above, so someone I ticked and can no longer see drops out of it.
+const IN_MY_CUSTOM_VIEW = `(u.id = ? OR EXISTS (
+  SELECT 1 FROM custom_view_members c WHERE c.user_id = ? AND c.member_id = u.id))`;
 
 // Events, for events `e` joined to their creator `u`. A public event (is_private = 0) is seen by everyone
 // who sees its creator; a private one only by its creator and the members of the groups it is shared with.
@@ -239,23 +243,30 @@ const myGroups = userId => all(`SELECT g.* FROM member_groups g
                                 JOIN group_members m ON m.group_id = g.id
                                 WHERE m.user_id = ? ORDER BY g.name COLLATE NOCASE, g.id`, userId);
 
+/** The calendar's Custom view, in place of a group: g=custom picks it, and its id carries it in links and forms. */
+const CUSTOM_VIEW = { id: 'custom', custom: true };
+
 /**
- * The group the calendar shows on its own (?g= on a page, a posted g from its forms), or null for
- * "everyone I can see". A page opened with no g at all shows my default group (users.default_group_id);
- * an empty g is an explicit "everyone". A group I am not in is ignored, so a stale or guessed id shows
- * nothing extra, and a default group I have since left falls back to everyone. Groups off: always everyone.
+ * The group the calendar shows on its own (?g= on a page, a posted g from its forms), CUSTOM_VIEW, or null for
+ * "everyone I can see". A page opened with no g at all shows my default (users.default_custom, else
+ * users.default_group_id); an empty g is an explicit "everyone". A group I am not in is ignored, so a stale or
+ * guessed id shows nothing extra, and a default group I have since left falls back to everyone. Groups off: no
+ * group, but the Custom view stays, as it is not one.
  */
 function calendarGroup(ctx) {
-  if (!ctx.user.groups_enabled) {
-    return null; // groups are off (Administration → Options): always everyone
-  }
   let requested;
   if (ctx.body) {
     requested = ctx.body.get('g');
   } else if (ctx.url.searchParams.has('g')) {
     requested = ctx.url.searchParams.get('g');
   } else {
-    requested = ctx.user.default_group_id;
+    requested = ctx.user.default_custom ? CUSTOM_VIEW.id : ctx.user.default_group_id;
+  }
+  if (requested === CUSTOM_VIEW.id) {
+    return CUSTOM_VIEW;
+  }
+  if (!ctx.user.groups_enabled) {
+    return null; // groups are off (Administration → Options): everyone
   }
   const groupId = Number(requested);
   if (!groupId) {
@@ -273,15 +284,25 @@ function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
   // Every day of the weeks the month touches, so the continuous calendar can fill its first and last weeks
   // with the months around it. ISO dates compare as strings.
   const { gridStart, gridEnd, prev, next } = monthInfo(yearMonth, ctx.user.week_start);
-  // Whose free days and events are drawn, and who "everyone" is for the green days: one group, or
-  // everyone I can see. Events follow their creator too, unless they are private (see EVENT_VISIBLE_TO_ME).
+  // Whose free days and events are drawn, and who "everyone" is for the green days: one group, the people of my
+  // Custom view, or everyone I can see. Events follow their creator too, unless they are private (see
+  // EVENT_VISIBLE_TO_ME).
   const group = calendarGroup(ctx);
   const me = ctx.user.id;
-  const audience = group
-    ? { sql: IN_GROUP, params: [group.id], eventSql: EVENT_IN_GROUP, eventParams: [group.id, group.id],
-        birthdaySql: IN_GROUP, birthdayParams: [group.id] }
-    : { sql: VISIBLE_TO_ME, params: [me, me], eventSql: EVENT_VISIBLE_TO_ME, eventParams: [me, me, me, me],
-        birthdaySql: BIRTHDAY_VISIBLE_TO_ME, birthdayParams: [me, me] };
+  let audience;
+  if (group === CUSTOM_VIEW) {
+    audience = {
+      sql: `(${VISIBLE_TO_ME} AND ${IN_MY_CUSTOM_VIEW})`, params: [me, me, me, me],
+      eventSql: `(${EVENT_VISIBLE_TO_ME} AND ${IN_MY_CUSTOM_VIEW})`, eventParams: [me, me, me, me, me, me],
+      birthdaySql: `(${BIRTHDAY_VISIBLE_TO_ME} AND ${IN_MY_CUSTOM_VIEW})`, birthdayParams: [me, me, me, me],
+    };
+  } else if (group) {
+    audience = { sql: IN_GROUP, params: [group.id], eventSql: EVENT_IN_GROUP, eventParams: [group.id, group.id],
+      birthdaySql: IN_GROUP, birthdayParams: [group.id] };
+  } else {
+    audience = { sql: VISIBLE_TO_ME, params: [me, me], eventSql: EVENT_VISIBLE_TO_ME, eventParams: [me, me, me, me],
+      birthdaySql: BIRTHDAY_VISIBLE_TO_ME, birthdayParams: [me, me] };
+  }
 
   // Every event shown that touches those weeks, including ones that started before or end after them, and each
   // time a repeating one comes back in them (occurrences). All-day ones first.
@@ -352,8 +373,16 @@ function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
     }
   }
 
+  // The Custom view's list: everyone else I can see, ticked when they are in it
+  const customChoices = group === CUSTOM_VIEW
+    ? all(`SELECT u.id, u.name, u.color, EXISTS (
+             SELECT 1 FROM custom_view_members c WHERE c.user_id = ? AND c.member_id = u.id) AS checked
+           FROM users u WHERE u.id != ? AND ${VISIBLE_TO_ME} ORDER BY u.name`, me, me, me, me)
+    : [];
+
   ctx.html(views.calendarPage(ctx.user, yearMonth, {
     free, mine, events, birthdays, today: today(), members, error, group, groups: myGroups(ctx.user.id), manualDays,
+    customChoices,
   }), status);
 }
 
@@ -362,12 +391,29 @@ on('GET', '/', ctx => {
   showCalendar(ctx, isValidMonth(requestedMonth) ? requestedMonth : today().slice(0, 7));
 });
 
-// "Make default": the view on screen (a group, or everyone when g is empty) becomes the one the calendar
+// "Make default": the view on screen (a group, Custom, or everyone when g is empty) becomes the one the calendar
 // opens on. calendarGroup has already checked I am in the group, so a forged id saves "everyone".
 on('POST', '/calendar/default', ctx => {
   const group = calendarGroup(ctx);
-  run('UPDATE users SET default_group_id = ? WHERE id = ?', group ? group.id : null, ctx.user.id);
+  const custom = group === CUSTOM_VIEW;
+  run('UPDATE users SET default_group_id = ?, default_custom = ? WHERE id = ?',
+    group && !custom ? group.id : null, custom ? 1 : 0, ctx.user.id);
   ctx.redirect(backToMonth(ctx));
+});
+
+// The Custom view's list: the people ticked become the ones it shows, with me. Only people I can see count:
+// any other id is dropped, my own too (I am always in it).
+on('POST', '/calendar/custom', ctx => {
+  const me = ctx.user.id;
+  const ticked = new Set(ctx.body.getAll('u').map(Number));
+  const pickable = all(`SELECT u.id FROM users u WHERE u.id != ? AND ${VISIBLE_TO_ME}`, me, me, me);
+  tx(() => {
+    run('DELETE FROM custom_view_members WHERE user_id = ?', me);
+    for (const { id } of pickable.filter(member => ticked.has(member.id))) {
+      run('INSERT INTO custom_view_members(user_id, member_id) VALUES (?, ?)', me, id);
+    }
+  });
+  ctx.redirect(`/?m=${postedMonth(ctx)}&g=${CUSTOM_VIEW.id}`);
 });
 
 // Two ways in. A plain click on a day sends no `part` and toggles it: try the delete first, insert

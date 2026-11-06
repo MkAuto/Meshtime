@@ -198,6 +198,10 @@ form:not(:has(#visibility-private:checked)) .share-groups { display: none; }
 .visibility { border: none; padding: 0; margin: 0; }
 .visibility legend { padding: 0; margin-bottom: .3rem; }
 .share-groups { padding-left: 1.6rem; }
+/* The calendar's Custom view: the people to tick, side by side, wrapping onto as many lines as it takes. */
+.custom-pick fieldset { display: flex; flex-wrap: wrap; gap: .3rem 1rem; border: none; padding: 0; margin: .5rem 0 0; }
+.custom-pick legend { padding: 0; margin-bottom: .3rem; }
+.custom-pick label.check { display: flex; align-items: center; gap: .3rem; }
 .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
 .inline { display: inline; }
 form { margin: 0; }

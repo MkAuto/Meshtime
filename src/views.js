@@ -214,8 +214,10 @@ const place = location => location && {
 // `group` is the one group shown on its own (null: everyone I can see); `groups` fills the selector.
 export function calendarPage(user, yearMonth, {
   free, mine, events, birthdays, today, members, error, group = null, groups = [], manualDays = null,
+  customChoices = [],
 }) {
   // manualDays: the dates I set by hand, or null without a calendar connected (no Automatic in the menu)
+  // group: a group, the Custom view ({ custom: true }, customChoices its list), or null for everyone
   const { lang } = user;
   const month = monthInfo(yearMonth, user.week_start, lang);
   const lanes = eventLanes(events);
@@ -316,9 +318,15 @@ export function calendarPage(user, yearMonth, {
     gridClasses: `grid c${user.color}${user.hide_free_border ? ' no-free-border' : ''}`,
     // always set, empty for everyone: a link without g would open the default group instead
     groupQuery: `&g=${group ? group.id : ''}`,
-    // "Make default" is offered only when the view on screen is not already the default
-    isDefaultView: (group ? group.id : null) === (user.default_group_id ?? null),
+    // "Make default" is offered only when the view on screen is not already the default. A default group is
+    // not one while groups are off: the calendar opens on everyone then.
+    isDefaultView: group?.custom
+      ? Boolean(user.default_custom)
+      : !user.default_custom
+        && (group ? group.id : null) === (groupsEnabled(user) ? user.default_group_id ?? null : null),
     groupChoices: groups.map(choice => ({ value: choice.id, label: choice.name, selected: choice.id === group?.id })),
+    isCustomView: Boolean(group?.custom),
+    customChoices: customChoices.map(member => ({ ...member, checked: Boolean(member.checked) })),
     weekdays: weekdayNames(user.week_start, lang),
     padding: Array.from({ length: leadingBlanks }, () => ({})),
     days,

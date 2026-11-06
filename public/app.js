@@ -98,8 +98,8 @@ if (navigator.clipboard) {
   }
 }
 
-// Forms with data-autosubmit (the calendar's group picker) apply a new choice at once; their button is
-// only there for when JS is off.
+// Forms with data-autosubmit (the calendar's group picker, and its Custom view's list) apply a new choice at once;
+// their button is only there for when JS is off.
 for (const form of document.querySelectorAll('form[data-autosubmit]')) {
   form.querySelector('button').hidden = true;
   form.addEventListener('change', () => form.submit());
