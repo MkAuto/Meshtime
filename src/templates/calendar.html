@@ -150,9 +150,25 @@
   <ul class="events">
     {{#events}}
     <li class="{{classes}}">
-      {{when}}{{#place}} · <a href="{{url}}" target="_blank" rel="noopener">{{name}}</a>{{/place}} — <b>{{title}}</b>
-      <small class="hint">{{by}}</small>
-      {{#canEdit}}<a href="/events/{{id}}{{#on}}?on={{on}}{{/on}}">{{t.calendar.edit}}</a>{{/canEdit}}
+      <span>
+        {{when}}{{#place}} · <a href="{{url}}" target="_blank" rel="noopener">{{name}}</a>{{/place}} — <b>{{title}}</b>
+        <small class="hint">{{by}}</small>
+        {{#canEdit}}<a href="/events/{{id}}{{#on}}?on={{on}}{{/on}}">{{t.calendar.edit}}</a>{{/canEdit}}
+      </span>
+      {{! Add to calendar, like a feed's (feed-card.html), for this one time: Apple Calendar downloads its .ics. }}
+      {{#add}}
+      <details class="add-menu">
+        <summary class="pill">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 3h-1V1h-2v2H7V1H5v2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 18H4V8h16v13zM11 10h2v3.5h3.5v2H13V19h-2v-3.5H7.5v-2H11z"/></svg>
+          {{t.settings.addToCalendar}}
+        </summary>
+        <ul>
+          <li><a href="{{google}}" target="_blank" rel="noopener">{{t.settings.googleCalendar}}</a></li>
+          <li><a href="{{ics}}" download>{{t.settings.appleCalendar}}</a></li>
+          <li><a href="{{outlook}}" target="_blank" rel="noopener">{{t.settings.outlook}}</a></li>
+        </ul>
+      </details>
+      {{/add}}
     </li>
     {{/events}}
     {{^events}}

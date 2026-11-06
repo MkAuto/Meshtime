@@ -210,6 +210,32 @@ const place = location => location && {
   name: location, url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`,
 };
 
+/**
+ * Add to calendar for one event of the list: Google's and Outlook.com's new-event pages, filled in. Floating times,
+ * like the feeds (lib.js icsLocalTime): each app reads them in its own zone. An all-day one ends the day after its
+ * last, as both expect. No end time: it ends when it starts. Apple Calendar gets the .ics (routes.js).
+ */
+function addLinks(event) {
+  const end = event.start_time ? event.end_time || event.start_time : null;
+  const compact = (date, time) => date.replaceAll('-', '') + (time ? `T${time.replace(':', '')}00` : '');
+  const google = new URLSearchParams({
+    action: 'TEMPLATE', text: event.title, location: event.location || '',
+    dates: event.start_time
+      ? `${compact(event.date, event.start_time)}/${compact(event.end_date, end)}`
+      : `${compact(event.date)}/${compact(addDays(event.end_date, 1))}`,
+  });
+  const outlook = new URLSearchParams({
+    rru: 'addevent', subject: event.title, location: event.location || '', allday: String(!event.start_time),
+    startdt: event.start_time ? `${event.date}T${event.start_time}:00` : event.date,
+    enddt: event.start_time ? `${event.end_date}T${end}:00` : addDays(event.end_date, 1),
+  });
+  return {
+    google: `https://calendar.google.com/calendar/render?${google}`,
+    outlook: `https://outlook.live.com/calendar/0/action/compose?${outlook}`,
+    ics: `/events/${event.id}.ics${event.rrule ? `?on=${event.on}` : ''}`,
+  };
+}
+
 // `error` is set when a /free post was rejected: it shows under the month title.
 // `group` is the one group shown on its own (null: everyone I can see); `groups` fills the selector.
 export function calendarPage(user, yearMonth, {
@@ -350,6 +376,7 @@ export function calendarPage(user, yearMonth, {
         classes: event.end_date < today ? 'past' : '', // its last day is before today
         canEdit: event.created_by === user.id || Boolean(user.is_admin),
         on: event.rrule ? event.on : '', // which time of a repeating one its Edit link is for
+        add: addLinks(event),
       })),
   });
 }

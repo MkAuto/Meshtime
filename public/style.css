@@ -506,9 +506,13 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 .day button { overflow-wrap: anywhere; }
 /* one card per event, like the days above */
 .events { list-style: none; padding: 0; }
-.events li { margin: .4rem 0; padding: .6rem .9rem; background: var(--card); border-radius: 10px; box-shadow: var(--shadow); }
-.events li.past { opacity: .6; } /* its last day is before today */
-.events li a { color: var(--accent); }
+/* > li: the rows only, not the items of their Add to calendar menu, which stays as in Settings (.add-menu) */
+.events > li { margin: .4rem 0; padding: .6rem .9rem; background: var(--card); border-radius: 10px; box-shadow: var(--shadow); }
+.events > li.past { opacity: .6; } /* its last day is before today */
+.events > li > span a { color: var(--accent); }
+/* its Add to calendar pill (.add-menu) at the right end, in the accent; under the text on a phone */
+.events { --panel-edge: var(--accent); }
+.events > li { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .9rem; }
 
 /* polls */
 .polls li { margin: .4rem 0; }

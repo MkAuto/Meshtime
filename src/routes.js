@@ -685,6 +685,22 @@ on('GET', '/events/(?<id>\\d+)', ctx => {
   }
 });
 
+// One event as an .ics file, for Add to calendar → Apple Calendar in the calendar's list: imported once, not a
+// subscription. A repeating one: only the time its link is for (?on=), as the list shows it.
+on('GET', '/events/(?<id>\\d+)\\.ics', ctx => {
+  const me = ctx.user.id;
+  const event = get(`SELECT e.*, ${WITH_CHANGES} FROM events e JOIN users u ON u.id = e.created_by
+                     WHERE e.id = ? AND ${EVENT_VISIBLE_TO_ME}`, Number(ctx.params.id), me, me, me, me);
+  if (!event) {
+    return ctx.fail(404, 'errors.eventNotFound');
+  }
+  const { on } = pickedTime(ctx, event);
+  const shown = event.rrule ? timeOn(event, on) : event;
+  const item = { ...feedItem(shown), rrule: null, uid: `event-${event.id}${event.rrule ? '-' + on : ''}` };
+  ctx.text(buildIcs({ name: 'Meshtime', host: new URL(BASE_URL).host, items: [item] }), 200,
+    { ...ICS_HEADERS, 'Content-Disposition': `attachment; filename="event-${event.id}.ics"` });
+});
+
 // Like Google Calendar, a change to a repeating event is for this time, this and the following ones, or all of
 // them (pickedTime). This time: only what differs from what the event gives it is kept (OWN_FIELDS). The following
 // ones: the event ends before this time, and a new one starts from it. All: the event itself. The times changed or
