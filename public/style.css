@@ -318,9 +318,10 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 /* Calendar Integration rules: always-busy days × slots */
 .busy-grid th, .busy-grid td { padding: .1rem .6rem; text-align: center; font-weight: normal; }
 .busy-grid tr > th:first-child { text-align: left; }
-/* Settings → Customisation and Profile → About me: an option per row in its card, a faint line between rows (~: an
-   error between two rows keeps it): an emoji in a tinted circle (it tilts on hover), its words, then its control at
-   the right end, under the words when there is no room. A note (.pref-note) goes under it all, lined up with the words. */
+/* Settings → Customisation, Profile → About me and Security: an option per row in its card, a faint line between rows
+   (~: an error between two rows keeps it): an icon in the panel's color on a tinted circle (it tilts on hover), its
+   words, then its control at the right end, under the words when there is no room. A note (.pref-note) goes under it
+   all, lined up with the words. */
 .pref { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .8rem; padding: .65rem 0; }
 label.pref { cursor: pointer; }
 .pref ~ .pref { border-top: 1px solid color-mix(in srgb, var(--panel-edge) 18%, transparent); }
@@ -337,6 +338,7 @@ label.pref { cursor: pointer; }
   font-size: 1.05rem; background: color-mix(in srgb, var(--panel-edge) 14%, var(--card)); transition: transform .2s ease;
 }
 .pref:hover .pref-icon { transform: rotate(-10deg) scale(1.08); }
+.pref-icon svg { width: 1.3rem; height: 1.3rem; fill: var(--panel-edge); }
 /* on / off: a switch in the panel's color, the checkbox itself redrawn (so it still posts, and Space toggles it) */
 .pref input[type=checkbox] {
   appearance: none; flex: none; position: relative; width: 2.6rem; height: 1.5rem; margin: 0 0 0 auto; padding: 0;
