@@ -82,9 +82,6 @@ const page = (title, user, name, values, visitor = user ?? {}) =>
 /** Options for a <select>: `selected` marks the current one. */
 const options = (entries, current) => entries.map(([value, label]) => ({ value, label, selected: value === current }));
 
-/** The feed-link partial's values for one feed: its URL, its name, and the label of its box. */
-const feedLink = (lang, name, feed) => ({ name, feed, linkLabel: t(lang, 'feeds.linkFor', { name }) });
-
 /**
  * `message` is a key in src/locales, or a text already in the visitor's language. `visitor` ({ lang, path }) is
  * for when nobody is logged in; a member's own come with them.
@@ -400,7 +397,8 @@ export function groupsPage(user, { groups, invites, base, msg, invitedName, erro
     isAdmin: Boolean(user.is_admin),
     groups: groups.map(group => ({
       id: group.id,
-      ...feedLink(lang, group.name, groupFeedUrl(base, user, group.id)),
+      name: group.name,
+      feedCard: groupFeedCard(lang, base, user, group),
       color: group.color,
       ownedBy: t(lang, 'groups.ownedBy', { name: group.creator ?? t(lang, 'groups.removedMember') }),
       error: errors[group.id],
@@ -417,7 +415,7 @@ export function groupsPage(user, { groups, invites, base, msg, invitedName, erro
         removable: group.canManage && member.id !== user.id,
         confirmRemove: t(lang, 'groups.confirmRemove', { name: member.name }),
       })),
-      invited: group.invited.map(person => ({ ...person, groupId: group.id })),
+      invited: group.invited.map(person => ({ ...person, groupId: group.id, initials: initials(person.name) })),
       // "Next event", or "Last event" when none is coming; still "Next event" (with a placeholder) for none at all
       eventHeading: t(lang, group.headlineEvent?.isLast ? 'groups.lastEvent' : 'groups.nextEvent'),
       headlineEvent: group.headlineEvent && {
@@ -670,20 +668,25 @@ export function pollPage(user, {
 const webcal = url => url.replace(/^https?:\/\//, 'webcal://');
 
 /**
- * One card of Settings → Calendar feeds (templates/feed-card.html): feedLink's values, `kind` (the line under the
- * name), its badge (an emoji, or a group's initial on the group's color: `badgeClass`), and where its Add to calendar
+ * One card of Settings → Calendar feeds and of each group on the Groups page (templates/feed-card.html): its `name`,
+ * `feed` (the URL), `kind` (the line under the name), its badge (an emoji, or a group's initial on the group's color:
+ * `badgeClass`), and where its Add to calendar
  * menu goes: Google's and Outlook's own subscribe-by-URL pages with the feed filled in (Apple Calendar copies the
  * link instead). Google takes the webcal form (it reads it as a subscription), Outlook the https one; Outlook's is
  * Outlook.com's (personal accounts), so a work account pastes the link instead (Copy link).
  */
-const feedCard = (lang, name, feed, { kind = '', badge, badgeClass = '' }) => ({
-  ...feedLink(lang, name, feed), kind, badge, badgeClass,
+const feedCard = (name, feed, { kind = '', badge, badgeClass = '' }) => ({
+  name, feed, kind, badge, badgeClass,
   google: `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcal(feed))}`,
   outlook: `https://outlook.live.com/calendar/0/addfromweb?url=${encodeURIComponent(feed)}&name=${encodeURIComponent(name)}`,
 });
 
-/** My own link to one group's events feed (routes.js, "ICS feeds"); Rotate in Settings replaces it. */
-const groupFeedUrl = (base, user, groupId) => `${base}/feed/${user.feed_token}/groups/${groupId}.ics`;
+/** My own link to one group's events feed (routes.js, "ICS feeds"); Rotate in Settings replaces it. As a feed card:
+ *  the group's initial on its color. [...name][0]: the first character, whole even when it is an emoji. */
+const groupFeedCard = (lang, base, user, group) =>
+  feedCard(group.name, `${base}/feed/${user.feed_token}/groups/${group.id}.ics`, {
+    kind: t(lang, 'settings.groupEvents'), badge: [...group.name][0].toUpperCase(), badgeClass: `group c${group.color}`,
+  });
 
 // `errors` after a rejected Customisation form ({ weekStart, dateFormat }): shown under each field.
 // `groups` are the ones I am in: each gets its events feed in the Calendar feeds panel.
@@ -736,14 +739,11 @@ export function settingsPage(user, { base, groups = [], invites = [], calendarLi
     // shown under the title; bump it in package.json
     versionLabel: t(lang, 'settings.version', { version: packageJson.version }),
     // the same 🎉 the calendar puts in front of a birthday
-    birthdays: feedCard(lang, t(lang, 'feeds.birthdays'), birthdaysFeed,
+    birthdays: feedCard(t(lang, 'feeds.birthdays'), birthdaysFeed,
       { kind: t(lang, 'settings.repeatYearly'), badge: '🎉' }),
     // only offered while groups are off, when there are no group feeds (the route refuses it otherwise)
-    allEvents: feedCard(lang, t(lang, 'feeds.allEvents'), allEventsFeed, { badge: '📅' }),
-    // [...name][0]: the first character, whole even when it is an emoji (two UTF-16 units)
-    groupFeeds: groups.map(group => feedCard(lang, group.name, groupFeedUrl(base, user, group.id), {
-      kind: t(lang, 'settings.groupEvents'), badge: [...group.name][0].toUpperCase(), badgeClass: `group c${group.color}`,
-    })),
+    allEvents: feedCard(t(lang, 'feeds.allEvents'), allEventsFeed, { badge: '📅' }),
+    groupFeeds: groups.map(group => groupFeedCard(lang, base, user, group)),
     weekStarts: options(WEEK_START_CHOICES.map(day => [day, weekdays[day]]), user.week_start),
     // Each format is shown as today's date written that way.
     dateFormats: options(Object.keys(DATE_FORMATS).map(key => [key, formatDate(today(), key, lang)]), user.date_format),

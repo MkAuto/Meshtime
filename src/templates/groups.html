@@ -1,6 +1,8 @@
 {{! Sharing a group is what lets private members see each other's free time on the calendar.
     Buttons only show what you may do; every route checks it again (routes.js, "groups").
-    In the members and invited lists, id is that person's: the group's own id is groupId there. }}
+    In the members and invited lists, id is that person's: the group's own id is groupId there.
+    Cards and rows like Settings and Profile (.integration, .pref); the icons are Material Design Icons by
+    Pictogrammers (Apache License 2.0). }}
 <h1>{{t.groups.title}}</h1>
 <p class="hint">
   {{t.groups.intro}}
@@ -10,120 +12,149 @@
 {{#invites.length}}
 <section class="panel panel-invites">
   <h2>{{t.groups.invitesForYou}}</h2>
-  <ul>
-    {{#invites}}
-    <li>
-      <b>{{name}}</b>{{#from}} <small class="hint">{{from}}</small>{{/from}} —
-      <form method="post" action="/groups/{{id}}/accept" class="inline"><button class="link">{{t.groups.accept}}</button></form>
-      · <form method="post" action="/groups/{{id}}/decline" class="inline">
-        <button class="link danger">{{t.groups.decline}}</button>
-      </form>
-    </li>
-    {{/invites}}
-  </ul>
+  <div class="integration">
+    <div>
+    <ul class="pref-list">
+      {{#invites}}
+      <li class="pref">
+        <span class="pref-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M19 17V19H7V17S7 13 13 13 19 17 19 17M16 8A3 3 0 1 0 13 11A3 3 0 0 0 16 8M19.2 13.06A5.6 5.6 0 0 1 21 17V19H24V17S24 13.55 19.2 13.06M18 5A2.91 2.91 0 0 0 17.11 5.14A5 5 0 0 1 17.11 10.86A2.91 2.91 0 0 0 18 11A3 3 0 0 0 18 5M8 10H5V7H3V10H0V12H3V15H5V12H8Z"/></svg></span>
+        <span><b>{{name}}</b>{{#from}} <small class="hint">{{from}}</small>{{/from}}</span>
+        <span class="pref-actions">
+          <form method="post" action="/groups/{{id}}/accept" class="inline"><button>{{t.groups.accept}}</button></form>
+          <form method="post" action="/groups/{{id}}/decline" class="inline">
+            <button class="link danger">{{t.groups.decline}}</button>
+          </form>
+        </span>
+      </li>
+      {{/invites}}
+    </ul>
+    </div>
+  </div>
 </section>
 {{/invites.length}}
 
 {{#groups}}
 {{! A details element, so each group folds natively. Open on load; data-remember: app.js reopens it the
-    way you last left it (in this browser), except when it shows an error. }}
+    way you last left it (in this browser), except when it shows an error.
+    Its cards (style.css .group-cards): Members, beside Next event and its Calendar feed on a wider screen, then
+    Manage for whoever may. }}
 <details class="panel panel-group c{{color}}" open data-remember="group-{{id}}">
   <summary><h2>{{name}}</h2></summary>
   <p class="hint">{{ownedBy}}</p>
   {{#error}}<p class="err">{{error}}</p>{{/error}}
 
-  {{! Only events shared with this group (private ones); its members' public events are not "for" it. }}
-  <h3>{{eventHeading}}</h3>
-  {{#headlineEvent}}
-  <p>
-    <b>{{title}}</b> — {{when}}{{#place}} · <a href="{{url}}" target="_blank" rel="noopener">{{name}}</a>{{/place}}
-    <small class="hint">{{by}}</small>
-    · <a href="{{calendarUrl}}">{{t.groups.seeOnCalendar}}</a>
-  </p>
-  {{/headlineEvent}}
-  {{^headlineEvent}}
-  <p class="hint">{{t.groups.noEvent}}</p>
-  {{/headlineEvent}}
+  <div class="integration group-cards">
+    {{! Everyone in it, a round avatar each in their color; the invited ones dashed, under them; then Invite. }}
+    <div class="group-members">
+      <h3>{{t.groups.members}}</h3>
+      <ul class="pref-list">
+        {{#members}}
+        <li class="pref">
+          <span class="pref-icon avatar c{{color}}" aria-hidden="true">{{initials}}</span>
+          <span>{{name}}</span>
+          {{#removable}}
+          <form method="post" action="/groups/{{groupId}}/members/{{id}}/remove" class="inline"
+              data-confirm="{{confirmRemove}}">
+            <button class="link danger">{{t.common.remove}}</button>
+          </form>
+          {{/removable}}
+        </li>
+        {{/members}}
+      </ul>
+      {{#invited.length}}
+      <h3>{{t.groups.invited}}</h3>
+      <ul class="pref-list">
+        {{#invited}}
+        <li class="pref">
+          <span class="pref-icon avatar pending" aria-hidden="true">{{initials}}</span>
+          <span>{{name}}</span>
+          {{#canManage}}
+          <form method="post" action="/groups/{{groupId}}/invites/{{id}}/cancel" class="inline">
+            <button class="link danger">{{t.groups.cancel}}</button>
+          </form>
+          {{/canManage}}
+        </li>
+        {{/invited}}
+      </ul>
+      {{/invited.length}}
 
-  <h3>{{t.groups.members}}</h3>
-  <ul class="group-members">
-    {{#members}}
-    <li>
-      <span class="who"><span class="c{{color}}">{{initials}}</span></span> {{name}}
-      {{#removable}}
-      · <form method="post" action="/groups/{{groupId}}/members/{{id}}/remove" class="inline"
-          data-confirm="{{confirmRemove}}">
-        <button class="link danger">{{t.common.remove}}</button>
+      {{! Admins pick from everyone; one form, two buttons: formaction sends "Add directly" to /add instead. }}
+      {{#isAdmin}}
+      {{#invitable.length}}
+      <form method="post" action="/groups/{{id}}/invite" class="action-row">
+        <span class="pref-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M15,14C12.33,14 7,15.33 7,18V20H23V18C23,15.33 17.67,14 15,14M6,10V7H4V10H1V12H4V15H6V12H9V10M15,12A4,4 0 0,0 19,8A4,4 0 0,0 15,4A4,4 0 0,0 11,8A4,4 0 0,0 15,12Z"/></svg></span>
+        <select name="user_id" aria-label="{{t.groups.whoToInvite}}" required>
+          <option value="">{{t.groups.pickSomeone}}</option>
+          {{#invitable}}
+          <option value="{{id}}">{{name}}</option>
+          {{/invitable}}
+        </select>
+        <button>{{t.groups.sendInvite}}</button>
+        <button formaction="/groups/{{id}}/add">{{t.groups.addDirectly}}</button>
       </form>
-      {{/removable}}
-    </li>
-    {{/members}}
-  </ul>
-
-  {{#invited.length}}
-  <h3>{{t.groups.invited}}</h3>
-  <ul>
-    {{#invited}}
-    <li>
-      {{name}}
-      {{#canManage}}
-      · <form method="post" action="/groups/{{groupId}}/invites/{{id}}/cancel" class="inline">
-        <button class="link danger">{{t.groups.cancel}}</button>
+      {{/invitable.length}}
+      {{/isAdmin}}
+      {{! Everyone else types a name: the datalist suggests the people they know (public, or in one of their groups),
+          no JS, but any member's name works. Names are unique, so the name is what is sent. }}
+      {{^isAdmin}}
+      <form method="post" action="/groups/{{id}}/invite" class="action-row">
+        <span class="pref-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M15,14C12.33,14 7,15.33 7,18V20H23V18C23,15.33 17.67,14 15,14M6,10V7H4V10H1V12H4V15H6V12H9V10M15,12A4,4 0 0,0 19,8A4,4 0 0,0 15,4A4,4 0 0,0 11,8A4,4 0 0,0 15,12Z"/></svg></span>
+        <input name="name" list="invitable-{{id}}" required autocomplete="off"
+          placeholder="{{t.groups.typeName}}" aria-label="{{t.groups.whoToInvite}}">
+        <datalist id="invitable-{{id}}">
+          {{#invitable}}
+          <option value="{{name}}">
+          {{/invitable}}
+        </datalist>
+        <button>{{t.groups.sendInvite}}</button>
       </form>
-      {{/canManage}}
-    </li>
-    {{/invited}}
-  </ul>
-  {{/invited.length}}
+      {{/isAdmin}}
+    </div>
 
-  {{! Admins pick from everyone; one form, two buttons: formaction sends "Add directly" to /add instead. }}
-  {{#isAdmin}}
-  {{#invitable.length}}
-  <h3>{{t.groups.inviteSomeone}}</h3>
-  <form method="post" action="/groups/{{id}}/invite" class="row">
-    <select name="user_id" aria-label="{{t.groups.whoToInvite}}" required>
-      <option value="">{{t.groups.pickSomeone}}</option>
-      {{#invitable}}
-      <option value="{{id}}">{{name}}</option>
-      {{/invitable}}
-    </select>
-    <button>{{t.groups.sendInvite}}</button>
-    <button formaction="/groups/{{id}}/add">{{t.groups.addDirectly}}</button>
-  </form>
-  {{/invitable.length}}
-  {{/isAdmin}}
-  {{! Everyone else types a name: the datalist suggests the people they know (public, or in one of their groups),
-      no JS, but any member's name works. Names are unique, so the name is what is sent. }}
-  {{^isAdmin}}
-  <h3>{{t.groups.inviteSomeone}}</h3>
-  <form method="post" action="/groups/{{id}}/invite" class="row">
-    <input name="name" list="invitable-{{id}}" required autocomplete="off"
-      placeholder="{{t.groups.typeName}}" aria-label="{{t.groups.whoToInvite}}">
-    <datalist id="invitable-{{id}}">
-      {{#invitable}}
-      <option value="{{name}}">
-      {{/invitable}}
-    </datalist>
-    <button>{{t.groups.sendInvite}}</button>
-  </form>
-  {{/isAdmin}}
+    {{! Only events shared with this group (private ones); its members' public events are not "for" it. }}
+    <div class="group-event">
+      <h3>{{eventHeading}}</h3>
+      {{#headlineEvent}}
+      <p class="pref">
+        <span class="pref-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M19 19H5V8H19M16 1V3H8V1H6V3H5C3.9 3 3 3.9 3 5V19C3 20.11 3.9 21 5 21H19C20.11 21 21 20.11 21 19V5C21 3.9 20.11 3 19 3H18V1M10.88 12H7.27L10.19 14.11L9.08 17.56L12 15.43L14.92 17.56L13.8 14.12L16.72 12H13.12L12 8.56L10.88 12Z"/></svg></span>
+        <span>
+          <b>{{title}}</b> — {{when}}{{#place}} · <a href="{{url}}" target="_blank" rel="noopener">{{name}}</a>{{/place}}
+          <small class="hint">{{by}}</small>
+        </span>
+      </p>
+      <p><a class="pill" href="{{calendarUrl}}">{{t.groups.seeOnCalendar}}</a></p>
+      {{/headlineEvent}}
+      {{^headlineEvent}}
+      <p class="hint">{{t.groups.noEvent}}</p>
+      {{/headlineEvent}}
+    </div>
 
-  <h3>{{t.groups.feed}}</h3>
-  <p class="hint">
-    {{{t.groups.feedHint}}}
-  </p>
-  {{> feed-link}}
+    {{! My own link to its events, with the same Add to calendar menu as Settings → Calendar feeds. }}
+    <div class="group-feed">
+      <h3>{{t.groups.feed}}</h3>
+      <p class="hint">
+        {{{t.groups.feedHint}}}
+      </p>
+      <ul class="feeds">
+        {{#feedCard}}{{> feed-card}}{{/feedCard}}
+      </ul>
+    </div>
 
-  {{#canManage}}
-  <h3>{{t.groups.manage}}</h3>
-  <form method="post" action="/groups/{{id}}/rename" class="row">
-    <input name="name" required maxlength="40" value="{{name}}" aria-label="{{t.groups.groupName}}">
-    <button>{{t.groups.rename}}</button>
-  </form>
-  <form method="post" action="/groups/{{id}}/delete" data-confirm="{{confirmDelete}}">
-    <p><button class="danger">{{t.groups.delete}}</button></p>
-  </form>
-  {{/canManage}}
+    {{#canManage}}
+    <div class="group-manage">
+      <h3>{{t.groups.manage}}</h3>
+      <form method="post" action="/groups/{{id}}/rename" class="action-row">
+        <span class="pref-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z"/></svg></span>
+        <input name="name" required maxlength="40" value="{{name}}" aria-label="{{t.groups.groupName}}">
+        <button>{{t.groups.rename}}</button>
+      </form>
+      <form method="post" action="/groups/{{id}}/delete" data-confirm="{{confirmDelete}}" class="action-row">
+        <span class="pref-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19M8,9H16V19H8V9M15.5,4L14.5,3H9.5L8.5,4H5V6H19V4H15.5Z"/></svg></span>
+        <button class="danger">{{t.groups.delete}}</button>
+      </form>
+    </div>
+    {{/canManage}}
+  </div>
 
   <form method="post" action="/groups/{{id}}/leave" data-confirm="{{confirmLeave}}">
     <p><button class="link danger">{{t.groups.leave}}</button></p>
@@ -134,13 +165,18 @@
 <p class="hint">{{t.groups.none}}</p>
 {{/groups}}
 
-{{! A new random color on every visit, and it is the one the group gets: the panel previews it. }}
+{{! A new random color on every visit, and it is the one the group gets: the panel and its round + preview it. }}
 <section class="panel panel-group c{{newGroupColor}}">
   <h2>{{t.groups.newGroup}}</h2>
-  <form method="post" action="/groups" class="row">
-    <input type="hidden" name="color" value="{{newGroupColor}}">
-    <input name="name" required maxlength="40" placeholder="{{t.groups.groupName}}" aria-label="{{t.groups.groupName}}">
-    <button>{{t.groups.create}}</button>
-  </form>
-  {{#createError}}<p class="err">{{createError}}</p>{{/createError}}
+  <div class="integration">
+    <div>
+      <form method="post" action="/groups" class="action-row">
+        <input type="hidden" name="color" value="{{newGroupColor}}">
+        <span class="pref-icon avatar c{{newGroupColor}}" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"/></svg></span>
+        <input name="name" required maxlength="40" placeholder="{{t.groups.groupName}}" aria-label="{{t.groups.groupName}}">
+        <button>{{t.groups.create}}</button>
+      </form>
+      {{#createError}}<p class="err">{{createError}}</p>{{/createError}}
+    </div>
+  </div>
 </section>

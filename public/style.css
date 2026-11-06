@@ -332,13 +332,48 @@ label.pref { cursor: pointer; }
 .pref-note { flex-basis: 100%; margin: 0; padding-left: 2.9rem; font-size: .85rem; }
 /* rows as a list (Profile → my passkeys): no bullets; a row's own form (Remove) at its right end */
 .pref-list { list-style: none; padding: 0; margin: .5rem 0; }
-.pref > form:last-child { margin-left: auto; }
+.pref { margin: 0; }
+.pref > form:last-child, .pref-actions { margin-left: auto; }
+/* a row's buttons side by side (Groups → Accept / Decline), the plain one a little smaller than a form's */
+.pref-actions { display: flex; align-items: center; gap: .8rem; }
+.pref-actions button:not(.link) { padding: .3rem .9rem; }
+/* a form in a row (Groups → Invite, Rename, Delete, New group): an icon, its field taking what is left, its buttons.
+   A faint line above, like between .pref rows, except right under a heading or first in its card. */
+.action-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .6rem;
+  margin-top: .4rem; padding-top: .8rem; border-top: 1px solid color-mix(in srgb, var(--panel-edge) 18%, transparent);
+}
+.action-row:first-child, h3 + .action-row { margin-top: 0; padding-top: 0; border-top: none; }
+.action-row > input:not([type=hidden]), .action-row > select { flex: 1; min-width: 8rem; }
+/* a card's later headings (Groups → Invited under Members): room above, as .integration h3 has none */
+.integration > * > h3:not(:first-child) { margin-top: 1.4rem; }
+/* Groups: one group's cards. On a wider screen Members on the left, Next event and its Calendar feed on the right,
+   Manage under both. The feed card (feed-card.html) sits flat in its card. */
+@media (min-width: 760px) {
+  .group-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: auto 1fr;
+    grid-template-areas: "members event" "members feed";
+  }
+  .group-members { grid-area: members; }
+  .group-event { grid-area: event; }
+  .group-feed { grid-area: feed; }
+  .group-manage { grid-column: 1 / -1; }
+}
+.group-cards .feeds { grid-template-columns: minmax(0, 1fr); margin: .6rem 0 0; }
+.group-cards .feed-card { padding: 0; background: none; box-shadow: none; }
+.group-event .pill { margin-left: 2.9rem; }
 .pref-icon {
   display: grid; place-items: center; flex: none; width: 2.1rem; height: 2.1rem; border-radius: 50%;
   font-size: 1.05rem; background: color-mix(in srgb, var(--panel-edge) 14%, var(--card)); transition: transform .2s ease;
 }
 .pref:hover .pref-icon { transform: rotate(-10deg) scale(1.08); }
 .pref-icon svg { width: 1.3rem; height: 1.3rem; fill: var(--panel-edge); }
+/* a person (Groups → Members): their initials on their color, in place of an icon (after .pref-icon, so it wins).
+   Invited, not in yet: dashed. */
+.avatar { background: var(--c); color: #fff; font-size: .78rem; font-weight: 700; }
+.avatar svg { fill: currentColor; }
+.avatar.pending { background: none; color: var(--muted); border: 2px dashed color-mix(in srgb, var(--panel-edge) 45%, transparent); }
 /* on / off: a switch in the panel's color, the checkbox itself redrawn (so it still posts, and Space toggles it) */
 .pref input[type=checkbox] {
   appearance: none; flex: none; position: relative; width: 2.6rem; height: 1.5rem; margin: 0 0 0 auto; padding: 0;
@@ -444,10 +479,6 @@ label.pref { cursor: pointer; }
 .day.all { background: var(--ok-bg); }
 .day.all .num::after { content: " ✓"; color: var(--ok); font-size: .7rem; }
 .who { display: flex; flex-wrap: wrap; gap: 2px; }
-/* a group's feed link: as wide as the panel allows, so the whole URL is visible on a computer */
-.feed-link { flex: 1; min-width: 0; font-family: ui-monospace, monospace; font-size: .85rem; }
-/* the groups page puts initials in front of a name, on the same line */
-.group-members .who { display: inline-flex; }
 /* user colors: 13 distinct colors, index stored in users.color. --c is for light mode, --cd for dark.
    To add one: a .cN line here, a stop in the .hue gradient below, and bump COLORS in src/lib.js. */
 .c0  { --c: #dc2626; --cd: #f87171; }
@@ -689,7 +720,7 @@ a { color: var(--accent); }
   .day.mine { box-shadow: var(--shadow), inset 0 0 0 2px var(--cd, var(--accent)); }
   .ev.colored { background: color-mix(in srgb, var(--cd) 20%, var(--card)); color: var(--cd); }
   .swatch-pick { background: var(--cd, var(--ev-bg)); border-color: var(--cd, var(--ev-fg)); }
-  .feed-badge.group { background: var(--cd); color: var(--bg); }
+  .feed-badge.group, .avatar { background: var(--cd); color: var(--bg); }
   /* the same earth tones, lifted so they read on the dark card; the fill tints a little stronger.
      Dark needs no --muted bump: #a1958a clears 4.5:1 on all of them. */
   .panel { --muted: #a1958a; --panel: color-mix(in srgb, var(--panel-edge) 10%, var(--card)); }

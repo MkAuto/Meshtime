@@ -233,13 +233,13 @@
     "intro": "Members of a group see each other's free time and events on the calendar, even with a private account.",
     "invitesForYou": "Invites for you",
     "from": "from {{name}}",
-    "accept": "accept",
-    "decline": "decline",
+    "accept": "Accept",
+    "decline": "Decline",
     "ownedBy": "Owned by {{name}}",
     "removedMember": "a removed member",
     "nextEvent": "Next event",
     "lastEvent": "Last event",
-    "seeOnCalendar": "see it on the calendar",
+    "seeOnCalendar": "See it on the calendar",
     "noEvent": "No event yet",
     "members": "Members",
     "confirmRemove": "Remove {{name}} from this group?",
@@ -345,7 +345,6 @@
     "myLinks": "My open links"
   },
   "feeds": {
-    "linkFor": "Calendar feed link for {{name}}",
     "birthdays": "Birthdays",
     "allEvents": "All events"
   },

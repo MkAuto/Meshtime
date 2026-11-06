@@ -233,13 +233,13 @@
     "intro": "Les membres d'un groupe voient les disponibilités et les événements des uns et des autres sur le calendrier, même avec un compte privé.",
     "invitesForYou": "Invitations pour vous",
     "from": "de la part de {{name}}",
-    "accept": "accepter",
-    "decline": "refuser",
+    "accept": "Accepter",
+    "decline": "Refuser",
     "ownedBy": "Propriétaire : {{name}}",
     "removedMember": "un membre retiré",
     "nextEvent": "Prochain événement",
     "lastEvent": "Dernier événement",
-    "seeOnCalendar": "le voir sur le calendrier",
+    "seeOnCalendar": "Le voir sur le calendrier",
     "noEvent": "Aucun événement pour l'instant",
     "members": "Membres",
     "confirmRemove": "Retirer {{name}} de ce groupe?",
@@ -345,7 +345,6 @@
     "myLinks": "Mes liens actifs"
   },
   "feeds": {
-    "linkFor": "Lien du flux de calendrier pour {{name}}",
     "birthdays": "Anniversaires",
     "allEvents": "Tous les événements"
   },
