@@ -10,12 +10,12 @@
   <fieldset class="stack dates" data-max="{{maxDates}}">
     <legend>{{datesLegend}}</legend>
     <noscript class="hint">{{t.newPoll.leaveEmpty}}</noscript>
-    <input type="date" name="dates">
-    <input type="date" name="dates">
-    <input type="date" name="dates">
-    <input type="date" name="dates">
-    <input type="date" name="dates">
-    <input type="date" name="dates">
+    <input type="date" name="dates" min="{{today}}">
+    <input type="date" name="dates" min="{{today}}">
+    <input type="date" name="dates" min="{{today}}">
+    <input type="date" name="dates" min="{{today}}">
+    <input type="date" name="dates" min="{{today}}">
+    <input type="date" name="dates" min="{{today}}">
   </fieldset>
   {{#errors.dates}}<p class="err">{{errors.dates}}</p>{{/errors.dates}}
   <label>

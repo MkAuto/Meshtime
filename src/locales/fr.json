@@ -45,6 +45,7 @@
   "calendar": {
     "previousMonth": "Mois précédent",
     "nextMonth": "Mois suivant",
+    "today": "Aujourd'hui",
     "whoseFreeTime": "Disponibilités à afficher",
     "everyone": "Tous ceux que je vois",
     "custom": "Personnalisé…",
@@ -224,7 +225,8 @@
     "until": "Réponses jusqu'au {{date}}.",
     "deadlineHint": "Le dernier jour pour répondre. Vide : aucune date limite.",
     "saveDeadline": "Enregistrer la date limite",
-    "close": "Fermer le sondage maintenant"
+    "close": "Fermer le sondage maintenant",
+    "confirmClose": "Fermer ce sondage maintenant? Personne ne pourra plus y répondre, et il ne pourra pas être rouvert."
   },
   "groups": {
     "title": "Groupes",
@@ -280,6 +282,7 @@
     "synced": "synchronisé le {{when}}",
     "countFree": "Compter les événements affichés comme Disponible",
     "remove": "Retirer",
+    "confirmRemove": "Retirer ce calendrier? Si c'est votre dernier, les disponibilités qu'il a remplies sont effacées.",
     "syncNow": "Synchroniser maintenant",
     "rules": "Règles",
     "syncDays": "Remplir sur",
@@ -335,6 +338,7 @@
     "subscribeApple": "<b>Calendrier Apple</b> : <i>Ajouter au calendrier</i> → Calendrier Apple copie le lien. Sur Mac : Fichier → Nouvel abonnement à un calendrier, collez-le et choisissez un intervalle d'actualisation court. Sur iPhone : app Calendrier → Calendriers → Nouv. calendrier → Ajouter un calendrier avec abonnement, puis collez-le.",
     "subscribeOutlook": "<b>Outlook</b> : <i>Ajouter au calendrier</i> → Outlook, pour un compte Outlook.com. Avec un compte professionnel ou scolaire, ou toute autre application : <i>Copier le lien</i>, puis dans Outlook Ajouter un calendrier → S'abonner à partir du Web et collez-le. Actualisé à quelques heures d'intervalle.",
     "rotate": "Renouveler tous les liens de flux",
+    "confirmRotate": "Renouveler tous vos liens de flux? Les applications de calendrier abonnées ne se mettent plus à jour tant que vous ne vous réabonnez pas.",
     "invite": "Inviter quelqu'un",
     "inviteHint": "Un lien pour créer un compte : valide 7 jours, à usage unique. Envoyez-le seulement à la personne que vous voulez inviter.",
     "createInvite": "Créer un lien d'invitation",
@@ -365,6 +369,7 @@
     "passkeysHint": "Connectez-vous avec votre empreinte digitale, votre visage ou le NIP de votre appareil au lieu de taper un mot de passe. Votre mot de passe continue de fonctionner.",
     "added": "ajoutée le {{date}}",
     "noPasskeys": "Aucune clé d'accès pour l'instant.",
+    "confirmRemovePasskey": "Retirer cette clé d'accès? Vous ne pourrez plus vous connecter avec elle.",
     "addPasskey": "Ajouter une clé d'accès",
     "needsJs": "L'ajout d'une clé d'accès nécessite JavaScript.",
     "passkeyPrompt": "Nommez cette clé d'accès",
@@ -428,7 +433,11 @@
     "calendar_removed": "Calendrier retiré.",
     "calendar_synced": "Calendriers synchronisés.",
     "calendar_saved": "Calendrier enregistré.",
-    "calendar_rules": "Règles enregistrées. Vos disponibilités sont recalculées avec celles-ci."
+    "calendar_rules": "Règles enregistrées. Vos disponibilités sont recalculées avec celles-ci.",
+    "event_added": "Événement ajouté.",
+    "event_saved": "Événement enregistré.",
+    "event_deleted": "Événement supprimé.",
+    "answers_saved": "Réponses enregistrées."
   },
   "errors": {
     "generic": "Une erreur est survenue.",

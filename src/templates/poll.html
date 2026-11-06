@@ -4,9 +4,12 @@
 {{#groupsEnabled}}
 <p class="hint">{{visibilityLabel}}</p>
 {{/groupsEnabled}}
+{{> notices}}
 {{#errors.answers}}<p class="err">{{errors.answers}}</p>{{/errors.answers}}
 {{#hasSuggestions}}<p class="hint">{{t.poll.suggested}}</p>{{/hasSuggestions}}
 <form method="post" action="/polls/{{id}}">
+  {{! scrolls sideways on a phone when the dates do not fit; the names stay put (style.css) }}
+  <div class="poll-wrap">
   <table class="poll">
     <thead>
       <tr>
@@ -42,6 +45,7 @@
       </tr>
     </tbody>
   </table>
+  </div>
   {{#isOpen}}
   <button>{{t.poll.save}}</button>
   {{/isOpen}}
@@ -96,7 +100,7 @@
   {{#errors.deadline}}<p class="err">{{errors.deadline}}</p>{{/errors.deadline}}
   <button>{{t.poll.saveDeadline}}</button>
 </form>
-<form method="post" action="/polls/{{id}}/close">
+<form method="post" action="/polls/{{id}}/close" data-confirm="{{t.poll.confirmClose}}">
   <p><button class="link danger">{{t.poll.close}}</button></p>
 </form>
 {{/canClose}}

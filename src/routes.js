@@ -280,7 +280,7 @@ function calendarGroup(ctx) {
 const freeParts = row => (row.part2 ? [row.part, row.part2] : [row.part]);
 
 /** Draws one month of the calendar. `error` goes under the month title (a rejected /free). */
-function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
+function showCalendar(ctx, yearMonth, { status = 200, error, msg } = {}) {
   // Every day of the weeks the month touches, so the continuous calendar can fill its first and last weeks
   // with the months around it. ISO dates compare as strings.
   const { gridStart, gridEnd, prev, next } = monthInfo(yearMonth, ctx.user.week_start);
@@ -381,14 +381,15 @@ function showCalendar(ctx, yearMonth, { status = 200, error } = {}) {
     : [];
 
   ctx.html(views.calendarPage(ctx.user, yearMonth, {
-    free, mine, events, birthdays, today: today(), members, error, group, groups: myGroups(ctx.user.id), manualDays,
+    free, mine, events, birthdays, today: today(), members, error, msg, group, groups: myGroups(ctx.user.id), manualDays,
     customChoices,
   }), status);
 }
 
 on('GET', '/', ctx => {
   const requestedMonth = ctx.url.searchParams.get('m');
-  showCalendar(ctx, isValidMonth(requestedMonth) ? requestedMonth : today().slice(0, 7));
+  showCalendar(ctx, isValidMonth(requestedMonth) ? requestedMonth : today().slice(0, 7),
+    { msg: ctx.url.searchParams.get('msg') });
 });
 
 // "Make default": the view on screen (a group, Custom, or everyone when g is empty) becomes the one the calendar
@@ -670,7 +671,7 @@ on('POST', '/events', ctx => {
     return ctx.html(views.eventPage(ctx.user, { event, errors, groups }), 400);
   }
   tx(() => insertEvent(series, ctx.user.id));
-  ctx.redirect('/?m=' + series.date.slice(0, 7));
+  ctx.redirect('/?m=' + series.date.slice(0, 7) + '&msg=event_added');
 });
 
 // A repeating one shows the time its Edit link was for (?on=), as that time is.
@@ -731,7 +732,7 @@ on('POST', '/events/(?<id>\\d+)', ctx => {
       }
     }
   });
-  ctx.redirect('/?m=' + (scope === 'one' ? event : series).date.slice(0, 7));
+  ctx.redirect('/?m=' + (scope === 'one' ? event : series).date.slice(0, 7) + '&msg=event_saved');
 });
 
 // The same three ways as editing: this time is skipped, the event ends before it, or it is deleted.
@@ -751,7 +752,7 @@ on('POST', '/events/(?<id>\\d+)/delete', ctx => {
       run('DELETE FROM events WHERE id = ?', event.id);
     }
   });
-  ctx.redirect(backToMonth(ctx));
+  ctx.redirect(backToMonth(ctx) + '&msg=event_deleted');
 });
 
 // ---- polls ----
@@ -920,7 +921,7 @@ on('GET', '/polls/(?<id>\\d+)', ctx => {
   if (!data) {
     return ctx.fail(404, 'errors.pollNotFound');
   }
-  ctx.html(views.pollPage(ctx.user, data));
+  ctx.html(views.pollPage(ctx.user, { ...data, msg: ctx.url.searchParams.get('msg') }));
 });
 
 /** The poll page again after a rejected form: errors.answers under the title, errors.result in the result,
@@ -948,7 +949,7 @@ on('POST', '/polls/(?<id>\\d+)', ctx => {
            ON CONFLICT DO UPDATE SET answer = excluded.answer`, pollId, date, ctx.user.id, answer);
     }
   });
-  ctx.redirect('/polls/' + pollId);
+  ctx.redirect(`/polls/${pollId}?msg=answers_saved`);
 });
 
 on('POST', '/polls/(?<id>\\d+)/close', ctx => {

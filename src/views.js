@@ -46,8 +46,8 @@ const SCRIPT_URL = versioned('app.js');
 const initials = name => name.trim().split(/\s+/).map(word => word[0]).join('').slice(0, 2).toUpperCase();
 
 /**
- * The confirmation for ?msg= (notices.<msg> in src/locales: the settings, profile and admin routes redirect with
- * one), for the notices partial. Form errors are shown under their fields instead.
+ * The confirmation for ?msg= (notices.<msg> in src/locales: the settings, profile, admin, event and poll routes
+ * redirect with one), for the notices partial. Form errors are shown under their fields instead.
  */
 const notices = (msg, lang) => ({ notice: msg && hasText(`notices.${msg}`) ? t(lang, `notices.${msg}`) : undefined });
 
@@ -213,7 +213,7 @@ const place = location => location && {
 // `error` is set when a /free post was rejected: it shows under the month title.
 // `group` is the one group shown on its own (null: everyone I can see); `groups` fills the selector.
 export function calendarPage(user, yearMonth, {
-  free, mine, events, birthdays, today, members, error, group = null, groups = [], manualDays = null,
+  free, mine, events, birthdays, today, members, error, msg, group = null, groups = [], manualDays = null,
   customChoices = [],
 }) {
   // manualDays: the dates I set by hand, or null without a calendar connected (no Automatic in the menu)
@@ -300,18 +300,23 @@ export function calendarPage(user, yearMonth, {
       bars: barValues,
       birthdays: birthdays.filter(member => member.date === date)
         .map(member => ({ color: member.color, label: t(lang, 'calendar.birthday', { name: member.name }) })),
+      // time apart from the title, so a phone can drop it (style.css .ev-time)
       oneDay: dayEvents.filter(event => !lanes.has(event)).map(event => ({
         classes: `ev${eventColor(event)}`,
         tooltip: eventTooltip(event),
-        label: label(event),
+        time: event.start_time && event.date === date ? formatTime(event.start_time, user.hour12) : '',
+        title: event.title,
       })),
     });
   }
 
   return page(month.label, user, 'calendar', {
+    ...notices(msg, lang),
     error,
     month,
     yearMonth,
+    // the Today button, only while another month is on screen
+    todayMonth: yearMonth === today.slice(0, 7) ? '' : today.slice(0, 7),
     // carried by the month links and the day forms, so the one-group view stays put
     groupId: group ? group.id : '',
     // Settings → Customisation: no outline on my own free days
@@ -543,7 +548,7 @@ export const newPollPage = (user, { errors = {}, title = '', deadline = '', grou
 // private later): then only the confirmed date shows. `creatorGroups` and `groupIds` fill Who sees it.
 export function pollPage(user, {
   poll, dates, members, votes, missing, complete, best, event, groupIds = [], creatorGroups = [], errors = {},
-  suggested = {},
+  suggested = {}, msg,
 }) {
   const { lang } = user;
   const answers = {}; // user_id -> { date: answer }
@@ -608,6 +613,7 @@ export function pollPage(user, {
   };
 
   return page(poll.title, user, 'poll', {
+    ...notices(msg, lang),
     errors,
     id: poll.id,
     title: poll.title,

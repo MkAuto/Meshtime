@@ -6,7 +6,7 @@ import { newPollPage } from '../src/views.js';
 // The no-JS fallback and the hook public/app.js keys off of.
 test('newPollPage renders 6 date rows inside .dates', () => {
   const page = newPollPage({ name: 'a', id: 1 });
-  assert.equal(page.match(/<input type="date" name="dates">/g).length, 6);
+  assert.equal(page.match(/<input type="date" name="dates" min="\d{4}-\d\d-\d\d">/g).length, 6, 'no past dates');
   assert.match(page, new RegExp(`<fieldset class="stack dates" data-max="${MAX_DATES}">`));
   assert.match(page, /value="public" checked>/, 'public by default, like events');
   const rejected = newPollPage({ id: 1 }, {
