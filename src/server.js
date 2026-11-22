@@ -88,6 +88,7 @@ function makeCtx(req, res, url) {
     lang: null,  // the language the answer is in (pickLanguage in lib.js)
     body: null,  // URLSearchParams on POST
     sid: null,   // raw session cookie value
+    cookies: {}, // every cookie by name
     // Client address for rate limiting. Caddy sets X-Forwarded-For in production; only trust it there,
     // since anyone can send that header when they reach Node directly.
     ip: (PROD && (req.headers['x-forwarded-for'] || '').split(',')[0].trim()) || req.socket.remoteAddress,
@@ -127,7 +128,7 @@ async function handle(req, res) {
   const url = new URL(req.url, BASE_URL);
   const method = req.method === 'HEAD' ? 'GET' : req.method;
   const ctx = makeCtx(req, res, url);
-  const cookies = parseCookies(req);
+  const cookies = ctx.cookies = parseCookies(req);
   const acceptLanguage = req.headers['accept-language'];
   // Before anything can fail, so every error page is in it too; a logged-in member's own pick comes below.
   ctx.lang = pickLanguage(null, cookies.lang, acceptLanguage);

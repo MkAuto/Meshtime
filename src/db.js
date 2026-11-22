@@ -203,6 +203,19 @@ CREATE TABLE IF NOT EXISTS app_settings(
   groups_enabled INTEGER NOT NULL DEFAULT 1); -- 0: no groups, everyone and everything seen as public (GROUPS_OFF in routes.js)
 INSERT OR IGNORE INTO app_settings(id) VALUES (1);
 
+-- the message banner set in Administration → Banner (src/banner.js). One row; an empty message is no banner.
+-- starts_at / ends_at: local wall-clock times in TIME_ZONE, "YYYY-MM-DDTHH:MM" (a datetime-local input's value).
+CREATE TABLE IF NOT EXISTS banner(
+  id INTEGER PRIMARY KEY CHECK(id = 1),
+  message TEXT NOT NULL DEFAULT '',
+  tone TEXT NOT NULL DEFAULT 'info' CHECK(tone IN ('info', 'good', 'warning')),
+  show_on_login INTEGER NOT NULL DEFAULT 0, -- 1: also on the login page, so anyone with the link reads it
+  dismissible INTEGER NOT NULL DEFAULT 0, -- 1: a × hides it in that browser until the banner is saved again
+  starts_at TEXT,
+  ends_at TEXT,
+  updated_at TEXT);
+INSERT OR IGNORE INTO banner(id) VALUES (1);
+
 -- outstanding WebAuthn challenges. Single-use and short-lived, so a captured login cannot be replayed.
 CREATE TABLE IF NOT EXISTS challenges(
   challenge TEXT PRIMARY KEY,

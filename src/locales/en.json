@@ -434,7 +434,25 @@
     "user": "User",
     "action": "Action",
     "unknown": "(unknown)",
-    "nothingLogged": "Nothing logged yet."
+    "nothingLogged": "Nothing logged yet.",
+    "banner": "Banner",
+    "bannerHint": "A message at the top of the calendar for every member, like a welcome or a heads-up. Leave the message empty to turn the banner off.",
+    "bannerState": {
+      "off": "Off: no message.",
+      "scheduled": "Scheduled: shows from {{start}} until {{end}}.",
+      "live": "Showing now, until {{end}}.",
+      "ended": "Ended {{end}}: change or clear the end to show it again."
+    },
+    "bannerNoEnd": "you clear it",
+    "bannerMessage": "Message",
+    "bannerTone": "Color",
+    "bannerStarts": "Starts",
+    "bannerEnds": "Ends",
+    "bannerTimesHint": "Eastern time. Both are optional: empty, it shows from now until you clear it.",
+    "bannerOnLogin": "Also show on the login page",
+    "bannerOnLoginHint": "The login page is public: anyone with the link reads it, not only members.",
+    "bannerDismissible": "Members can close it",
+    "bannerDismissibleHint": "Closed, it stays hidden in that browser for the rest of the day, then comes back. Saving the banner brings it back at once."
   },
   "notices": {
     "rotated": "Feed links rotated. Re-subscribe in your calendar apps.",
@@ -466,7 +484,8 @@
     "event_saved": "Event saved.",
     "event_deleted": "Event deleted.",
     "answers_saved": "Answers saved.",
-    "choice_added": "Choice added."
+    "choice_added": "Choice added.",
+    "banner": "Banner saved."
   },
   "errors": {
     "generic": "Something went wrong.",
@@ -546,12 +565,23 @@
       "repeatCount": "The number of occurrences must be from 1 to 999."
     },
     "pollActivities": "Propose 1 to {{max}} activities.",
-    "cannotPlan": "Dates can no longer be planned from that poll."
+    "cannotPlan": "Dates can no longer be planned from that poll.",
+    "badDateTime": "Invalid date and time.",
+    "bannerEndPast": "This end has already passed: change it, or clear it to keep the banner up.",
+    "bannerEndBeforeStart": "The end must come after the start."
   },
   "sync": {
     "unreachable": "Could not reach that link.",
     "httpStatus": "The calendar answered {{status}}. Check that the link is the secret iCal address.",
     "tooBig": "That calendar is too big (over 5 MB).",
     "notIcal": "That link is not an iCal calendar."
+  },
+  "banner": {
+    "tones": {
+      "info": "Note",
+      "good": "Good news",
+      "warning": "Heads-up"
+    },
+    "dismiss": "Close"
   }
 }

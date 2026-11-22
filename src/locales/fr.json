@@ -434,7 +434,25 @@
     "user": "Utilisateur",
     "action": "Action",
     "unknown": "(inconnu)",
-    "nothingLogged": "Rien dans le journal pour l'instant."
+    "nothingLogged": "Rien dans le journal pour l'instant.",
+    "banner": "Bannière",
+    "bannerHint": "Un message en haut du calendrier pour tous les membres, comme un mot de bienvenue ou un avis. Laissez le message vide pour retirer la bannière.",
+    "bannerState": {
+      "off": "Désactivée : aucun message.",
+      "scheduled": "Programmée : affichée du {{start}} jusqu'à {{end}}.",
+      "live": "Affichée en ce moment, jusqu'à {{end}}.",
+      "ended": "Terminée le {{end}} : changez ou effacez la fin pour l'afficher à nouveau."
+    },
+    "bannerNoEnd": "ce que vous l'effaciez",
+    "bannerMessage": "Message",
+    "bannerTone": "Couleur",
+    "bannerStarts": "Début",
+    "bannerEnds": "Fin",
+    "bannerTimesHint": "Heure de l'Est. Les deux sont facultatifs : vides, elle est affichée dès maintenant jusqu'à ce que vous l'effaciez.",
+    "bannerOnLogin": "Afficher aussi sur la page de connexion",
+    "bannerOnLoginHint": "La page de connexion est publique : toute personne ayant le lien la lit, pas seulement les membres.",
+    "bannerDismissible": "Les membres peuvent la fermer",
+    "bannerDismissibleHint": "Fermée, elle reste masquée dans ce navigateur pour le reste de la journée, puis revient. Enregistrer la bannière la fait revenir aussitôt."
   },
   "notices": {
     "rotated": "Liens de flux renouvelés. Réabonnez-vous dans vos applications de calendrier.",
@@ -466,7 +484,8 @@
     "event_saved": "Événement enregistré.",
     "event_deleted": "Événement supprimé.",
     "answers_saved": "Réponses enregistrées.",
-    "choice_added": "Choix ajouté."
+    "choice_added": "Choix ajouté.",
+    "banner": "Bannière enregistrée."
   },
   "errors": {
     "generic": "Une erreur est survenue.",
@@ -546,12 +565,23 @@
       "repeatCount": "Le nombre d'occurrences doit être de 1 à 999."
     },
     "pollActivities": "Proposez de 1 à {{max}} activités.",
-    "cannotPlan": "On ne peut plus planifier de dates à partir de ce sondage."
+    "cannotPlan": "On ne peut plus planifier de dates à partir de ce sondage.",
+    "badDateTime": "Date et heure invalides.",
+    "bannerEndPast": "Cette fin est déjà passée : changez-la, ou effacez-la pour garder la bannière.",
+    "bannerEndBeforeStart": "La fin doit venir après le début."
   },
   "sync": {
     "unreachable": "Impossible de joindre ce lien.",
     "httpStatus": "Le calendrier a répondu {{status}}. Vérifiez que le lien est bien l'adresse iCal secrète.",
     "tooBig": "Ce calendrier est trop volumineux (plus de 5 Mo).",
     "notIcal": "Ce lien n'est pas un calendrier iCal."
+  },
+  "banner": {
+    "tones": {
+      "info": "Note",
+      "good": "Bonne nouvelle",
+      "warning": "Avis"
+    },
+    "dismiss": "Fermer"
   }
 }

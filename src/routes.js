@@ -5,6 +5,7 @@ import { logEvent, tailLog, LOG_PATH, ERROR_LOG_PATH } from './log.js';
 import { createReadStream, existsSync } from 'node:fs';
 import { fetchCalendar, syncUser, freePartsAround } from './sync.js';
 import { t, syncErrorText } from './i18n.js';
+import { bannerOn, bannerState, getBanner, readBannerForm, saveBanner } from './banner.js';
 import {
   isValidDate, isValidMonth, monthInfo, isValidWeekStart, isValidDateFormat, isValidColor, eventError,
   bestChoices, buildIcs, birthdayIn, birthdayRrule, today, addDays, DEFAULT_SYNC_DAYS, randomColor, occurrences,
@@ -60,7 +61,10 @@ const startSession = (ctx, userId) => {
 };
 
 // ---- auth ----
-on('GET', '/login', ctx => ctx.user ? ctx.redirect('/') : ctx.html(views.loginPage(ctx.lang)), true);
+/** The login page, with the banner when an admin shows it there too (Administration → Banner). */
+const loginPage = (ctx, error) => views.loginPage(ctx.lang, error, bannerOn('login', ctx.cookies));
+
+on('GET', '/login', ctx => ctx.user ? ctx.redirect('/') : ctx.html(loginPage(ctx)), true);
 
 on('POST', '/login', async ctx => {
   const name = cleanText(ctx.body.get('name'), 40);
@@ -68,14 +72,14 @@ on('POST', '/login', async ctx => {
   const log = action => logEvent({ ip: ctx.ip, user: user?.name ?? name, known: Boolean(user), action });
   if (!auth.loginAllowed(ctx.ip, name)) {
     log(BANNED);
-    return ctx.html(views.loginPage(ctx.lang, t(ctx.lang, TOO_MANY)), 429);
+    return ctx.html(loginPage(ctx, t(ctx.lang, TOO_MANY)), 429);
   }
   // Hash even for an unknown name, so the response time does not reveal which names exist.
   const passwordOk = await auth.verifyPassword(ctx.body.get('password') || '', user?.password_hash ?? auth.DUMMY_HASH);
   if (!user || !passwordOk) {
     log('login failed (password)');
     auth.loginFailed(ctx.ip, name);
-    return ctx.html(views.loginPage(ctx.lang, t(ctx.lang, 'errors.wrongLogin')), 401);
+    return ctx.html(loginPage(ctx, t(ctx.lang, 'errors.wrongLogin')), 401);
   }
   log('login ok (password)');
   startSession(ctx, user.id);
@@ -382,7 +386,7 @@ function showCalendar(ctx, yearMonth, { status = 200, error, msg } = {}) {
 
   ctx.html(views.calendarPage(ctx.user, yearMonth, {
     free, mine, events, birthdays, today: today(), members, error, msg, group, groups: myGroups(ctx.user.id), manualDays,
-    customChoices,
+    customChoices, banner: bannerOn('calendar', ctx.cookies),
   }), status);
 }
 
@@ -1717,15 +1721,23 @@ on('POST', '/profile/passkeys/delete', ctx => {
 
 const requireAdmin = ctx => ctx.user.is_admin || ctx.fail(403, 'errors.adminsOnly');
 
-/** The administration page. errors.members goes under the Members title (a rejected member action). */
-const showAdmin = (ctx, { status = 200, errors = {} } = {}) => ctx.html(views.adminPage(ctx.user, {
-  base: BASE_URL,
-  msg: ctx.url.searchParams.get('msg'),
-  invites: auth.openInvites(),
-  members: all('SELECT id, name, is_admin FROM users ORDER BY name'),
-  log: tailLog(200),
-  errors,
-}), status);
+/**
+ * The administration page. errors.members goes under the Members title (a rejected member action), errors.banner
+ * under each Banner field; `banner` is that form as it was typed, kept after a rejected save.
+ */
+const showAdmin = (ctx, { status = 200, errors = {}, banner } = {}) => {
+  const saved = getBanner();
+  ctx.html(views.adminPage(ctx.user, {
+    base: BASE_URL,
+    msg: ctx.url.searchParams.get('msg'),
+    invites: auth.openInvites(),
+    members: all('SELECT id, name, is_admin FROM users ORDER BY name'),
+    log: tailLog(200),
+    banner: banner ?? saved,
+    bannerState: bannerState(saved),
+    errors,
+  }), status);
+};
 
 on('GET', '/admin', ctx => requireAdmin(ctx) && showAdmin(ctx));
 
@@ -1791,6 +1803,22 @@ on('POST', '/admin/options', ctx => {
     logUser(ctx, `admin: groups turned ${groupsOn ? 'on' : 'off'}`);
   }
   ctx.redirect('/admin?msg=options');
+});
+
+// The Banner panel: one form for the message and its options. An empty message turns the banner off; its
+// options are kept for the next one.
+on('POST', '/admin/banner', ctx => {
+  if (!requireAdmin(ctx)) {
+    return;
+  }
+  const { banner, errors } = readBannerForm(ctx.body);
+  if (hasErrors(errors)) {
+    const translated = Object.fromEntries(Object.entries(errors).map(([field, key]) => [field, t(ctx.lang, key)]));
+    return showAdmin(ctx, { status: 400, errors: { banner: translated }, banner });
+  }
+  saveBanner(banner);
+  logUser(ctx, banner.message ? `admin: banner saved (${bannerState(banner)})` : 'admin: banner cleared');
+  ctx.redirect('/admin?msg=banner');
 });
 
 // Offboarding. ON DELETE CASCADE takes sessions, passkeys, votes, free days, reset links, group

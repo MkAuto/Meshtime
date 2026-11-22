@@ -8,7 +8,7 @@ import {
   wallClock, BUSY_CHOICES, DEFAULT_BUSY_MINUTES, SLOTS, DATE_FORMATS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_CHOICES,
   SYNC_DAYS_CHOICES, DEFAULT_SYNC_DAYS, MIN_PASSWORD, LANGUAGES, DEFAULT_LANGUAGE, isValidLanguage, randomColor,
   DEFAULT_WEEK_START, REPEAT_PRESETS, FREQS, WEEKDAY_CODES, parseRrule, repeatForm, weekdayInMonth, formatMonthDayLong,
-  isValidDate, MAX_ACTIVITY,
+  isValidDate, MAX_ACTIVITY, BANNER_TONES, MAX_BANNER,
 } from './lib.js';
 import { t, dictionary, hasText, syncErrorText } from './i18n.js';
 
@@ -62,10 +62,11 @@ const groupsEnabled = user => user?.groups_enabled !== 0;
  * `visitor` is who the page is for: { lang, path }, the language it is in and the URL it was asked for (the
  * language menu comes back to it). A member's own come with them (server.js); logged-out pages pass theirs.
  */
-export function layout(title, user, body, visitor = user ?? {}) {
+export function layout(title, user, body, visitor = user ?? {}, banner = null) {
   const lang = isValidLanguage(visitor.lang) ? visitor.lang : DEFAULT_LANGUAGE;
   return render('layout', {
     title, user, body, styleUrl: STYLE_URL, scriptUrl: SCRIPT_URL, groupsEnabled: groupsEnabled(user),
+    banner: bannerValues(banner, lang),
     lang,
     t: dictionary(lang),
     logout: user && t(lang, 'layout.logout', { name: user.name }),
@@ -74,10 +75,27 @@ export function layout(title, user, body, visitor = user ?? {}) {
   });
 }
 
-/** Renders template `name` with `values`, inside the shell. Every template gets groupsEnabled and t. */
+/**
+ * Renders template `name` with `values`, inside the shell. Every template gets groupsEnabled and t.
+ * `values.banner` (bannerOn() in src/banner.js, or null) is drawn by the layout above the page.
+ */
 const page = (title, user, name, values, visitor = user ?? {}) =>
   layout(title, user, render(name, { ...values, groupsEnabled: groupsEnabled(user), t: dictionary(visitor.lang) }),
-    visitor);
+    visitor, values.banner);
+
+/**
+ * A banner row as templates/banner.html draws it, or undefined for none. `closeKey` (bannerOn): what closing it
+ * stores in the banner cookie (app.js), hiding it for the rest of the day. `preview`: Administration's copy, with
+ * no × to close it.
+ */
+const bannerValues = (banner, lang, { preview = false } = {}) => banner?.message ? {
+  message: banner.message,
+  tone: banner.tone,
+  toneLabel: t(lang, `banner.tones.${banner.tone}`),
+  closeKey: banner.closeKey ?? '',
+  dismissible: Boolean(banner.dismissible) && !preview,
+  dismiss: t(lang, 'banner.dismiss'),
+} : undefined;
 
 /** Options for a <select>: `selected` marks the current one. */
 const options = (entries, current) => entries.map(([value, label]) => ({ value, label, selected: value === current }));
@@ -92,7 +110,8 @@ export const errorPage = (status, message, user, visitor = user ?? {}) =>
 
 // ---- auth pages ----
 
-export const loginPage = (lang, error) => page(t(lang, 'login.title'), null, 'login', { error }, { lang, path: '/login' });
+export const loginPage = (lang, error, banner = null) =>
+  page(t(lang, 'login.title'), null, 'login', { error, banner }, { lang, path: '/login' });
 
 // One page for both invite kinds: resetName is set only for a password-reset link.
 // After a rejected form, `errors` ({ name, password }) shows under each field and `name` is kept.
@@ -237,7 +256,7 @@ function addLinks(event) {
 // `group` is the one group shown on its own (null: everyone I can see); `groups` fills the selector.
 export function calendarPage(user, yearMonth, {
   free, mine, events, birthdays, today, members, error, msg, group = null, groups = [], manualDays = null,
-  customChoices = [],
+  customChoices = [], banner = null,
 }) {
   // manualDays: the dates I set by hand, or null without a calendar connected (no Automatic in the menu)
   // group: a group, the Custom view ({ custom: true }, customChoices its list), or null for everyone
@@ -335,6 +354,7 @@ export function calendarPage(user, yearMonth, {
 
   return page(month.label, user, 'calendar', {
     ...notices(msg, lang),
+    banner,
     error,
     month,
     yearMonth,
@@ -857,11 +877,31 @@ export function profilePage(user, { passkeys, msg, errors = {}, about = user }) 
 // ---- administration (admin only; the route enforces it, this only draws it) ----
 
 // `errors.members` after a rejected member action: shown under the Members title.
-export function adminPage(user, { base, invites, members, log, msg, errors = {} }) {
+// `banner`: the saved banner row, or the form as it was typed after a rejected save (errors.banner, which holds
+// { field: message }). `bannerState`: 'off', 'scheduled', 'ended' or 'live' (src/banner.js), for the saved one.
+export function adminPage(user, { base, invites, members, log, banner = {}, bannerState = 'off', msg, errors = {} }) {
   const { lang } = user;
+  // "YYYY-MM-DDTHH:MM" as the member reads dates and times
+  const when = time => time
+    && `${formatDate(time.slice(0, 10), user.date_format, lang)} ${formatTime(time.slice(11, 16), user.hour12)}`;
   return page(t(lang, 'admin.title'), user, 'admin', {
     ...notices(msg, lang),
     errors,
+    bannerForm: {
+      message: banner.message ?? '',
+      maxMessage: MAX_BANNER,
+      tones: BANNER_TONES.map(tone => ({
+        value: tone, label: t(lang, `banner.tones.${tone}`), checked: tone === (banner.tone ?? BANNER_TONES[0]),
+      })),
+      showOnLogin: Boolean(banner.show_on_login),
+      dismissible: Boolean(banner.dismissible),
+      startsAt: banner.starts_at ?? '',
+      endsAt: banner.ends_at ?? '',
+      status: t(lang, `admin.bannerState.${bannerState}`,
+        { start: when(banner.starts_at), end: when(banner.ends_at) || t(lang, 'admin.bannerNoEnd') }),
+      statusClass: bannerState === 'live' ? 'ok' : 'hint',
+      preview: bannerValues(banner, lang, { preview: true }),
+    },
     members: members.map(member => ({
       ...member,
       isMe: member.id === user.id,
