@@ -1,0 +1,12 @@
+{{! The message banner (Administration → Banner), values from bannerValues in views.js. The layout draws it above
+    a page whose route asks for it (src/banner.js); Administration draws its preview. The message is plain text, its
+    line breaks kept by style.css. data-banner: app.js shows the × (hidden without JS, as it could not work) and, on
+    a click, removes the banner and stores this key in a cookie, so the server leaves it out until the next day
+    (bannerOn in src/banner.js). }}
+<aside class="banner banner-{{tone}}" role="note" aria-label="{{toneLabel}}"{{#dismissible}} data-banner="{{closeKey}}"{{/dismissible}}>
+  <span class="banner-icon" aria-hidden="true"></span>
+  <p class="banner-text">{{message}}</p>
+  {{#dismissible}}
+  <button type="button" class="banner-close" hidden aria-label="{{dismiss}}" title="{{dismiss}}">×</button>
+  {{/dismissible}}
+</aside>

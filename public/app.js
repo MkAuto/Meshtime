@@ -36,6 +36,18 @@ for (const box of document.querySelectorAll('input[data-reveal]')) {
   });
 }
 
+// The message banner's × (templates/banner.html), hidden until this runs. Closing it stores its key (data-banner:
+// this save of it, and today's date) in a cookie: the server leaves it out for the rest of the day, then shows it
+// again (bannerOn in src/banner.js). Two days is long enough for a cookie that only ever matches today.
+for (const banner of document.querySelectorAll('[data-banner]')) {
+  const close = banner.querySelector('.banner-close');
+  close.hidden = false;
+  close.addEventListener('click', () => {
+    document.cookie = `banner=${banner.dataset.banner}; Path=/; Max-Age=172800; SameSite=Lax`;
+    banner.remove();
+  });
+}
+
 // Live preview of the color slider in Settings.
 const hue = document.querySelector('.hue'), swatch = document.getElementById('swatch');
 if (hue && swatch) {

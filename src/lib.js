@@ -69,6 +69,10 @@ export const birthdayRrule = birthday =>
   birthday.endsWith('-02-29') ? 'FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-1' : 'FREQ=YEARLY';
 
 export const TIME_ZONE = process.env.TZ || 'UTC';
+// The message banner (src/banner.js): its colors (labels: banner.tones in src/locales; style.css .banner-*) and the
+// longest message it takes.
+export const BANNER_TONES = ['info', 'good', 'warning'];
+export const MAX_BANNER = 1000;
 // Calendar Integration: minutes of events that make a slot busy (users.busy_minutes), as Settings lists them
 // (their labels: settings.busyChoices in src/locales). Every slot is 6 h, so 360 = only when events fill it;
 // 1 = any event at all.

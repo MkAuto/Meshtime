@@ -61,6 +61,46 @@
   </form>
 </section>
 
+{{#bannerForm}}
+<section class="panel panel-banner">
+  <h2>{{t.admin.banner}}</h2>
+  <p class="hint">{{t.admin.bannerHint}}</p>
+  <p class="{{statusClass}}">{{status}}</p>
+  {{#preview}}{{> banner}}{{/preview}}
+  <form method="post" action="/admin/banner" class="banner-form">
+    <label>{{t.admin.bannerMessage}}
+      <textarea name="message" rows="3" maxlength="{{maxMessage}}">{{message}}</textarea>
+    </label>
+    {{#errors.banner.message}}<p class="err">{{errors.banner.message}}</p>{{/errors.banner.message}}
+    <fieldset class="row">
+      <legend>{{t.admin.bannerTone}}</legend>
+      {{#tones}}
+      <label class="tone-pick"><input type="radio" name="tone" value="{{value}}"{{#checked}} checked{{/checked}}>
+        <span class="banner-swatch banner-{{value}}"></span> {{label}}</label>
+      {{/tones}}
+    </fieldset>
+    <div class="row banner-times">
+      <label>{{t.admin.bannerStarts}} <input type="datetime-local" name="starts_at" value="{{startsAt}}"></label>
+      <label>{{t.admin.bannerEnds}} <input type="datetime-local" name="ends_at" value="{{endsAt}}"></label>
+    </div>
+    {{#errors.banner.starts_at}}<p class="err">{{errors.banner.starts_at}}</p>{{/errors.banner.starts_at}}
+    {{#errors.banner.ends_at}}<p class="err">{{errors.banner.ends_at}}</p>{{/errors.banner.ends_at}}
+    <p class="hint">{{t.admin.bannerTimesHint}}</p>
+    <label>
+      <input type="checkbox" name="show_on_login" value="1"{{#showOnLogin}} checked{{/showOnLogin}}>
+      {{t.admin.bannerOnLogin}}
+    </label>
+    <p class="hint">{{t.admin.bannerOnLoginHint}}</p>
+    <label>
+      <input type="checkbox" name="dismissible" value="1"{{#dismissible}} checked{{/dismissible}}>
+      {{t.admin.bannerDismissible}}
+    </label>
+    <p class="hint">{{t.admin.bannerDismissibleHint}}</p>
+    <p><button>{{t.common.save}}</button></p>
+  </form>
+</section>
+{{/bannerForm}}
+
 <section class="panel panel-log">
   <h2>{{t.admin.logs}}</h2>
   <p class="hint"><a href="/admin/log" download>{{t.admin.downloadLog}}</a></p>

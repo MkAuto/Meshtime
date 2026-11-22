@@ -128,7 +128,7 @@ h1 + .hint { margin-top: -.6rem; }
 p.err { margin: .3rem 0 .6rem; }
 .stack > p.err { margin: -.5rem 0 0; }
 .ok { color: var(--ok); }
-input, select, button {
+input, select, button, textarea {
   font: inherit;
   padding: .45rem .7rem;
   border: 1px solid var(--line);
@@ -402,6 +402,64 @@ label.pref { cursor: pointer; }
 .pref input:focus-visible, .chips input:focus-visible + span { outline: 2px solid var(--panel-edge); outline-offset: 2px; }
 .panel-options  { --panel-edge: #6b8a3f; } /* olive */
 .panel-log      { --panel-edge: #6f5e8f; } /* heather */
+.panel-banner   { --panel-edge: #5b7a9a; } /* dusty blue */
+
+/* The message banner (templates/banner.html), above the page: a soft card like the panels, its stripe on the left
+   so it reads as a note rather than a section. Each tone only sets --banner-edge from the theme's own colors, so
+   dark mode needs nothing of its own. The message is plain text: pre-line keeps the admin's line breaks. */
+.banner {
+  --banner-edge: var(--accent);
+  display: flex;
+  align-items: flex-start;
+  gap: .7rem;
+  margin: .6rem 0 0;
+  padding: .75rem 1rem;
+  background: color-mix(in srgb, var(--banner-edge) 10%, var(--card));
+  border-left: 4px solid var(--banner-edge);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+.banner[hidden] { display: none; }
+.banner-info    { --banner-edge: var(--accent); }
+.banner-good    { --banner-edge: var(--ok); }
+.banner-warning { --banner-edge: var(--maybe); }
+.banner-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-top: .05rem;
+  border-radius: 50%;
+  background: var(--banner-edge);
+  color: var(--card);
+  font: 700 .85rem/1 var(--display);
+}
+.banner-info .banner-icon::before    { content: "i"; }
+.banner-good .banner-icon::before    { content: "✓"; }
+.banner-warning .banner-icon::before { content: "!"; }
+.banner-text { flex: 1; margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+.banner-close {
+  flex: none;
+  padding: 0 .3rem;
+  background: none;
+  border: none;
+  box-shadow: none;
+  color: var(--muted);
+  font-size: 1.3rem;
+  line-height: 1.2;
+}
+.banner-close:hover { color: var(--fg); }
+/* Administration → Banner: the preview sits between the status and the form */
+.panel-banner .banner { margin: .8rem 0 1.2rem; }
+.banner-form > label:first-child { display: grid; gap: .2rem; }
+.banner-form textarea { width: 100%; min-height: 4.5rem; resize: vertical; line-height: 1.5; }
+.banner-form fieldset { border: 0; padding: 0; margin: .9rem 0 .2rem; }
+.banner-form legend { padding: 0; margin-bottom: .3rem; }
+.tone-pick { display: inline-flex; align-items: center; gap: .35rem; margin-right: .9rem; cursor: pointer; }
+.banner-swatch { display: inline-block; width: .9rem; height: .9rem; border-radius: 50%; background: var(--banner-edge); }
+.banner-times { margin-top: .9rem; gap: .8rem; }
+.banner-times label { display: grid; gap: .2rem; }
 /* one group on the groups page: stripe and title in the group's own color (member_groups.color) */
 .panel-group    { --panel-edge: var(--c); }
 
@@ -785,6 +843,7 @@ a { color: var(--accent); }
   .panel-integration { --panel-edge: #8ccbbb; }
   .panel-options  { --panel-edge: #b0c97e; }
   .panel-log      { --panel-edge: #b5a7d8; }
+  .panel-banner   { --panel-edge: #9ab6d3; }
   .panel-group    { --panel-edge: var(--cd); }
   .panel-poll     { --panel-edge: #9ab6d3; }
   .panel-closed   { --panel-edge: #b3a79c; }
