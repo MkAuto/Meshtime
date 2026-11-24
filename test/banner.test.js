@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -116,5 +116,13 @@ test('a rejected save keeps what was typed and changes nothing', async () => {
   assert.match(rejected.html, /This end has already passed/);
   assert.match(rejected.html, />Typed<\/textarea>/);
   assert.equal(getBanner().message, 'Kept');
-  assert.ok(localNow() > '2000-01-01T00:00');
+});
+
+test('localNow: the wall clock in TZ (Eastern in tests), to the minute, as the form\'s datetime-local has it', () => {
+  mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-23T04:59:59Z') }); // 23:59 on the 22nd in Toronto
+  try {
+    assert.equal(localNow(), '2026-11-22T23:59');
+  } finally {
+    mock.timers.reset();
+  }
 });

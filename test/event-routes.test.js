@@ -12,8 +12,8 @@ const auth = await import('../src/auth.js');
 const { routes } = await import('../src/routes.js');
 const { addDays, formatDate, today } = await import('../src/lib.js');
 
-const addUser = name => run(`INSERT INTO users(name, password_hash, feed_token, created_at, is_private)
-  VALUES (?, 'x', ?, ?, 0)`, name, 'tok-' + name, now()).lastInsertRowid;
+const addUser = name => run(`INSERT INTO users(name, password_hash, feed_token, created_at) VALUES (?, 'x', ?, ?)`,
+  name, 'tok-' + name, now()).lastInsertRowid;
 
 /**
  * Runs one route the way server.js would, as member `userId` (null for a feed); returns what it answered. A field
@@ -38,7 +38,7 @@ async function request(method, path, userId, body = {}) {
 
 const ada = addUser('Ada');
 const climb = { title: 'Climb', date: '2026-10-05', all_day: '1', location: ' Gym ', repeats: 'weekly', ends: 'on',
-  ends_on: '2026-10-19', visibility: 'public' };
+  ends_on: '2026-10-19' };
 const gymLink =
   '<a href="https://www.google.com/maps/search/?api=1&amp;query=Gym" target="_blank" rel="noopener">Gym</a>';
 
@@ -159,7 +159,7 @@ test('a group\'s next event is a repeating one\'s next time; its feed has RRULE,
     .lastInsertRowid;
   run('INSERT INTO group_members(group_id, user_id, joined_at) VALUES (?, ?, ?)', group, ada, now());
   const event = await addEvent({ title: 'Board games', date: addDays(today(), -14), ends: 'never',
-    visibility: 'private', group_ids: String(group) });
+    group_ids: String(group) });
 
   const { html } = await request('GET', '/groups', ada);
   assert.match(html, new RegExp(`<b>Board games</b> — ${formatDate(today(), 'd-mon-y', 'en')} · Weekly on \\w+ · `
@@ -168,7 +168,7 @@ test('a group\'s next event is a repeating one\'s next time; its feed has RRULE,
 
   await request('POST', `/events/${event.id}/delete`, ada, { scope: 'one', on: addDays(today(), -7), m: '2026-10' });
   await request('POST', `/events/${event.id}`, ada, { ...climb, title: 'Board games', date: today(), all_day: '',
-    start_time: '19:00', ends: 'never', visibility: 'private', group_ids: String(group), scope: 'one', on: today() });
+    start_time: '19:00', ends: 'never', group_ids: String(group), scope: 'one', on: today() });
   const feed = (await request('GET', `/feed/tok-Ada/groups/${group}.ics`, null)).text;
   const day = date => date.replaceAll('-', '');
   assert.match(feed, new RegExp(`RRULE:FREQ=WEEKLY;BYDAY=\\w\\w\r\nEXDATE;VALUE=DATE:${day(addDays(today(), -7))}\r\n`
@@ -182,7 +182,7 @@ test('Add to calendar in the list: one time of a repeating event, as Google, Out
     .lastInsertRowid;
   run('INSERT INTO group_members(group_id, user_id, joined_at) VALUES (?, ?, ?)', group, ada, now());
   const event = await addEvent({ title: 'Swim', date: '2026-10-07', all_day: '', start_time: '10:00',
-    end_time: '12:00', ends: 'never', visibility: 'private', group_ids: String(group) });
+    end_time: '12:00', ends: 'never', group_ids: String(group) });
   const { html } = await request('GET', '/?m=2026-10', ada);
   assert.match(html, /calendar\.google\.com\/calendar\/render\?action=TEMPLATE&amp;text=Swim&amp;location=Gym&amp;dates=20261014T100000%2F20261014T120000/);
   assert.match(html, /outlook\.live\.com[^"]+startdt=2026-10-14T10%3A00%3A00&amp;enddt=2026-10-14T12%3A00%3A00/);
@@ -191,5 +191,6 @@ test('Add to calendar in the list: one time of a repeating event, as Google, Out
   const ics = await request('GET', `/events/${event.id}.ics?on=2026-10-14`, ada);
   assert.match(ics.text, /UID:event-\d+-2026-10-14@[^\r]+\r\nDTSTAMP:\w+\r\nDTSTART:20261014T100000\r\nDTEND:20261014T120000\r\n/);
   assert.doesNotMatch(ics.text, /RRULE/, 'only this time');
-  assert.equal((await request('GET', `/events/${event.id}.ics`, addUser('Eve'))).status, 404, 'private: not hers');
+  assert.equal((await request('GET', `/events/${event.id}.ics`, addUser('Eve'))).status, 404,
+    'shared with a group Eve is not in: not hers');
 });

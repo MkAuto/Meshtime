@@ -13,8 +13,8 @@ const { routes, pendingPolls } = await import('../src/routes.js');
 const { pollsPage, pollPage } = await import('../src/views.js');
 const { addDays, today } = await import('../src/lib.js');
 
-const addUser = (name, isAdmin = 0) => run(`INSERT INTO users(name, password_hash, feed_token, created_at, is_private,
-  is_admin) VALUES (?, 'x', ?, ?, 0, ?)`, name, 'tok-' + name, now(), isAdmin).lastInsertRowid;
+const addUser = (name, isAdmin = 0) => run(`INSERT INTO users(name, password_hash, feed_token, created_at, is_admin)
+  VALUES (?, 'x', ?, ?, ?)`, name, 'tok-' + name, now(), isAdmin).lastInsertRowid;
 
 /** Runs one route the way server.js would, as member `userId`; returns what it answered. */
 async function request(method, path, userId, body = []) {

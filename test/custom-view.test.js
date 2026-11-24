@@ -26,12 +26,12 @@ async function call(userId, method, path, body) {
   return out;
 }
 
-const addUser = (name, isPrivate) => run(`INSERT INTO users(name, password_hash, feed_token, is_private, created_at)
-                                          VALUES (?, 'x', ?, ?, ?)`, name, 'tok-' + name, isPrivate, now()).lastInsertRowid;
+const addUser = name => run(`INSERT INTO users(name, password_hash, feed_token, created_at) VALUES (?, 'x', ?, ?)`,
+  name, 'tok-' + name, now()).lastInsertRowid;
 const free = (userId, date) => run(`INSERT INTO free_days(user_id, date) VALUES (?, ?)`, userId, date);
 
 test('Custom view: shows me and the people I ticked, keeps them for next time, and can be the default', async () => {
-  const ada = addUser('Ada', 1), bob = addUser('Bob', 0), cy = addUser('Cy', 1), di = addUser('Di', 1);
+  const [ada, bob, cy, di] = ['Ada', 'Bob', 'Cy', 'Di'].map(name => addUser(name));
   const group = run(`INSERT INTO member_groups(name, created_at) VALUES ('Climbers', ?)`, now()).lastInsertRowid;
   for (const member of [ada, di]) {
     run('INSERT INTO group_members(group_id, user_id, joined_at) VALUES (?, ?, ?)', group, member, now());

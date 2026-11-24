@@ -21,13 +21,12 @@ test('eventPage: All day is ticked for an event without a start time, or as a re
     'unticked and sent back without a time: stays unticked so the time error shows');
 });
 
-test('eventPage: no Public choice; the groups it is shared with ticked, a lone group from the start', () => {
+test('eventPage: Who sees it ticks the groups it is shared with, a lone group from the start', () => {
   const groups = [{ id: 1, name: 'Climbers', color: 3 }, { id: 2, name: 'Board games', color: 5 }];
   const fresh = eventPage({ id: 1 }, { event: { date: '2026-10-03' }, groups });
-  assert.doesNotMatch(fresh, /name="visibility"/);
   assert.match(fresh, /name="group_ids" value="1">/, 'every group offered, none ticked');
   assert.match(fresh, /name="group_ids" value="2">/);
-  const shared = eventPage({ id: 1 }, { event: { date: '2026-10-03', is_private: 1, groupIds: [2] }, groups });
+  const shared = eventPage({ id: 1 }, { event: { date: '2026-10-03', groupIds: [2] }, groups });
   assert.match(shared, /name="group_ids" value="1">/);
   assert.match(shared, /name="group_ids" value="2" checked>/);
   assert.match(eventPage({ id: 1 }, { event: { date: '2026-10-03' }, groups: groups.slice(0, 1) }),

@@ -15,7 +15,3 @@ test('profilePage: a rejected form keeps what was typed and opens the panel hold
   assert.match(page, /<details class="panel panel-security" open data-remember="profile-security">/);
   assert.match(page, /autocomplete="new-password">\s*<\/label>\s*<p class="err">Too short\.<\/p>/);
 });
-
-test('profilePage: no private / public account choice: people sharing a group see each other, nobody else', () => {
-  assert.doesNotMatch(profilePage({ id: 1, name: 'Ada', color: 2, birthday: null }, { passkeys: [] }), /name="privacy"/);
-});

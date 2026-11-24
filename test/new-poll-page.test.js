@@ -12,10 +12,11 @@ test('newPollPage renders 6 rows of dates and of activities, dates picked', () =
   assert.match(page, new RegExp(`<fieldset class="choices dates" data-max="${MAX_CHOICES}">`));
   assert.match(page, /name="kind" value="date" checked>/);
   assert.match(page, /name="open_choices" value="1">/, 'only its creator adds choices by default');
-  assert.doesNotMatch(page, /name="visibility"|name="group_ids" value="\d+" checked/, 'no Public, no group ticked');
+  assert.match(page, /name="group_ids" value="5">/, 'in two groups: both offered, none ticked');
+  assert.match(page, /name="group_ids" value="6">/);
   const rejected = newPollPage({ id: 1 }, {
     kind: 'activity', choices: ['Bowling'], openChoices: 1,
-    groups, sharing: { isPrivate: 1, groupIds: [5] },
+    groups, sharing: { groupIds: [5] },
     errors: { visibility: 'Oops.' },
   });
   assert.match(rejected, /name="kind" value="activity" checked>/, 'a rejected form keeps what was posted');
