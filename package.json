@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "node --env-file-if-exists=.env src/server.js",
+    "dev": "node --watch-path=src --watch-path=public --env-file-if-exists=.env src/server.js",
     "test": "node --env-file=test/test.env --test"
   },
   "dependencies": {

@@ -77,9 +77,29 @@
         {{/invited}}
       </ul>
       {{/invited.length}}
+      {{! The group's links still open that I may see: my own; an admin's every one; the owner's also those for anyone. }}
+      {{#links.length}}
+      <h3>{{t.groups.links}}</h3>
+      <ul class="pref-list">
+        {{#links}}
+        <li class="pref">
+          <span class="pref-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10.59,13.41C11,13.8 11,14.44 10.59,14.83C10.2,15.22 9.56,15.22 9.17,14.83C7.22,12.88 7.22,9.71 9.17,7.76V7.76L12.71,4.22C14.66,2.27 17.83,2.27 19.78,4.22C21.73,6.17 21.73,9.34 19.78,11.29L18.29,12.78C18.3,11.96 18.17,11.14 17.89,10.36L18.36,9.88C19.54,8.71 19.54,6.81 18.36,5.64C17.19,4.46 15.29,4.46 14.12,5.64L10.59,9.17C9.41,10.34 9.41,12.24 10.59,13.41M13.41,9.17C13.8,8.78 14.44,8.78 14.83,9.17C16.78,11.12 16.78,14.29 14.83,16.24V16.24L11.29,19.78C9.34,21.73 6.17,21.73 4.22,19.78C2.27,17.83 2.27,14.66 4.22,12.71L5.71,11.22C5.7,12.04 5.83,12.86 6.11,13.65L5.64,14.12C4.46,15.29 4.46,17.19 5.64,18.36C6.81,19.54 8.71,19.54 9.88,18.36L13.41,14.83C14.59,13.66 14.59,11.76 13.41,10.59C13,10.2 13,9.56 13.41,9.17Z"/></svg></span>
+          {{! the rule, then who made it (when not me) and Turn off, small, under it }}
+          <span class="link-rule">
+            {{rule}}
+            <small class="hint">{{#by}}{{by}} · {{/by}}<form method="post" action="/groups/{{groupId}}/links/{{token}}/off" class="inline"><button class="link danger">{{t.groups.turnOff}}</button></form></small>
+          </span>
+          <a class="pill" href="{{url}}" data-copy="{{url}}" data-copied="{{t.common.copied}}" data-copy-failed="{{t.common.copyFailed}}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+            <span>{{t.settings.copyLink}}</span>
+          </a>
+        </li>
+        {{/links}}
+      </ul>
+      {{/links.length}}
 
-      {{! Admins pick from everyone; one form, two buttons: formaction sends "Add directly" to /add instead. }}
-      {{#isAdmin}}
+      {{! Everyone picks from a list: an admin's has everyone, anyone else's the people they see (in one of their
+          groups). One form, two buttons for admins: formaction sends "Add directly" to /add instead. }}
       {{#invitable.length}}
       <form method="post" action="/groups/{{id}}/invite" class="action-row">
         <span class="pref-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M15,14C12.33,14 7,15.33 7,18V20H23V18C23,15.33 17.67,14 15,14M6,10V7H4V10H1V12H4V15H6V12H9V10M15,12A4,4 0 0,0 19,8A4,4 0 0,0 15,4A4,4 0 0,0 11,8A4,4 0 0,0 15,12Z"/></svg></span>
@@ -90,25 +110,25 @@
           {{/invitable}}
         </select>
         <button>{{t.groups.sendInvite}}</button>
-        <button formaction="/groups/{{id}}/add">{{t.groups.addDirectly}}</button>
+        {{#isAdmin}}<button formaction="/groups/{{id}}/add">{{t.groups.addDirectly}}</button>{{/isAdmin}}
       </form>
       {{/invitable.length}}
-      {{/isAdmin}}
-      {{! Everyone else types a name: the datalist suggests the people they know (public, or in one of their groups),
-          no JS, but any member's name works. Names are unique, so the name is what is sent. }}
-      {{^isAdmin}}
-      <form method="post" action="/groups/{{id}}/invite" class="action-row">
-        <span class="pref-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M15,14C12.33,14 7,15.33 7,18V20H23V18C23,15.33 17.67,14 15,14M6,10V7H4V10H1V12H4V15H6V12H9V10M15,12A4,4 0 0,0 19,8A4,4 0 0,0 15,4A4,4 0 0,0 11,8A4,4 0 0,0 15,12Z"/></svg></span>
-        <input name="name" list="invitable-{{id}}" required autocomplete="off"
-          placeholder="{{t.groups.typeName}}" aria-label="{{t.groups.whoToInvite}}">
-        <datalist id="invitable-{{id}}">
-          {{#invitable}}
-          <option value="{{name}}">
-          {{/invitable}}
-        </datalist>
-        <button>{{t.groups.sendInvite}}</button>
+      {{! Anyone else: a group link, once within 7 days; whoever manages the group can also make one for anyone, until
+          a date (the date box only shows for that choice: style.css) or until turned off. data-copy-link: app.js copies it as it is made; it is listed above. }}
+      <form method="post" action="/groups/{{id}}/link" class="action-row link-form" data-copy-link>
+        <span class="pref-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10.59,13.41C11,13.8 11,14.44 10.59,14.83C10.2,15.22 9.56,15.22 9.17,14.83C7.22,12.88 7.22,9.71 9.17,7.76V7.76L12.71,4.22C14.66,2.27 17.83,2.27 19.78,4.22C21.73,6.17 21.73,9.34 19.78,11.29L18.29,12.78C18.3,11.96 18.17,11.14 17.89,10.36L18.36,9.88C19.54,8.71 19.54,6.81 18.36,5.64C17.19,4.46 15.29,4.46 14.12,5.64L10.59,9.17C9.41,10.34 9.41,12.24 10.59,13.41M13.41,9.17C13.8,8.78 14.44,8.78 14.83,9.17C16.78,11.12 16.78,14.29 14.83,16.24V16.24L11.29,19.78C9.34,21.73 6.17,21.73 4.22,19.78C2.27,17.83 2.27,14.66 4.22,12.71L5.71,11.22C5.7,12.04 5.83,12.86 6.11,13.65L5.64,14.12C4.46,15.29 4.46,17.19 5.64,18.36C6.81,19.54 8.71,19.54 9.88,18.36L13.41,14.83C14.59,13.66 14.59,11.76 13.41,10.59C13,10.2 13,9.56 13.41,9.17Z"/></svg></span>
+        {{#canManage}}
+        <select name="kind" aria-label="{{t.groups.linkKind}}">
+          <option value="once">{{t.groups.linkKinds.once}}</option>
+          <option value="until">{{t.groups.linkKinds.until}}</option>
+          <option value="always">{{t.groups.linkKinds.always}}</option>
+        </select>
+        <input type="date" name="until" min="{{today}}" aria-label="{{t.groups.linkUntilDate}}">
+        {{/canManage}}
+        {{^canManage}}<span>{{t.groups.linkKinds.once}}</span>{{/canManage}}
+        <button>{{t.groups.createLink}}</button>
       </form>
-      {{/isAdmin}}
+      <p class="hint">{{t.groups.linkHint}}</p>
     </div>
 
     {{! Only events shared with this group (private ones); its members' public events are not "for" it. }}

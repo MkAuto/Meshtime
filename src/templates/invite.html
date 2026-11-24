@@ -1,5 +1,7 @@
-{{! One page for both invite kinds. A password-reset link already knows the name, so the field is left out. }}
+{{! One page for every invite kind. A password-reset link already knows the name, so the field is left out. A group
+    link also offers to log in and join (logIn), and has no account form once new-account links are off. }}
 <h1>{{heading}}</h1>
+{{#showForm}}
 <form method="post" action="/invite/{{token}}" class="stack">
   {{^isReset}}
   <label>
@@ -15,3 +17,6 @@
   <label class="check"><input type="checkbox" data-reveal> {{t.login.showPassword}}</label>
   <button>{{button}}</button>
 </form>
+{{/showForm}}
+{{! the link is /login?next=/invite/<token>: no member text in it, so it is shown unescaped }}
+{{#logIn}}<p>{{{logIn}}}</p>{{/logIn}}

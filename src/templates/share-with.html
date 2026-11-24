@@ -1,18 +1,10 @@
-{{! Partial: "Who sees it" for an event or a poll (readSharing in routes.js reads it back). Expects isPrivate,
-    groupChoices (the creator's groups) and errors. The group list only shows for a private one (style.css,
-    no JS), and the server ignores the groups of a public one. Not shown at all while groups are off
-    (Administration → Options): everything is public then. }}
+{{! Partial: "Who sees it" for an event or a poll (readSharing in routes.js reads it back). Expects groupChoices
+    (the creator's groups, each ticked or not) and errors. Nothing is public while groups are on: it goes to the
+    groups ticked, at least one; with none to pick, only its creator sees it. Not shown at all while groups are
+    off (Administration → Options): everything is public then. }}
 {{#groupsEnabled}}
 <fieldset class="visibility">
   <legend>{{t.shareWith.legend}}</legend>
-  <label class="check">
-    <input type="radio" name="visibility" value="public"{{^isPrivate}} checked{{/isPrivate}}>
-    {{t.shareWith.public}}
-  </label>
-  <label class="check">
-    <input type="radio" name="visibility" value="private" id="visibility-private"{{#isPrivate}} checked{{/isPrivate}}>
-    {{t.shareWith.private}}
-  </label>
   <div class="share-groups">
     {{#groupChoices}}
     <label class="check">

@@ -16,8 +16,6 @@ test('profilePage: a rejected form keeps what was typed and opens the panel hold
   assert.match(page, /autocomplete="new-password">\s*<\/label>\s*<p class="err">Too short\.<\/p>/);
 });
 
-test('profilePage: the privacy radio matches the account, private by default', () => {
-  const user = { id: 1, name: 'Ada', color: 2, birthday: null };
-  assert.match(profilePage({ ...user, is_private: 1 }, { passkeys: [] }), /value="private" checked>/);
-  assert.match(profilePage({ ...user, is_private: 0 }, { passkeys: [] }), /value="public" checked>/);
+test('profilePage: no private / public account choice: people sharing a group see each other, nobody else', () => {
+  assert.doesNotMatch(profilePage({ id: 1, name: 'Ada', color: 2, birthday: null }, { passkeys: [] }), /name="privacy"/);
 });

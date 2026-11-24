@@ -193,13 +193,18 @@ form:has(input[name=scope][value=one]:checked) :is(.repeat, .visibility) { displ
 .place-clear[hidden], .place-box input:placeholder-shown ~ .place-clear { display: none; }
 .place-clear:hover { background: var(--accent-soft); }
 .place-clear svg { width: 1.2rem; height: 1.2rem; fill: currentColor; }
-/* Who sees it (share-with.html): the group list only matters, and only shows, for a private event or poll. */
-form:not(:has(#visibility-private:checked)) .share-groups { display: none; }
+/* Who sees it (share-with.html): the creator's groups, a checkbox each with its name beside it (.who is a flex
+   box of its own, so the label has to be one too, or the name drops under the box), on every form it is in. */
 .visibility, .share-groups { display: grid; gap: .3rem; }
+.share-groups label.check { display: flex; align-items: center; gap: .4rem; }
+/* in a .pref card (the poll forms) too: plain checkboxes like the event form's, not .pref's on / off switches */
+.pref .share-groups input[type=checkbox] {
+  appearance: auto; width: auto; height: auto; margin: 0; border-radius: 0; background: none; cursor: pointer;
+}
+.pref .share-groups input[type=checkbox]::before { content: none; }
 /* a plain list under its legend, like .colors */
 .visibility { border: none; padding: 0; margin: 0; }
 .visibility legend { padding: 0; margin-bottom: .3rem; }
-.share-groups { padding-left: 1.6rem; }
 /* The calendar's Custom view: the people to tick, side by side, wrapping onto as many lines as it takes. */
 .custom-pick fieldset { display: flex; flex-wrap: wrap; gap: .3rem 1rem; border: none; padding: 0; margin: .5rem 0 0; }
 .custom-pick legend { padding: 0; margin-bottom: .3rem; }
@@ -347,6 +352,12 @@ label.pref { cursor: pointer; }
 .action-row > input:not([type=hidden]), .action-row > select { flex: 1; min-width: 8rem; }
 /* a date needs no more room than this (Polls → Add a date, Deadline) */
 .action-row > input[type=date] { flex: 0 1 12rem; }
+/* a group link in its card: its rule, and under it who made it and Turn off */
+.link-rule { display: grid; gap: .1rem; }
+.link-rule small { font-size: .8rem; }
+/* a group link's Until date: only for "Anyone, until a date" (groups.html) */
+.link-form:not(:has(option[value=until]:checked)) > input[name=until] { display: none; }
+.link-form > span:not(.pref-icon) { flex: 1; } /* a plain member's single kind: the button stays on the right */
 /* a card's later headings (Groups → Invited under Members): room above, as .integration h3 has none */
 .integration > * > h3:not(:first-child) { margin-top: 1.4rem; }
 /* Groups: one group's cards. On a wider screen Members on the left, Next event and its Calendar feed on the right,
@@ -697,6 +708,7 @@ table.poll tbody th { font-weight: 500; }
 .poll-who { display: flex; align-items: center; gap: .5rem; white-space: nowrap; }
 table.poll .avatar { width: 1.8rem; height: 1.8rem; font-size: .68rem; }
 table.poll tr.tot > * { color: var(--muted); font-size: .78rem; border: 0; }
+table.poll tr.unseen > td { color: var(--muted); font-size: .85rem; text-align: left; }
 /* an answer: a round icon in its color, yes green, maybe amber, no red; none yet a faint dash */
 .a { display: inline-grid; place-items: center; width: 1.8rem; height: 1.8rem; border-radius: 50%; color: var(--muted); }
 .a svg, .vote svg { width: 1.05rem; height: 1.05rem; fill: currentColor; }

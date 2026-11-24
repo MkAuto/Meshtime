@@ -2,8 +2,11 @@
     2.0): what the poll is about, its choices and who may add more, then how it is answered.
     Dates or activities: the kind chips switch which choices show (style.css, no JS); the server reads only that kind's.
     Six rows of each are the no-JS fallback: public/app.js keeps the filled ones and one empty, and grows rows on
-    demand, up to data-max. Planned from an activity poll (from): always dates, so no kind to pick. }}
+    demand, up to data-max. Planned from an activity poll (from): always dates, so no kind to pick.
+    While groups are on a poll goes to groups: someone in none gets a pointer to Groups instead of the form. }}
 <h1>{{t.newPoll.title}}</h1>
+{{#needsGroup}}<p>{{{t.newPoll.needsGroup}}}</p>{{/needsGroup}}
+{{^needsGroup}}
 {{#from}}<p class="hint">{{fromHint}}</p>{{/from}}
 <form method="post" action="/polls/new" class="poll-form">
   {{#from}}
@@ -78,3 +81,4 @@
   </section>
   <p><button>{{t.newPoll.create}}</button></p>
 </form>
+{{/needsGroup}}

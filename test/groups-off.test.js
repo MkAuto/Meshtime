@@ -2,20 +2,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { profilePage, newPollPage, adminPage, settingsPage } from '../src/views.js';
 
-// Administration → Options → Groups: off, pages show no groups and no public / private choice.
+// Administration → Options → Groups: off, pages show no groups and no Who sees it.
 const user = groupsEnabled => ({ id: 1, name: 'Ada', color: 2, is_admin: 1, groups_enabled: groupsEnabled });
 
-test('groups off: no Groups link, no Account choice, no Who sees it', () => {
+test('groups off: no Groups link, no Who sees it', () => {
   const groups = [{ id: 7, name: 'Climbers', color: 4 }];
   const on = profilePage(user(1), { passkeys: [] }) + newPollPage(user(1), { groups });
   const off = profilePage(user(0), { passkeys: [] }) + newPollPage(user(0), { groups });
 
   assert.match(on, /href="\/groups">Groups/);
-  assert.match(on, /name="privacy"/);
-  assert.match(on, /name="visibility"/);
+  assert.match(on, /name="group_ids"/);
   assert.doesNotMatch(off, /href="\/groups"/);
-  assert.doesNotMatch(off, /name="privacy"/);
-  assert.doesNotMatch(off, /name="visibility"|Who sees it/);
+  assert.doesNotMatch(off, /name="group_ids"|Who sees it/);
 });
 
 test('groups off: the admin Groups checkbox shows the saved state', () => {

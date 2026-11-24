@@ -1,4 +1,4 @@
-import { all, get, run, now, tx } from './db.js';
+import { all, get, run, now, tx, shareWithCreatorGroups } from './db.js';
 import * as auth from './auth.js';
 import * as views from './views.js';
 import { logEvent, tailLog, LOG_PATH, ERROR_LOG_PATH } from './log.js';
@@ -11,7 +11,7 @@ import {
   bestChoices, buildIcs, birthdayIn, birthdayRrule, today, addDays, DEFAULT_SYNC_DAYS, randomColor, occurrences,
   eventRrule, parseRrule, formatRrule, sameRule, repeatRule, timeOn, firstTime, timesBefore, daysBetween, ANSWERS,
   MAX_CHOICES, MAX_ACTIVITY, MIN_PASSWORD, BASE_URL,
-  RP_ID, SLOTS, MAX_SLOTS_PER_DAY, toggleSlot, isValidBusyMinutes, isValidSyncDays, isValidLanguage,
+  RP_ID, SLOTS, MAX_SLOTS_PER_DAY, toggleSlot, isValidBusyMinutes, isValidSyncDays, isValidLanguage, endOfDay,
 } from './lib.js';
 
 export const routes = [];
@@ -55,16 +55,24 @@ const groupsEnabled = () => Boolean(get('SELECT groups_enabled FROM app_settings
 /** Logs an action done by the logged-in member. */
 const logUser = (ctx, action) => logEvent({ ip: ctx.ip, user: ctx.user.name, known: true, action });
 
-const startSession = (ctx, userId) => {
+/**
+ * Where to go once logged in: back to a group link (/login?next=/invite/<token>, from that link's page), else home.
+ * Nothing else, so the login page cannot be made to send anyone off the site.
+ */
+const afterLogin = next => (/^\/invite\/[\w-]+$/.test(next ?? '') ? next : '/');
+
+const startSession = (ctx, userId, next) => {
   ctx.setCookie('sid', auth.createSession(userId), auth.SESSION_SECONDS);
-  ctx.redirect('/');
+  ctx.redirect(afterLogin(next));
 };
 
 // ---- auth ----
 /** The login page, with the banner when an admin shows it there too (Administration → Banner). */
-const loginPage = (ctx, error) => views.loginPage(ctx.lang, error, bannerOn('login', ctx.cookies));
+const loginPage = (ctx, error) => views.loginPage(ctx.lang, error, bannerOn('login', ctx.cookies),
+  afterLogin(ctx.url.searchParams.get('next') ?? ctx.body?.get('next')));
 
-on('GET', '/login', ctx => ctx.user ? ctx.redirect('/') : ctx.html(loginPage(ctx)), true);
+on('GET', '/login', ctx => ctx.user ? ctx.redirect(afterLogin(ctx.url.searchParams.get('next')))
+  : ctx.html(loginPage(ctx)), true);
 
 on('POST', '/login', async ctx => {
   const name = cleanText(ctx.body.get('name'), 40);
@@ -82,7 +90,7 @@ on('POST', '/login', async ctx => {
     return ctx.html(loginPage(ctx, t(ctx.lang, 'errors.wrongLogin')), 401);
   }
   log('login ok (password)');
-  startSession(ctx, user.id);
+  startSession(ctx, user.id, ctx.body.get('next'));
 }, true);
 
 on('POST', '/logout', ctx => {
@@ -143,19 +151,29 @@ on('POST', '/login/passkey', ctx => {
 
 const INVITE_GONE = 'errors.inviteGone';
 
+// A group link opened while logged in asks to join; otherwise the page makes an account (a group link only while
+// it still may: getInvite's can_create) and offers to log in instead.
 on('GET', '/invite/(?<token>[\\w-]+)', ctx => {
   const invite = auth.getInvite(ctx.params.token);
   if (!invite) {
     return ctx.fail(410, INVITE_GONE);
   }
-  ctx.html(views.invitePage(ctx.lang, invite.token, invite.user_name));
+  if (invite.group_id && ctx.user) {
+    return ctx.html(views.joinGroupPage(ctx.user, invite.token, invite.group_name));
+  }
+  ctx.html(views.invitePage(ctx.lang, invite.token, invite.user_name,
+    { groupName: invite.group_name, canCreate: !invite.group_id || Boolean(invite.can_create) }));
 }, true);
 
-// One form, two jobs: with invite.user_id it resets that user's password, otherwise it creates an account.
+// One form, three jobs: with invite.user_id it resets that user's password, otherwise it creates an account, in
+// its group for a group link.
 on('POST', '/invite/(?<token>[\\w-]+)', async ctx => {
   const invite = auth.getInvite(ctx.params.token);
   if (!invite) {
     return ctx.fail(410, INVITE_GONE);
+  }
+  if (invite.group_id && !invite.can_create) {
+    return ctx.fail(403, 'errors.memberInvitesOff');
   }
 
   const password = ctx.body.get('password') || '';
@@ -171,7 +189,8 @@ on('POST', '/invite/(?<token>[\\w-]+)', async ctx => {
     errors.password = t(ctx.lang, 'errors.passwordShort', { min: MIN_PASSWORD });
   }
   if (hasErrors(errors)) {
-    return ctx.html(views.invitePage(ctx.lang, invite.token, invite.user_name, { errors, name }), 400);
+    return ctx.html(views.invitePage(ctx.lang, invite.token, invite.user_name,
+      { errors, name, groupName: invite.group_name }), 400);
   }
 
   const passwordHash = await auth.hashPassword(password);
@@ -188,17 +207,45 @@ on('POST', '/invite/(?<token>[\\w-]+)', async ctx => {
       auth.deleteUserCredentials(invite.user_id);
       return invite.user_id;
     }
-    // Joining while groups are off: public, like every event and poll made then (there is no choice to make).
     // The language this page was in becomes theirs, so their calendar feeds speak it from the start.
-    return run(`INSERT INTO users(name, password_hash, feed_token, is_admin, created_at, color, is_private, language)
-                VALUES (?,?,?,?,?,?,?,?)`,
-      name, passwordHash, auth.token(), invite.is_admin, now(), randomColor(), groupsEnabled() ? 1 : 0,
-      ctx.lang ?? null).lastInsertRowid;
+    const newId = run(`INSERT INTO users(name, password_hash, feed_token, is_admin, created_at, color, language)
+                       VALUES (?,?,?,?,?,?,?)`,
+    name, passwordHash, auth.token(), invite.is_admin, now(), randomColor(), ctx.lang ?? null).lastInsertRowid;
+    if (invite.group_id) {
+      run('INSERT INTO group_members(group_id, user_id, joined_at) VALUES (?,?,?)', invite.group_id, newId, now());
+    }
+    return newId;
   });
+  const made = invite.group_id ? `account created by group link to ${JSON.stringify(invite.group_name)}`
+    : `account created by invite${invite.is_admin ? ' (admin)' : ''}`;
   logEvent({ ip: ctx.ip, user: isReset ? invite.user_name : name, known: true,
-    action: isReset ? 'password reset by link' : `account created by invite${invite.is_admin ? ' (admin)' : ''}` });
+    action: isReset ? 'password reset by link' : made });
   startSession(ctx, userId);
 }, true);
+
+// A group link, for someone with an account: opening it and confirming is accepting, so they are in at once (and
+// an invite waiting for them to that group is spent). Already in: the link stays unused, for someone else.
+on('POST', '/invite/(?<token>[\\w-]+)/join', ctx => {
+  if (!ctx.user.groups_enabled) {
+    return ctx.fail(404, 'errors.groupsOff');
+  }
+  const invite = auth.getInvite(ctx.params.token);
+  if (!invite?.group_id) {
+    return ctx.fail(410, INVITE_GONE);
+  }
+  if (get('SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?', invite.group_id, ctx.user.id)) {
+    return ctx.redirect('/groups?msg=already_member');
+  }
+  tx(() => {
+    if (!auth.consumeInvite(invite.token)) {
+      throw Object.assign(new Error(INVITE_GONE), { status: 410 });
+    }
+    run('INSERT INTO group_members(group_id, user_id, joined_at) VALUES (?,?,?)', invite.group_id, ctx.user.id, now());
+    run('DELETE FROM group_invites WHERE group_id = ? AND user_id = ?', invite.group_id, ctx.user.id);
+  });
+  logUser(ctx, `joined group ${JSON.stringify(invite.group_name)} by link`);
+  ctx.redirect('/groups?msg=joined');
+});
 
 // ---- calendar ----
 
@@ -206,19 +253,19 @@ on('POST', '/invite/(?<token>[\\w-]+)', async ctx => {
 // The private flags and group shares are left as they are, so turning groups back on brings them back.
 const GROUPS_OFF = '(SELECT groups_enabled FROM app_settings) = 0';
 
-// Whose free days a viewer may see: their own, public accounts', and those of anyone sharing a group with them.
-// A public event or poll goes with its creator the same way. For a users table aliased `u`. `viewer` is an SQL
+// Whose free days and name a viewer may see: their own, and those of anyone sharing a group with them. A public
+// event or poll (only made while groups are off) goes with its creator the same way. For a users table aliased `u`. `viewer` is an SQL
 // expression: '?' to pass a user id (twice), or a column, to ask it for every user at once (a poll's audience).
 const sharesGroupWith = viewer => `EXISTS (
   SELECT 1 FROM group_members theirs JOIN group_members mine ON mine.group_id = theirs.group_id
   WHERE theirs.user_id = u.id AND mine.user_id = ${viewer})`;
-const visibleTo = viewer => `(${GROUPS_OFF} OR u.id = ${viewer} OR u.is_private = 0 OR ${sharesGroupWith(viewer)})`;
+const visibleTo = viewer => `(${GROUPS_OFF} OR u.id = ${viewer} OR ${sharesGroupWith(viewer)})`;
 // Takes my user id twice.
 const VISIBLE_TO_ME = visibleTo('?');
-// Whose birthday I see: my own and those of anyone sharing a group with me; a public account is not enough.
+// Whose birthday I see: my own and those of anyone sharing a group with me.
 // Takes my user id twice.
 const BIRTHDAY_VISIBLE_TO_ME = `(${GROUPS_OFF} OR u.id = ? OR ${sharesGroupWith('?')})`;
-// The one-group view: only that group's members, public or not. Takes the group id.
+// The one-group view: only that group's members. Takes the group id.
 const IN_GROUP = 'EXISTS (SELECT 1 FROM group_members m WHERE m.group_id = ? AND m.user_id = u.id)';
 // The Custom view: me and the people I ticked in its list (custom_view_members). Takes my user id twice. Only ever
 // ANDed with one of the *_VISIBLE_TO_ME above, so someone I ticked and can no longer see drops out of it.
@@ -477,8 +524,9 @@ on('POST', '/free', async ctx => {
 
 /**
  * The "Who sees it" fields of the event and poll forms (templates/share-with.html): { isPrivate, groupIds, error }.
- * A private event or poll needs at least one group, and only groups of its creator (`creatorGroups`) count:
- * any other id is dropped. A public one is shared with no group. `what` names it in the error.
+ * While groups are on nothing is public: it goes to the groups ticked, at least one, and only groups of its
+ * creator (`creatorGroups`) count: any other id is dropped. A creator in one group only shares with it even when
+ * none is ticked; a creator in none shares with nobody: only they see it. `what` names it in the error.
  * While groups are off the form has no Who sees it: a new one is public, and one being changed keeps `current`
  * (its saved choice) for when groups are turned back on.
  */
@@ -486,17 +534,11 @@ function readSharing(ctx, creatorGroups, what, current = { isPrivate: 0, groupId
   if (!ctx.user.groups_enabled) {
     return current;
   }
-  const visibility = ctx.body.get('visibility');
-  const postedGroupIds = ctx.body.getAll('group_ids').map(Number);
-  if (visibility !== 'public' && visibility !== 'private') {
-    return { isPrivate: 0, groupIds: postedGroupIds, error: t(ctx.lang, 'errors.pickVisibility') };
-  }
-  if (visibility === 'public') {
-    return { isPrivate: 0, groupIds: [] };
-  }
   const creatorGroupIds = new Set(creatorGroups.map(group => group.id));
-  const groupIds = [...new Set(postedGroupIds)].filter(groupId => creatorGroupIds.has(groupId));
-  const error = groupIds.length === 0 ? t(ctx.lang, `errors.privateNeedsGroup.${what}`) : undefined;
+  const posted = ctx.body.getAll('group_ids').map(Number).filter(groupId => creatorGroupIds.has(groupId));
+  const groupIds = creatorGroups.length === 1 && posted.length === 0 ? [creatorGroups[0].id] : [...new Set(posted)];
+  const error = creatorGroups.length > 0 && groupIds.length === 0
+    ? t(ctx.lang, `errors.needsGroup.${what}`) : undefined;
   return { isPrivate: 1, groupIds, error };
 }
 
@@ -851,17 +893,27 @@ function loadPoll(pollId, user) {
   for (const vote of votes) {
     (answeredBy[vote.user_id] ??= new Set()).add(vote.choice);
   }
-  const missing = members
-    .filter(member => (answeredBy[member.id]?.size ?? 0) < choices.length)
-    .map(member => member.name);
+  const answeredAll = member => (answeredBy[member.id]?.size ?? 0) >= choices.length;
+
+  // Shown by name: only who I could see on the calendar (VISIBLE_TO_ME), and its creator. Everyone else it is for
+  // is only counted: their answers still go into the totals and the result, without their name or id.
+  const canSee = new Set([poll.created_by,
+    ...all(`SELECT u.id FROM users u WHERE ${VISIBLE_TO_ME}`, me, me).map(row => row.id)]);
+  const shown = members.filter(member => canSee.has(member.id));
+  const unseen = members.filter(member => !canSee.has(member.id));
 
   return {
     poll,
     choices,
-    members,
-    votes,
-    missing,
-    complete: missing.length === 0,
+    members: shown,
+    votes: votes.map(vote => (canSee.has(vote.user_id) ? vote : { ...vote, user_id: null })),
+    missing: shown.filter(member => !answeredAll(member)).map(member => member.name),
+    hidden: {
+      count: unseen.length,
+      answered: unseen.filter(answeredAll).length,
+      missing: unseen.filter(member => !answeredAll(member)).length,
+    },
+    complete: members.every(answeredAll),
     best: poll.chosen ? [poll.chosen] : bestChoices(choices, votes),
     // Set once the date is confirmed, and only if I may see the event: it can be edited to private later.
     event: get(`SELECT e.* FROM events e JOIN users u ON u.id = e.created_by
@@ -965,6 +1017,9 @@ on('POST', '/polls/new', ctx => {
   const openChoices = ctx.body.get('open_choices') === '1' ? 1 : 0;
   const deadline = postedDeadline(ctx);
   const groups = myGroups(ctx.user.id);
+  if (ctx.user.groups_enabled && groups.length === 0) {
+    return ctx.html(views.newPollPage(ctx.user, { groups }), 403); // a poll goes to groups: nobody to send it to
+  }
   const sharing = readSharing(ctx, groups, 'poll');
   const errors = {};
   if (!title) {
@@ -1096,7 +1151,7 @@ on('POST', '/polls/(?<id>\\d+)/deadline', ctx => {
   ctx.redirect('/polls/' + pollId);
 });
 
-// Who sees it: public, or private for some of its creator's groups. Like events, an admin changing someone
+// Who sees it: some of its creator's groups. Like events, an admin changing someone
 // else's poll picks from the creator's groups. Answers already given stay; only who it is for changes.
 on('POST', '/polls/(?<id>\\d+)/visibility', ctx => {
   const pollId = Number(ctx.params.id);
@@ -1183,6 +1238,8 @@ function afterLeavingGroup(groupId, userId) {
        WHERE group_id = ? AND event_id IN (SELECT id FROM events WHERE created_by = ?)`, groupId, userId);
   run(`DELETE FROM poll_groups
        WHERE group_id = ? AND poll_id IN (SELECT id FROM polls WHERE created_by = ?)`, groupId, userId);
+  // their group links too: nobody joins through someone no longer in it
+  run('DELETE FROM invites WHERE group_id = ? AND created_by = ? AND used_at IS NULL', groupId, userId);
   run(`UPDATE member_groups SET created_by = (
          SELECT user_id FROM group_members WHERE group_id = ? ORDER BY joined_at, user_id LIMIT 1)
        WHERE id = ? AND created_by = ?`, groupId, groupId, userId);
@@ -1225,12 +1282,15 @@ function showGroups(ctx, { status = 200, errors = {} } = {}) {
     invited: all(`SELECT u.id, u.name FROM group_invites i JOIN users u ON u.id = i.user_id
                   WHERE i.group_id = ? ORDER BY u.name`, group.id),
     // who can still be invited: not in it, no invite waiting. An admin's list has everyone; anyone else's only the
-    // people they know (public, or in one of their groups), as suggestions: they can still type any other name.
+    // people they see (in one of their groups). Anyone else gets a group link (links: mine, not used yet).
     invitable: all(`SELECT u.id, u.name FROM users u WHERE (? OR ${VISIBLE_TO_ME})
                       AND u.id NOT IN (SELECT user_id FROM group_members WHERE group_id = ?)
                       AND u.id NOT IN (SELECT user_id FROM group_invites WHERE group_id = ?)
                     ORDER BY u.name`, ctx.user.is_admin ? 1 : 0, ctx.user.id, ctx.user.id, group.id, group.id),
     canManage: managesGroup(ctx.user, group),
+    // its links still open that I may see (and so turn off): seesLink
+    links: auth.groupLinks(group.id).filter(link => seesLink(ctx.user, group, link))
+      .map(link => ({ ...link, url: `${BASE_URL}/invite/${link.token}` })),
   }));
   const invites = all(`SELECT g.id, g.name, u.name AS invited_by FROM group_invites i
                        JOIN member_groups g ON g.id = i.group_id
@@ -1267,25 +1327,16 @@ function groupForManager(ctx) {
 }
 
 /**
- * The member picked in a group's Invite form, or an error message for the group. Admins pick from a list
- * (user_id); everyone else types a name, which may be anyone's, known to them or not.
+ * The member picked in a group's Invite form, or an error message for the group. Everyone picks from a list: an
+ * admin's has everyone, anyone else's only the people they see (VISIBLE_TO_ME). An id outside it gets the same
+ * answer as one that does not exist, so ids give no names away; for anyone else there is the group link.
  */
 function invitee(ctx, group) {
-  let target;
-  if (ctx.body.has('user_id')) {
-    target = get('SELECT id, name FROM users WHERE id = ?', Number(ctx.body.get('user_id')));
-    if (!target) {
-      return { error: t(ctx.lang, 'errors.pickInvitee') };
-    }
-  } else {
-    const name = (ctx.body.get('name') || '').trim();
-    if (!name) {
-      return { error: t(ctx.lang, 'errors.typeInvitee') };
-    }
-    target = get('SELECT id, name FROM users WHERE name = ?', name); // names are unique, ignoring case
-    if (!target) {
-      return { error: t(ctx.lang, 'errors.noSuchMember', { name }) };
-    }
+  const me = ctx.user.id;
+  const target = get(`SELECT u.id, u.name FROM users u WHERE u.id = ? AND (? OR ${VISIBLE_TO_ME})`,
+    Number(ctx.body.get('user_id')), ctx.user.is_admin ? 1 : 0, me, me);
+  if (!target) {
+    return { error: t(ctx.lang, 'errors.pickInvitee') };
   }
   if (get('SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?', group.id, target.id)) {
     return { error: t(ctx.lang, 'errors.alreadyInGroup', { name: target.name }) };
@@ -1328,6 +1379,61 @@ onGroups('POST', '/groups/(?<id>\\d+)/invite', ctx => {
        ON CONFLICT DO NOTHING`, group.id, target.id, ctx.user.id, now());
   logUser(ctx, `invited ${JSON.stringify(target.name)} to group ${JSON.stringify(group.name)}`);
   ctx.redirect(`/groups?msg=invited&to=${encodeURIComponent(target.name)}`);
+});
+
+/**
+ * Who sees a group link in its card, and may turn it off: whoever made it and admins; a link for anyone (multi_use)
+ * also whoever manages the group. A single-use link is meant for one person: nobody else needs to see it.
+ */
+const seesLink = (user, group, link) => link.created_by === user.id || Boolean(user.is_admin)
+  || (Boolean(link.multi_use) && managesGroup(user, group));
+
+// A group link, for someone not in my Invite list (/invite/<token>): any member can make one. `kind`: once (one
+// person, within 7 days), or, only for whoever manages the group (its owner, an admin), until (anyone, until the
+// end of `until`, a date from today on) or always (anyone, until turned off). app.js (data-copy-link forms) asks for JSON and copies it; the group card lists it either way.
+const LINK_KINDS = ['once', 'until', 'always'];
+
+onGroups('POST', '/groups/(?<id>\\d+)/link', ctx => {
+  const group = groupForMember(ctx);
+  if (!group) {
+    return;
+  }
+  const kind = LINK_KINDS.includes(ctx.body.get('kind')) ? ctx.body.get('kind') : 'once';
+  const until = ctx.body.get('until') || '';
+  if (kind !== 'once' && !managesGroup(ctx.user, group)) {
+    return ctx.fail(403, 'errors.groupForbidden');
+  }
+  if (kind === 'until' && (!isValidDate(until) || until < today())) {
+    return showGroups(ctx, { status: 400, errors: { [group.id]: t(ctx.lang, 'errors.linkUntil') } });
+  }
+  const inviteToken = auth.createInvite({
+    createdBy: ctx.user.id, groupId: group.id, multiUse: kind !== 'once',
+    ...(kind === 'until' && { expiresAt: endOfDay(until) }), ...(kind === 'always' && { expiresAt: auth.NO_EXPIRY }),
+  });
+  logUser(ctx, `group link (${kind}${kind === 'until' ? ' ' + until : ''}) created for ${JSON.stringify(group.name)}`);
+  if (ctx.req.headers.accept === 'application/json') {
+    return ctx.json({ url: `${BASE_URL}/invite/${inviteToken}` });
+  }
+  ctx.redirect('/groups?msg=invite');
+});
+
+// Turning a group link off: whoever sees it (seesLink). Joining through it stops at once.
+onGroups('POST', '/groups/(?<id>\\d+)/links/(?<token>[\\w-]+)/off', ctx => {
+  const group = groupForMember(ctx);
+  if (!group) {
+    return;
+  }
+  const link = get('SELECT created_by, multi_use FROM invites WHERE token = ? AND group_id = ?', ctx.params.token,
+    group.id);
+  if (!link) {
+    return ctx.fail(404, INVITE_GONE);
+  }
+  if (!seesLink(ctx.user, group, link)) {
+    return ctx.fail(403, 'errors.groupForbidden');
+  }
+  run('DELETE FROM invites WHERE token = ?', ctx.params.token);
+  logUser(ctx, `group link turned off for ${JSON.stringify(group.name)}`);
+  ctx.redirect('/groups?msg=link_off');
 });
 
 // Admins skip the invite: the member is in at once (and any invite waiting for them is spent).
@@ -1624,7 +1730,6 @@ on('POST', '/profile/about', ctx => {
   const name = cleanText(ctx.body.get('name'), 40);
   const birthday = ctx.body.get('birthday') || '';
   const color = Number(ctx.body.get('color'));
-  const privacy = ctx.body.get('privacy'); // 'private' | 'public'
   const errors = {};
   if (!name) {
     errors.name = t(ctx.lang, 'errors.nameRequired');
@@ -1639,18 +1744,12 @@ on('POST', '/profile/about', ctx => {
   if (!isValidColor(color)) {
     errors.color = t(ctx.lang, 'errors.invalidColor');
   }
-  // Groups off: the page has no Account choice, and the saved one is kept for when groups come back.
-  if (ctx.user.groups_enabled && privacy !== 'private' && privacy !== 'public') {
-    errors.privacy = t(ctx.lang, 'errors.pickPrivacy');
-  }
-  const isPrivate = ctx.user.groups_enabled ? (privacy === 'public' ? 0 : 1) : ctx.user.is_private;
   if (hasErrors(errors)) {
     // An invalid color cannot be drawn, so the slider goes back to the saved one.
-    const about = { name, birthday, color: errors.color ? ctx.user.color : color, is_private: isPrivate };
+    const about = { name, birthday, color: errors.color ? ctx.user.color : color };
     return showProfile(ctx, { status: 400, errors, about });
   }
-  run('UPDATE users SET name = ?, birthday = ?, color = ?, is_private = ? WHERE id = ?',
-    name, birthday || null, color, isPrivate, ctx.user.id);
+  run('UPDATE users SET name = ?, birthday = ?, color = ? WHERE id = ?', name, birthday || null, color, ctx.user.id);
   // Logged under the old name, so the log links the two.
   if (name !== ctx.user.name) {
     logUser(ctx, `name changed to ${JSON.stringify(name)}`);
@@ -1790,11 +1889,16 @@ on('POST', '/admin/options', ctx => {
     ? (ctx.body.getAll('groups_enabled').includes('1') ? 1 : 0)
     : ctx.user.groups_enabled;
   tx(() => {
-    // Nothing else changes: while groups are off, GROUPS_OFF shows everyone and everything as public.
+    // While groups are off, GROUPS_OFF shows everyone and everything as public. Back on, what was made public
+    // meanwhile goes to its creator's groups: nothing is public while groups are on.
     run('UPDATE app_settings SET member_invites = ?, groups_enabled = ?', memberInvites, groupsOn);
+    if (groupsOn) {
+      shareWithCreatorGroups();
+    }
     if (!memberInvites) {
       // Turning it off takes effect now: the links members made and nobody used yet stop working too.
-      run(`DELETE FROM invites WHERE used_at IS NULL AND user_id IS NULL
+      // Group links stay: they still bring in people who have an account (getInvite's can_create).
+      run(`DELETE FROM invites WHERE used_at IS NULL AND user_id IS NULL AND group_id IS NULL
              AND created_by IN (SELECT id FROM users WHERE is_admin = 0)`);
     }
   });

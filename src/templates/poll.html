@@ -80,6 +80,8 @@
           {{/cells}}
         </tr>
         {{/rows}}
+        {{! Members it is for that I share no group with: counted, never named (loadPoll in routes.js). }}
+        {{#hiddenRow}}<tr class="unseen"><td colspan="{{span}}">{{hiddenRow}}</td></tr>{{/hiddenRow}}
         <tr class="tot">
           <th scope="row">{{t.poll.totals}}</th>
           {{#totals}}

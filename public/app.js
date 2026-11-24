@@ -464,7 +464,9 @@ onPasskeyButton('passkey-login', async () => {
     authenticatorData: toBase64url(credential.response.authenticatorData),
     signature: toBase64url(credential.response.signature),
   });
-  location.href = '/';
+  // back to the group link the login page was opened from (routes.js afterLogin), else home
+  const next = new URLSearchParams(location.search).get('next');
+  location.href = /^\/invite\/[\w-]+$/.test(next ?? '') ? next : '/';
 });
 
 // Dropdown menus are details elements: the language menu (templates/language-menu.html) and each feed's Add to

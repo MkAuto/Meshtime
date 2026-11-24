@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS users(
   hide_own_initials INTEGER NOT NULL DEFAULT 0, -- 1 leaves my own initials out of the calendar cells
   -- 1: the first and last weeks show the days of the months around (like Google Calendar), 0: blank cells
   continuous_calendar INTEGER NOT NULL DEFAULT 1,
-  is_private INTEGER NOT NULL DEFAULT 1, -- 1: only people sharing a group see my free days, 0: everyone does
+  is_private INTEGER NOT NULL DEFAULT 1, -- unused: was public / private accounts; now only people sharing a group see me
   -- the group the calendar opens on; NULL = everyone I can see. Ignored while I am not in that group.
   default_group_id INTEGER REFERENCES member_groups(id) ON DELETE SET NULL,
   default_custom INTEGER NOT NULL DEFAULT 0, -- 1: it opens on the Custom view instead (default_group_id is NULL)
@@ -74,7 +74,12 @@ CREATE TABLE IF NOT EXISTS invites(
   is_admin INTEGER NOT NULL DEFAULT 0,
   user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
   expires_at TEXT NOT NULL,
-  used_at TEXT);
+  used_at TEXT,
+  -- a group link (Groups → Invite link): whoever opens it joins this group, logging in or, while new-account links
+  -- are allowed (Administration → Options, or its creator is an admin), making an account
+  group_id INTEGER REFERENCES member_groups(id) ON DELETE CASCADE,
+  -- a group link anyone can follow until it expires (or is turned off), instead of once: used_at stays NULL
+  multi_use INTEGER NOT NULL DEFAULT 0);
 
 -- login sessions. id_hash is the sha256 of the cookie value, never the value itself.
 CREATE TABLE IF NOT EXISTS sessions(
@@ -421,6 +426,15 @@ db.prepare(`UPDATE users SET language = NULL WHERE language NOT IN (${LANGUAGES.
 // Members who picked a first day that is no longer offered go back to the Sunday default.
 db.exec(`UPDATE users SET week_start = ${DEFAULT_WEEK_START} WHERE week_start NOT IN (${WEEK_START_CHOICES})`);
 
+// DBs created before group links, then before links anyone can follow.
+const inviteColumns = db.prepare('PRAGMA table_info(invites)').all().map(column => column.name);
+if (!inviteColumns.includes('group_id')) {
+  db.exec('ALTER TABLE invites ADD COLUMN group_id INTEGER REFERENCES member_groups(id) ON DELETE CASCADE');
+}
+if (!inviteColumns.includes('multi_use')) {
+  db.exec('ALTER TABLE invites ADD COLUMN multi_use INTEGER NOT NULL DEFAULT 0');
+}
+
 // DBs created before group colors existed: hand out random ones, as for users.
 const groupColumns = db.prepare('PRAGMA table_info(member_groups)').all().map(column => column.name);
 if (!groupColumns.includes('color')) {
@@ -442,6 +456,24 @@ db.exec(`UPDATE member_groups SET created_by = (
          WHERE created_by IS NULL
             OR created_by NOT IN (SELECT user_id FROM group_members WHERE group_id = member_groups.id)`);
 db.exec('DELETE FROM member_groups WHERE id NOT IN (SELECT group_id FROM group_members)');
+
+/**
+ * While groups are on nothing is public: every event and poll is shared with groups its creator picked, or with
+ * none (only its creator sees it, when they are in no group). One made public, before this rule or while groups
+ * were off, goes to all its creator's groups, so the people who saw it still do. Run at start and whenever an
+ * admin turns groups on.
+ */
+export function shareWithCreatorGroups() {
+  for (const [table, shares, column] of [['events', 'event_groups', 'event_id'], ['polls', 'poll_groups', 'poll_id']]) {
+    db.exec(`INSERT OR IGNORE INTO ${shares}(${column}, group_id)
+               SELECT t.id, m.group_id FROM ${table} t JOIN group_members m ON m.user_id = t.created_by
+               WHERE t.is_private = 0;
+             UPDATE ${table} SET is_private = 1 WHERE is_private = 0`);
+  }
+}
+if (db.prepare('SELECT groups_enabled FROM app_settings').get()?.groups_enabled) {
+  shareWithCreatorGroups();
+}
 
 // Pull colors back into range in case the palette shrank.
 db.exec(`UPDATE users SET color = color % ${COLORS} WHERE color >= ${COLORS}`);

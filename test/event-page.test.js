@@ -8,8 +8,8 @@ test('eventPage: a new event starts blank on the default color, with nothing to 
   assert.match(page, /name="date" required value="2026-10-03"/);
   assert.match(page, /value="" aria-label="Default" checked>/);
   assert.match(page, /name="all_day" value="1" id="all-day" checked>/, 'a new event starts all day');
-  assert.equal((page.match(/ checked>/g) || []).length, 5,
-    'only the default color, All day, Public, and the hidden Repeat defaults: its weekday in Custom, Ends never');
+  assert.equal((page.match(/ checked>/g) || []).length, 4,
+    'only the default color, All day, and the hidden Repeat defaults: its weekday in Custom, Ends never');
   assert.doesNotMatch(page, /delete/);
 });
 
@@ -21,17 +21,19 @@ test('eventPage: All day is ticked for an event without a start time, or as a re
     'unticked and sent back without a time: stays unticked so the time error shows');
 });
 
-test('eventPage: public by default; a private event ticks the groups it is shared with', () => {
+test('eventPage: no Public choice; the groups it is shared with ticked, a lone group from the start', () => {
   const groups = [{ id: 1, name: 'Climbers', color: 3 }, { id: 2, name: 'Board games', color: 5 }];
   const fresh = eventPage({ id: 1 }, { event: { date: '2026-10-03' }, groups });
-  assert.match(fresh, /value="public" checked>/);
+  assert.doesNotMatch(fresh, /name="visibility"/);
   assert.match(fresh, /name="group_ids" value="1">/, 'every group offered, none ticked');
   assert.match(fresh, /name="group_ids" value="2">/);
   const shared = eventPage({ id: 1 }, { event: { date: '2026-10-03', is_private: 1, groupIds: [2] }, groups });
-  assert.match(shared, /value="private" id="visibility-private" checked>/);
   assert.match(shared, /name="group_ids" value="1">/);
   assert.match(shared, /name="group_ids" value="2" checked>/);
-  assert.match(eventPage({ id: 1 }, { event: { date: '2026-10-03' } }), /Not in any <a href="\/groups">group<\/a>/);
+  assert.match(eventPage({ id: 1 }, { event: { date: '2026-10-03' }, groups: groups.slice(0, 1) }),
+    /name="group_ids" value="1" checked>/, 'in one group only: it is ticked');
+  assert.match(eventPage({ id: 1 }, { event: { date: '2026-10-03' } }),
+    /Not in any <a href="\/groups">group<\/a> yet: only you will see it\./);
 });
 
 test('eventPage: editing shows the saved values and color, and offers delete', () => {
@@ -44,7 +46,7 @@ test('eventPage: editing shows the saved values and color, and offers delete', (
   assert.match(page, /name="end_date" aria-label="End date" value="2026-10-05"/);
   assert.match(page, /name="end_time" aria-label="End time" value="14:00"/);
   assert.match(page, /value="4" aria-label="Color 5" checked>/);
-  assert.equal((page.match(/ checked>/g) || []).length, 4, 'its color, Public, and the hidden Repeat defaults');
+  assert.equal((page.match(/ checked>/g) || []).length, 3, 'its color and the hidden Repeat defaults');
   assert.match(page, /action="\/events\/7\/delete"/);
   // a form error sits right under the field it is about, not on a page of its own
   assert.match(page, /value="14:00">\s*<\/span>\s*<\/label>\s*<p class="err">Oops<\/p>/);

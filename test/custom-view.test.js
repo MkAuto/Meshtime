@@ -36,6 +36,10 @@ test('Custom view: shows me and the people I ticked, keeps them for next time, a
   for (const member of [ada, di]) {
     run('INSERT INTO group_members(group_id, user_id, joined_at) VALUES (?, ?, ?)', group, member, now());
   }
+  const games = run(`INSERT INTO member_groups(name, created_at) VALUES ('Games', ?)`, now()).lastInsertRowid;
+  for (const member of [ada, bob]) {
+    run('INSERT INTO group_members(group_id, user_id, joined_at) VALUES (?, ?, ?)', games, member, now());
+  }
   for (const member of [ada, bob, cy, di]) {
     free(member, '2026-10-14');
   }
@@ -44,7 +48,7 @@ test('Custom view: shows me and the people I ticked, keeps them for next time, a
   run(`INSERT INTO events(title, date, end_date, created_by, created_at) VALUES ('Di party', '2026-10-20', '2026-10-20', ?, ?)`,
     di, now());
 
-  // Cy is private and shares no group with Ada: not hers to pick, and a forged id for them or for herself is dropped
+  // Cy shares no group with Ada: not hers to pick, and a forged id for them or for herself is dropped
   const saved = await call(ada, 'POST', '/calendar/custom', `m=2026-10&u=${bob}&u=${cy}&u=${ada}`);
   assert.equal(saved.location, '/?m=2026-10&g=custom');
   assert.deepEqual(all('SELECT member_id FROM custom_view_members WHERE user_id = ?', ada).map(row => row.member_id),
