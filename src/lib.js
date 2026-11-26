@@ -524,13 +524,40 @@ export function toggleSlot(parts, slot) {
   return newSlots.sort((a, b) => DAY_PARTS.indexOf(a) - DAY_PARTS.indexOf(b));
 }
 
+/** A free_days row's part and part2 as one list: ['all'], ['am'], ['am', 'eve']... */
+export const freeParts = row => (row.part2 ? [row.part, row.part2] : [row.part]);
+
+/**
+ * The parts of a day as asked for by someone else (the API, src/api.js), in DAY_PARTS order and without repeats:
+ * ['all'] alone, or up to MAX_SLOTS_PER_DAY slots; [] clears the day. null when it is none of those.
+ */
+export function cleanParts(parts) {
+  if (!Array.isArray(parts) || !parts.every(part => DAY_PARTS.includes(part))) {
+    return null;
+  }
+  const unique = [...new Set(parts)].sort((a, b) => DAY_PARTS.indexOf(a) - DAY_PARTS.indexOf(b));
+  if (unique.includes('all')) {
+    return unique.length === 1 ? unique : null;
+  }
+  return unique.length <= MAX_SLOTS_PER_DAY ? unique : null;
+}
+
 /** How many of `who` are free during one slot of the day: all-day members count for every slot. */
 const freeDuring = (who, slot) =>
   who.filter(member => member.parts.includes('all') || member.parts.includes(slot)).length;
 
+/**
+ * The parts of a day all `members` of a view are free at the same time, as free_days parts: ['all'], the slots they
+ * share, or []. `who`: those free that day, [{ parts }]. Someone AM-only and someone PM-only never overlap.
+ */
+export function freeTogether(who, members) {
+  const slots = members > 0 ? SLOTS.filter(slot => freeDuring(who, slot) >= members) : [];
+  return slots.length === SLOTS.length ? ['all'] : slots;
+}
+
 export const DAY_STATES = {
-  // everyone free at the same time: green + check. Someone AM-only and someone PM-only never overlap.
-  all: ({ who, members }) => members > 0 && SLOTS.some(slot => freeDuring(who, slot) >= members),
+  // everyone free at the same time: green + check
+  all: ({ who, members }) => freeTogether(who, members).length > 0,
   mine: ({ mine }) => mine, // I am free: accent outline
 };
 export const dayClass = day => Object.keys(DAY_STATES).filter(state => DAY_STATES[state](day)).join(' ');

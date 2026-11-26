@@ -5,6 +5,7 @@ import { db, get, now } from './db.js';
 import { userFromSession, sessionOwner, createInvite } from './auth.js';
 import { logEvent } from './log.js';
 import { routes, pendingPolls } from './routes.js';
+import { isApiPath, handleApi } from './api.js';
 import { syncAll } from './sync.js';
 import { errorPage } from './views.js';
 import { BASE_URL, pickLanguage } from './lib.js';
@@ -57,8 +58,8 @@ const parseCookies = req => Object.fromEntries((req.headers.cookie || '')
   .map(pair => pair.trim().split('='))
   .filter(([name, value]) => name && value));
 
-/** Resolves to the form body as URLSearchParams. Rejects with status 413 past MAX_BODY. */
-function readBody(req) {
+/** Resolves to the request body as text. Rejects with status 413 past MAX_BODY. */
+function readText(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
@@ -71,9 +72,36 @@ function readBody(req) {
         chunks.push(chunk);
       }
     });
-    req.on('end', () => resolve(new URLSearchParams(Buffer.concat(chunks).toString())));
+    req.on('end', () => resolve(Buffer.concat(chunks).toString()));
     req.on('error', reject);
   });
+}
+
+/** Resolves to the form body as URLSearchParams. */
+const readBody = async req => new URLSearchParams(await readText(req));
+
+/**
+ * AI access (/mcp and /api/..., src/api.js): JSON in and out, a token instead of the session cookie, so none of the
+ * form and cookie handling below applies.
+ */
+async function answerApi(req, res, url, ip) {
+  let answer;
+  try {
+    const body = req.method === 'GET' || req.method === 'HEAD' ? '' : await readText(req);
+    answer = handleApi({ method: req.method, url, headers: req.headers, body, ip });
+  } catch (err) {
+    if (!err.status) {
+      console.error(`Request failed: ${req.method} ${url.pathname}`, { ip, userAgent: req.headers['user-agent'] }, err);
+    }
+    const error = err.status === 413 ? 'The body is too large.' : 'Something went wrong on the server.';
+    answer = { status: err.status || 500, headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error }) };
+  }
+  if (res.headersSent) {
+    return res.end();
+  }
+  res.writeHead(answer.status, answer.headers);
+  res.end(answer.body || undefined);
 }
 
 /** The ctx object every route handler in routes.js receives. */
@@ -138,6 +166,10 @@ async function handle(req, res) {
       const file = STATIC_FILES.get(url.pathname);
       res.writeHead(200, { 'Content-Type': file.type, 'Cache-Control': 'public, max-age=3600' });
       return res.end(req.method === 'HEAD' ? undefined : file.body);
+    }
+
+    if (isApiPath(url.pathname)) {
+      return await answerApi(req, res, url, ctx.ip);
     }
 
     if (method === 'POST') { // every mutation: SameSite=Lax cookie + same-origin check

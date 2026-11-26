@@ -243,6 +243,16 @@ CREATE TABLE IF NOT EXISTS manual_days(
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   date TEXT NOT NULL,
   PRIMARY KEY(user_id, date));
+
+-- AI access (Settings → AI access): a member's tokens for the API and /mcp (src/api.js), each acting as them.
+-- Only the sha256 is kept: the token is shown once, when it is made. label: what they called it.
+CREATE TABLE IF NOT EXISTS api_tokens(
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  last_used_at TEXT);
 `);
 
 // ---- migrations: also run on every start, so each one has to be safe to repeat ----

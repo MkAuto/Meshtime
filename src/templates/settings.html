@@ -197,6 +197,39 @@
   <form method="post" action="/settings/rotate-feed" data-confirm="{{t.settings.confirmRotate}}"><button class="danger">{{t.settings.rotate}}</button></form>
 </details>
 
+{{! AI access (src/api.js): tokens an assistant uses to read and set my free days, through /mcp or /api/...
+    A new token is shown once, on the page its form answers with: only its hash is kept. }}
+<details class="panel panel-ai" open data-remember="settings-ai">
+  <summary><h2>{{t.settings.aiAccess}} (ALPHA)</h2></summary>
+  <p class="hint">{{t.settings.aiHint}}{{#isAdmin}} {{t.settings.aiAdminHint}}{{/isAdmin}}</p>
+  {{#newToken}}
+  <div class="new-token">
+    <p><b>{{t.settings.aiNewToken}}</b></p>
+    <p><code>{{newToken}}</code></p>
+    <p>{{t.settings.aiConnectClaude}}</p>
+    <pre><code>{{claudeCommand}}</code></pre>
+    <p class="hint">{{aiConnectOther}}</p>
+  </div>
+  {{/newToken}}
+  {{#aiTokens.length}}
+  <ul class="calendar-list">
+    {{#aiTokens}}
+    <li>
+      <span><b>{{label}}</b> <span class="hint">{{used}}</span></span>
+      <form method="post" action="/settings/ai-tokens/{{id}}/delete" class="inline" data-confirm="{{t.settings.aiConfirmTurnOff}}">
+        <button class="danger">{{t.settings.aiTurnOff}}</button>
+      </form>
+    </li>
+    {{/aiTokens}}
+  </ul>
+  {{/aiTokens.length}}
+  <form method="post" action="/settings/ai-tokens" class="inline">
+    <label>{{t.settings.aiLabel}} <input name="label" required maxlength="40" placeholder="{{t.settings.aiLabelPlaceholder}}"></label>
+    <button>{{t.settings.aiCreate}}</button>
+  </form>
+  {{#errors.aiToken}}<p class="err">{{errors.aiToken}}</p>{{/errors.aiToken}}
+</details>
+
 {{! Only while an admin allows it (Administration → Options); /settings/invite refuses otherwise.
     data-copy-link: app.js copies the new link as it is created (it is listed below without JS). }}
 {{#memberInvites}}

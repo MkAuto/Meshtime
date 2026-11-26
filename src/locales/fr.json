@@ -393,7 +393,20 @@
     "invite": "Inviter quelqu'un",
     "inviteHint": "Un lien pour créer un compte : valide 7 jours, à usage unique. Envoyez-le seulement à la personne que vous voulez inviter.",
     "createInvite": "Créer un lien d'invitation",
-    "myLinks": "Mes liens actifs"
+    "myLinks": "Mes liens actifs",
+    "aiAccess": "Accès IA",
+    "aiHint": "Laissez un assistant IA (Claude, ChatGPT…) inscrire vos journées disponibles et vous dire quand vos amis sont disponibles : créez un jeton, donnez-le à l'assistant, désactivez-le ici quand vous voulez. Il voit ce que montre votre calendrier, et ne peut rien faire d'autre avec votre compte.",
+    "aiAdminHint": "Comme admin, vos jetons peuvent aussi inscrire les journées disponibles des autres membres.",
+    "aiLabel": "Nom",
+    "aiLabelPlaceholder": "p. ex. Claude sur mon portable",
+    "aiCreate": "Créer un jeton",
+    "aiNewToken": "Votre nouveau jeton. Copiez-le maintenant : il ne sera plus affiché.",
+    "aiConnectClaude": "Dans Claude Code, lancez :",
+    "aiConnectOther": "Autres assistants : ajoutez un serveur MCP à {{url}} avec l'en-tête « Authorization: Bearer » suivi du jeton.",
+    "aiLastUsed": "utilisé le {{when}}",
+    "aiNeverUsed": "jamais utilisé",
+    "aiTurnOff": "Désactiver",
+    "aiConfirmTurnOff": "Désactiver ce jeton? L'assistant qui s'en sert ne pourra plus atteindre vos journées disponibles."
   },
   "feeds": {
     "birthdays": "Anniversaires",
@@ -505,7 +518,8 @@
     "choice_added": "Choix ajouté.",
     "banner": "Bannière enregistrée.",
     "already_member": "Vous êtes déjà dans ce groupe.",
-    "link_off": "Lien désactivé."
+    "link_off": "Lien désactivé.",
+    "ai_token_removed": "Jeton désactivé."
   },
   "errors": {
     "generic": "Une erreur est survenue.",
@@ -585,7 +599,9 @@
     "badDateTime": "Date et heure invalides.",
     "bannerEndPast": "Cette fin est déjà passée : changez-la, ou effacez-la pour garder la bannière.",
     "bannerEndBeforeStart": "La fin doit venir après le début.",
-    "linkUntil": "Choisissez le dernier jour où le lien fonctionne, à partir d'aujourd'hui."
+    "linkUntil": "Choisissez le dernier jour où le lien fonctionne, à partir d'aujourd'hui.",
+    "tokenLabel": "Donnez un nom au jeton, pour savoir quel assistant s'en sert.",
+    "tooManyTokens": "Vous pouvez avoir au plus {{max}} jetons. Désactivez-en un d'abord."
   },
   "sync": {
     "unreachable": "Impossible de joindre ce lien.",

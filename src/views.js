@@ -844,17 +844,37 @@ const groupFeedCard = (lang, base, user, group) =>
 // `groups` are the ones I am in: each gets its events feed in the Calendar feeds panel.
 // `invites`: my own open invite links, listed under Invite someone while admins allow it (user.member_invites).
 // `calendarLinks`: my calendar_links rows, listed under Calendar Integration.
-export function settingsPage(user, { base, groups = [], invites = [], calendarLinks = [], msg, errors = {} }) {
+export function settingsPage(user, { base, groups = [], invites = [], apiTokens = [], newToken, calendarLinks = [], msg,
+  errors = {} }) {
   const { lang } = user;
   const birthdaysFeed = `${base}/feed/${user.feed_token}/birthdays.ics`;
   const allEventsFeed = `${base}/feed/${user.feed_token}/events.ics`;
   const weekdays = weekdayNames(0, lang); // by day number
+  /** An ISO timestamp as this member writes a day and a time. */
+  const when = iso => {
+    const local = wallClock(new Date(iso));
+    return `${formatDate(local.slice(0, 10), user.date_format, lang)} ${formatTime(local.slice(11), user.hour12)}`;
+  };
+  const mcpUrl = `${base}/mcp`;
 
   return page(t(lang, 'settings.title'), user, 'settings', {
     ...notices(msg, lang),
     errors,
     memberInvites: Boolean(user.member_invites),
     invites: invites.map(invite => ({ url: `${base}/invite/${invite.token}` })),
+    // AI access (src/api.js): my tokens, and the one just made, the only time it can be shown
+    isAdmin: Boolean(user.is_admin),
+    aiTokens: apiTokens.map(apiToken => ({
+      id: apiToken.id,
+      label: apiToken.label,
+      used: apiToken.last_used_at ? t(lang, 'settings.aiLastUsed', { when: when(apiToken.last_used_at) })
+        : t(lang, 'settings.aiNeverUsed'),
+    })),
+    newToken,
+    mcpUrl,
+    claudeCommand: newToken
+      && `claude mcp add --transport http meshtime ${mcpUrl} --header "Authorization: Bearer ${newToken}"`,
+    aiConnectOther: t(lang, 'settings.aiConnectOther', { url: mcpUrl }),
     // Calendar Integration rules (users.busy_minutes, busy_slots, ignore_words, sync_days; src/sync.js)
     busyChoices: options(BUSY_CHOICES.map(minutes => [minutes, t(lang, `settings.busyChoices.${minutes}`)]),
       user.busy_minutes ?? DEFAULT_BUSY_MINUTES),
@@ -876,14 +896,11 @@ export function settingsPage(user, { base, groups = [], invites = [], calendarLi
       };
     }),
     calendarLinks: calendarLinks.map(link => {
-      const synced = link.last_synced_at && wallClock(new Date(link.last_synced_at));
       return {
         id: link.id,
         // the label, or the link's host: the full secret address is not shown again
         name: link.label || new URL(link.url).host,
-        synced: synced && t(lang, 'settings.synced', {
-          when: `${formatDate(synced.slice(0, 10), user.date_format, lang)} ${formatTime(synced.slice(11), user.hour12)}`,
-        }),
+        synced: link.last_synced_at && t(lang, 'settings.synced', { when: when(link.last_synced_at) }),
         error: link.last_error && syncErrorText(lang, link.last_error),
         countFree: Boolean(link.count_free),
       };

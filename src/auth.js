@@ -67,6 +67,41 @@ export const sessionOwner = sessionId => get(`SELECT u.name FROM sessions s
 export const deleteSession = sessionId => run('DELETE FROM sessions WHERE id_hash = ?', sha256(sessionId));
 export const deleteUserSessions = userId => run('DELETE FROM sessions WHERE user_id = ?', userId);
 
+// ---- AI access tokens (Settings → AI access): like a session, only their sha256 is stored ----
+
+/** Every token starts with this, so a leaked one is recognisable as Meshtime's (secret scanners, logs). */
+export const API_TOKEN_PREFIX = 'mt_';
+
+/** A new token for `userId`; returns it, the only time it is ever readable. */
+export function createApiToken(userId, label) {
+  const apiToken = API_TOKEN_PREFIX + token();
+  run('INSERT INTO api_tokens(user_id, label, token_hash, created_at) VALUES (?,?,?,?)',
+    userId, label, sha256(apiToken), now());
+  return apiToken;
+}
+
+/** The member a token acts as (with is_admin), or undefined. Notes when it was last used. */
+export function userFromApiToken(apiToken) {
+  if (!apiToken?.startsWith(API_TOKEN_PREFIX)) {
+    return undefined;
+  }
+  const row = get(`SELECT u.*, t.id AS token_id FROM api_tokens t JOIN users u ON u.id = t.user_id
+                   WHERE t.token_hash = ?`, sha256(apiToken));
+  if (row) {
+    run('UPDATE api_tokens SET last_used_at = ? WHERE id = ?', now(), row.token_id);
+  }
+  return row;
+}
+
+export const apiTokens = userId => all(`SELECT id, label, created_at, last_used_at FROM api_tokens
+  WHERE user_id = ? ORDER BY id`, userId);
+
+/** Turns off one of `userId`'s tokens; false when it is not theirs (or already gone). */
+export const deleteApiToken = (userId, tokenId) =>
+  run('DELETE FROM api_tokens WHERE id = ? AND user_id = ?', tokenId, userId).changes === 1;
+
+export const deleteUserApiTokens = userId => run('DELETE FROM api_tokens WHERE user_id = ?', userId);
+
 // ---- invites: a link that creates an account, resets one user's password when userId is given, or brings
 // someone into a group when groupId is (a group link) ----
 

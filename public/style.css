@@ -290,6 +290,11 @@ table.log td:nth-child(2) { font-variant-numeric: tabular-nums; }
 .panel-admin    { --panel-edge: #9c3a2e; } /* brick */
 .panel-invites  { --panel-edge: #b8862b; } /* ochre */
 .panel-integration { --panel-edge: #3f7a6e; } /* sage */
+.panel-ai       { --panel-edge: #5e6a9e; } /* slate */
+/* AI access: the token just made, with how to connect it, in a card until the page is left */
+.new-token { padding: .8rem 1rem; margin-bottom: 1rem; background: var(--card); border-radius: 10px; box-shadow: var(--shadow); }
+.new-token pre { white-space: pre-wrap; margin: 0 0 .6rem; }
+.new-token pre code { display: block; padding: .5rem .7rem; }
 /* Calendar Integration (settings.html): my calendars, Rules, Add a calendar, one under the other on a phone, each a
    card like the Calendar feeds' (.feed-card). On a wider screen, once a calendar is connected (so there are Rules),
    two columns: my calendars with Add a calendar under them, and the Rules beside both. 1fr on the second row soaks
@@ -853,6 +858,7 @@ a { color: var(--accent); }
   .panel-admin    { --panel-edge: #e8927f; }
   .panel-invites  { --panel-edge: #e0b35a; }
   .panel-integration { --panel-edge: #8ccbbb; }
+  .panel-ai       { --panel-edge: #a7b2e3; }
   .panel-options  { --panel-edge: #b0c97e; }
   .panel-log      { --panel-edge: #b5a7d8; }
   .panel-banner   { --panel-edge: #9ab6d3; }
