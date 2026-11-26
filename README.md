@@ -69,6 +69,34 @@ Once a calendar is connected, **Rules** (one set per member, for all their calen
 - **Ignore events whose title contains**: comma-separated words, any case, matched anywhere in the title (`gym` also leaves out "Gymnastics"). Outlook links published as *Availability only* have no titles, so this does nothing for them.
 - **Always busy**: a weekday × morning / afternoon / evening grid, for work hours a work calendar does not show (it holds meetings, not "at work"). For a day off, click the day on the calendar: days set by hand win.
 
+## AI access
+
+Settings → **AI access** lets an AI assistant (Claude, ChatGPT…) set your free days for you, so a message like *"I'm free Dec 11, 16 and 20–23"* lands on the calendar, and tell you when your friends are free (*"when can the ski group get together in December?"*). Name a token, create it, and give it to the assistant: it is shown once (only its hash is stored). Each token acts as you and can do nothing else with your account; **Turn off** cuts it off at once. It sees other people's free days exactly as your calendar does: only people you share a group with, only free around private events of groups you are not in, and it cannot change them. A password reset turns off every token.
+
+Days set this way count as set by hand: Calendar Integration never overwrites them. An admin's tokens can also name another member, to set their days for them; nobody else's can.
+
+**MCP** (`/mcp`, Streamable HTTP, token in an `Authorization: Bearer` header) gives the assistant five tools:
+
+- `list_people`: who you see, and your groups with who is in each.
+- `who_is_free`: day by day, who is free and which parts, for everyone you see, one of your groups or the people you name, and `together`, the parts of the day all of them are free at once (the calendar's green days).
+- `list_free_days`, `set_free_days` (whole days, or one or two of morning / afternoon / evening) and `clear_free_days`: your own days, or, for admins, those of the member named in `member`.
+
+- Claude Code: Settings shows the command, `claude mcp add --transport http meshtime https://<your domain>/mcp --header "Authorization: Bearer mt_…"`.
+- Clients that only start local servers (Claude Desktop's config file): bridge with `npx mcp-remote https://<your domain>/mcp --header "Authorization: Bearer mt_…"`.
+- claude.ai and ChatGPT *connectors* need an OAuth login, which Meshtime does not offer yet.
+
+**Plain JSON**, for scripts or anything without MCP (same header):
+
+| Request | Does |
+|---|---|
+| `GET /api/me` | who the token acts as, today's date, the time zone |
+| `GET /api/free-days?from=2026-12-01&to=2026-12-31[&member=…]` | free days in a range (default: the next 60 days, at most a year) |
+| `PUT /api/free-days` `{"dates": ["2026-12-11"], "parts": ["all"], "member": "…"}` | sets those days to those parts (`["am", "eve"]`…); `"parts": []` clears them |
+| `GET /api/people` | who you see, and your groups |
+| `GET /api/who-is-free?from=…&to=…[&group=…\|&people=Ana&people=Bob]` | who is free day by day, and when together |
+
+Every change is in `meshtime.log`, with the token's owner and the days.
+
 ## Languages
 
 The language icon at the end of the menu (top right of the login page) lists every language in its own name. A pick is saved on your account, and in a cookie so the login page keeps it after you log out. Until you pick one, pages follow your browser's language, and English when it speaks none of ours. A new account starts in the language its invite page was shown in.
@@ -99,4 +127,5 @@ An admin opens **Administration** → Members → *create reset-password link* a
 - Every POST must come from the app's own origin (CSRF), bodies are capped at 16 KB, all SQL is parameterized, all output is HTML-escaped.
 - Strict `Content-Security-Policy`, `X-Content-Type-Options`, `Referrer-Policy`; HSTS is set by Caddy.
 - Login is rate-limited per client address (20 failures per 15 minutes) and per account (10), with a global backstop of 500. Apart from the login and invite pages, the feed links are the only unauthenticated routes.
+- AI access tokens (`mt_` + 256 random bits) are stored as sha256, act as one member, and reach only `/mcp` and `/api/` (free days: their own to change, others' read through the calendar's own visibility rules, `src/audience.js`). Those routes read no cookie, so another site cannot borrow a logged-in browser, and a request with another site's `Origin` is refused.
 - The container runs as the unprivileged `node` user.

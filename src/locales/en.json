@@ -393,7 +393,20 @@
     "invite": "Invite someone",
     "inviteHint": "A link to create an account: valid 7 days, single use. Send it only to who you mean to invite.",
     "createInvite": "Create invite link",
-    "myLinks": "My open links"
+    "myLinks": "My open links",
+    "aiAccess": "AI access",
+    "aiHint": "Let an AI assistant (Claude, ChatGPT…) set your free days and tell you when your friends are free: create a token, give it to the assistant, turn it off here whenever you like. It sees what your calendar shows, and can do nothing else with your account.",
+    "aiAdminHint": "As an admin, your tokens can also set other members' free days.",
+    "aiLabel": "Name",
+    "aiLabelPlaceholder": "e.g. Claude on my laptop",
+    "aiCreate": "Create a token",
+    "aiNewToken": "Your new token. Copy it now: it will not be shown again.",
+    "aiConnectClaude": "In Claude Code, run:",
+    "aiConnectOther": "Other assistants: add an MCP server at {{url}} with the header \"Authorization: Bearer\" followed by the token.",
+    "aiLastUsed": "last used {{when}}",
+    "aiNeverUsed": "never used",
+    "aiTurnOff": "Turn off",
+    "aiConfirmTurnOff": "Turn off this token? The assistant using it can no longer reach your free days."
   },
   "feeds": {
     "birthdays": "Birthdays",
@@ -505,7 +518,8 @@
     "choice_added": "Choice added.",
     "banner": "Banner saved.",
     "already_member": "You are already in this group.",
-    "link_off": "Link turned off."
+    "link_off": "Link turned off.",
+    "ai_token_removed": "Token turned off."
   },
   "errors": {
     "generic": "Something went wrong.",
@@ -585,7 +599,9 @@
     "badDateTime": "Invalid date and time.",
     "bannerEndPast": "This end has already passed: change it, or clear it to keep the banner up.",
     "bannerEndBeforeStart": "The end must come after the start.",
-    "linkUntil": "Pick the last day the link works, from today on."
+    "linkUntil": "Pick the last day the link works, from today on.",
+    "tokenLabel": "Give the token a name, to know which assistant uses it.",
+    "tooManyTokens": "You can have at most {{max}} tokens. Turn one off first."
   },
   "sync": {
     "unreachable": "Could not reach that link.",

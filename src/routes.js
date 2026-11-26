@@ -3,15 +3,20 @@ import * as auth from './auth.js';
 import * as views from './views.js';
 import { logEvent, tailLog, LOG_PATH, ERROR_LOG_PATH } from './log.js';
 import { createReadStream, existsSync } from 'node:fs';
-import { fetchCalendar, syncUser, freePartsAround } from './sync.js';
+import { fetchCalendar, syncUser } from './sync.js';
 import { t, syncErrorText } from './i18n.js';
+import { setFreeParts } from './free-days.js';
+import {
+  GROUPS_OFF, VISIBLE_TO_ME, BIRTHDAY_VISIBLE_TO_ME, EVENT_VISIBLE_TO_ME, EVENT_IN_GROUP, pollVisibleTo, WITH_CHANGES,
+  CUSTOM_VIEW, audienceFor, calendarDays,
+} from './audience.js';
 import { bannerOn, bannerState, getBanner, readBannerForm, saveBanner } from './banner.js';
 import {
   isValidDate, isValidMonth, monthInfo, isValidWeekStart, isValidDateFormat, isValidColor, eventError,
   bestChoices, buildIcs, birthdayIn, birthdayRrule, today, addDays, DEFAULT_SYNC_DAYS, randomColor, occurrences,
   eventRrule, parseRrule, formatRrule, sameRule, repeatRule, timeOn, firstTime, timesBefore, daysBetween, ANSWERS,
   MAX_CHOICES, MAX_ACTIVITY, MIN_PASSWORD, BASE_URL,
-  RP_ID, SLOTS, MAX_SLOTS_PER_DAY, toggleSlot, isValidBusyMinutes, isValidSyncDays, isValidLanguage, endOfDay,
+  RP_ID, SLOTS, MAX_SLOTS_PER_DAY, toggleSlot, freeParts, isValidBusyMinutes, isValidSyncDays, isValidLanguage, endOfDay,
 } from './lib.js';
 
 export const routes = [];
@@ -201,10 +206,11 @@ on('POST', '/invite/(?<token>[\\w-]+)', async ctx => {
     }
     if (isReset) {
       run('UPDATE users SET password_hash = ? WHERE id = ?', passwordHash, invite.user_id);
-      // A reset is a recovery: log out every device and drop every passkey, so nothing an intruder
-      // planted on the account keeps working. The member re-adds their passkeys in Profile.
+      // A reset is a recovery: log out every device, drop every passkey and AI access token, so nothing an
+      // intruder planted on the account keeps working. The member re-adds their passkeys in Profile.
       auth.deleteUserSessions(invite.user_id);
       auth.deleteUserCredentials(invite.user_id);
+      auth.deleteUserApiTokens(invite.user_id);
       return invite.user_id;
     }
     // The language this page was in becomes theirs, so their calendar feeds speak it from the start.
@@ -249,53 +255,11 @@ on('POST', '/invite/(?<token>[\\w-]+)/join', ctx => {
 
 // ---- calendar ----
 
-// While an admin has groups turned off (Administration → Options) everyone and everything is seen as public.
-// The private flags and group shares are left as they are, so turning groups back on brings them back.
-const GROUPS_OFF = '(SELECT groups_enabled FROM app_settings) = 0';
-
-// Whose free days and name a viewer may see: their own, and those of anyone sharing a group with them. A public
-// event or poll (only made while groups are off) goes with its creator the same way. For a users table aliased `u`. `viewer` is an SQL
-// expression: '?' to pass a user id (twice), or a column, to ask it for every user at once (a poll's audience).
-const sharesGroupWith = viewer => `EXISTS (
-  SELECT 1 FROM group_members theirs JOIN group_members mine ON mine.group_id = theirs.group_id
-  WHERE theirs.user_id = u.id AND mine.user_id = ${viewer})`;
-const visibleTo = viewer => `(${GROUPS_OFF} OR u.id = ${viewer} OR ${sharesGroupWith(viewer)})`;
-// Takes my user id twice.
-const VISIBLE_TO_ME = visibleTo('?');
-// Whose birthday I see: my own and those of anyone sharing a group with me.
-// Takes my user id twice.
-const BIRTHDAY_VISIBLE_TO_ME = `(${GROUPS_OFF} OR u.id = ? OR ${sharesGroupWith('?')})`;
-// The one-group view: only that group's members. Takes the group id.
-const IN_GROUP = 'EXISTS (SELECT 1 FROM group_members m WHERE m.group_id = ? AND m.user_id = u.id)';
-// The Custom view: me and the people I ticked in its list (custom_view_members). Takes my user id twice. Only ever
-// ANDed with one of the *_VISIBLE_TO_ME above, so someone I ticked and can no longer see drops out of it.
-const IN_MY_CUSTOM_VIEW = `(u.id = ? OR EXISTS (
-  SELECT 1 FROM custom_view_members c WHERE c.user_id = ? AND c.member_id = u.id))`;
-
-// Events, for events `e` joined to their creator `u`. A public event (is_private = 0) is seen by everyone
-// who sees its creator; a private one only by its creator and the members of the groups it is shared with.
-// Takes my user id four times.
-const EVENT_VISIBLE_TO_ME = `(${GROUPS_OFF} OR e.created_by = ? OR (e.is_private = 0 AND ${VISIBLE_TO_ME}) OR EXISTS (
-  SELECT 1 FROM event_groups shared JOIN group_members mine ON mine.group_id = shared.group_id
-  WHERE shared.event_id = e.id AND mine.user_id = ?))`;
-// One group's events (its view on the calendar, and its feed): its members' public events, and the private
-// ones shared with it. Takes the group id twice.
-const EVENT_IN_GROUP = `(${IN_GROUP} AND (e.is_private = 0 OR EXISTS (
-  SELECT 1 FROM event_groups shared WHERE shared.event_id = e.id AND shared.group_id = ?)))`;
-
-// Polls, for polls `p` joined to their creator `u`: the same rule as events, with poll_groups.
-// `viewer` as in visibleTo: '?' takes the user id four times.
-const pollVisibleTo = viewer => `(${GROUPS_OFF} OR p.created_by = ${viewer} OR (p.is_private = 0 AND ${visibleTo(viewer)}) OR EXISTS (
-  SELECT 1 FROM poll_groups shared JOIN group_members mine ON mine.group_id = shared.group_id
-  WHERE shared.poll_id = p.id AND mine.user_id = ${viewer}))`;
-
 /** The groups I am in, by name: the calendar's group selector and the groups page. */
 const myGroups = userId => all(`SELECT g.* FROM member_groups g
                                 JOIN group_members m ON m.group_id = g.id
                                 WHERE m.user_id = ? ORDER BY g.name COLLATE NOCASE, g.id`, userId);
 
-/** The calendar's Custom view, in place of a group: g=custom picks it, and its id carries it in links and forms. */
-const CUSTOM_VIEW = { id: 'custom', custom: true };
 
 /**
  * The group the calendar shows on its own (?g= on a page, a posted g from its forms), CUSTOM_VIEW, or null for
@@ -327,9 +291,6 @@ function calendarGroup(ctx) {
               WHERE g.id = ? AND m.user_id = ?`, groupId, ctx.user.id) ?? null;
 }
 
-/** A free_days row's part and part2 as one list: ['all'], ['am'], ['am', 'eve']... */
-const freeParts = row => (row.part2 ? [row.part, row.part2] : [row.part]);
-
 /** Draws one month of the calendar. `error` goes under the month title (a rejected /free). */
 function showCalendar(ctx, yearMonth, { status = 200, error, msg } = {}) {
   // Every day of the weeks the month touches, so the continuous calendar can fill its first and last weeks
@@ -340,65 +301,20 @@ function showCalendar(ctx, yearMonth, { status = 200, error, msg } = {}) {
   // EVENT_VISIBLE_TO_ME).
   const group = calendarGroup(ctx);
   const me = ctx.user.id;
-  let audience;
-  if (group === CUSTOM_VIEW) {
-    audience = {
-      sql: `(${VISIBLE_TO_ME} AND ${IN_MY_CUSTOM_VIEW})`, params: [me, me, me, me],
-      eventSql: `(${EVENT_VISIBLE_TO_ME} AND ${IN_MY_CUSTOM_VIEW})`, eventParams: [me, me, me, me, me, me],
-      birthdaySql: `(${BIRTHDAY_VISIBLE_TO_ME} AND ${IN_MY_CUSTOM_VIEW})`, birthdayParams: [me, me, me, me],
-    };
-  } else if (group) {
-    audience = { sql: IN_GROUP, params: [group.id], eventSql: EVENT_IN_GROUP, eventParams: [group.id, group.id],
-      birthdaySql: IN_GROUP, birthdayParams: [group.id] };
-  } else {
-    audience = { sql: VISIBLE_TO_ME, params: [me, me], eventSql: EVENT_VISIBLE_TO_ME, eventParams: [me, me, me, me],
-      birthdaySql: BIRTHDAY_VISIBLE_TO_ME, birthdayParams: [me, me] };
-  }
-
-  // Every event shown that touches those weeks, including ones that started before or end after them, and each
-  // time a repeating one comes back in them (occurrences). All-day ones first.
-  const events = occurrences(all(`SELECT e.*, u.name AS creator, ${WITH_CHANGES} FROM events e
-                                  JOIN users u ON u.id = e.created_by
-                                  WHERE e.date <= ? AND (e.end_date >= ? OR e.rrule IS NOT NULL)
-                                    AND ${audience.eventSql}`,
-                                  gridEnd, gridStart, ...audience.eventParams), gridStart, gridEnd);
-
-  // A private event this view does not show (another group's) takes up its groups' members: here they are
-  // only free around it, by their Calendar Integration rules. My own days stay as I set them, for the day menu.
-  const shownEventIds = new Set(events.map(event => event.id));
-  const hiddenEvents = new Map(); // user id -> the hidden events they are in
-  for (const row of occurrences(all(`SELECT DISTINCT e.id, e.title, e.date, e.end_date, e.start_time, e.end_time,
-                                       e.rrule, ${WITH_CHANGES}, m.user_id
-                                     FROM events e JOIN event_groups shared ON shared.event_id = e.id
-                                     JOIN group_members m ON m.group_id = shared.group_id
-                                     WHERE e.is_private = 1 AND e.date <= ?
-                                       AND (e.end_date >= ? OR e.rrule IS NOT NULL) AND m.user_id != ?`,
-                                     gridEnd, gridStart, me), gridStart, gridEnd)) {
-    if (!shownEventIds.has(row.id)) {
-      hiddenEvents.set(row.user_id, [...hiddenEvents.get(row.user_id) ?? [], row]);
-    }
-  }
+  const audience = audienceFor(me, group);
+  const { events, freeDays } = calendarDays(me, audience, gridStart, gridEnd);
 
   // date -> everyone shown who is free that day, for the initials in each cell,
   // and date -> which parts of it I am free (['all'], or one or two of 'am' | 'pm' | 'eve')
   const free = new Map();
   const mine = new Map();
-  for (const row of all(`SELECT f.date, f.part, f.part2, f.user_id, u.name, u.color, u.busy_minutes, u.ignore_words
-                         FROM free_days f JOIN users u ON u.id = f.user_id
-                         WHERE f.date BETWEEN ? AND ? AND ${audience.sql} ORDER BY u.name`,
-                         gridStart, gridEnd, ...audience.params)) {
-    const busyWith = (hiddenEvents.get(row.user_id) ?? [])
-      .filter(event => event.date <= row.date && row.date <= event.end_date);
-    const parts = busyWith.length ? freePartsAround(freeParts(row), row.date, busyWith, row) : freeParts(row);
-    if (parts.length === 0) {
-      continue;
-    }
+  for (const row of freeDays) {
     if (!free.has(row.date)) {
       free.set(row.date, []);
     }
-    free.get(row.date).push({ name: row.name, color: row.color, parts, isMe: row.user_id === ctx.user.id });
-    if (row.user_id === ctx.user.id) {
-      mine.set(row.date, parts);
+    free.get(row.date).push({ name: row.name, color: row.color, parts: row.parts, isMe: row.user_id === me });
+    if (row.user_id === me) {
+      mine.set(row.date, row.parts);
     }
   }
   // With a calendar connected: the days I set by hand, so the day menu shows which ones are Automatic
@@ -468,8 +384,8 @@ on('POST', '/calendar/custom', ctx => {
   ctx.redirect(`/?m=${postedMonth(ctx)}&g=${CUSTOM_VIEW.id}`);
 });
 
-// Two ways in. A plain click on a day sends no `part` and toggles it: try the delete first, insert
-// "all day" only if there was nothing to delete. The long-press / double-click menu sends `part`:
+// Two ways in. A plain click on a day sends no `part` and toggles it: a free day is cleared, any other
+// becomes free all day. The long-press / double-click menu sends `part`:
 // 'all' sets the whole day, 'none' clears it, and 'am', 'pm' or 'eve' toggles that slot (see toggleSlot),
 // so opening the menu again is how a second slot gets added to the same day. 'auto' (only offered with a
 // calendar connected) hands the day back to Calendar Integration.
@@ -488,35 +404,25 @@ on('POST', '/free', async ctx => {
     return ctx.redirect(backToMonth(ctx));
   }
 
-  const clearDay = () => run('DELETE FROM free_days WHERE user_id = ? AND date = ?', ctx.user.id, date).changes;
-  const setDay = (first, second = null) => run(`INSERT INTO free_days(user_id, date, part, part2) VALUES (?,?,?,?)
-    ON CONFLICT DO UPDATE SET part = excluded.part, part2 = excluded.part2`, ctx.user.id, date, first, second);
-
+  const current = get('SELECT part, part2 FROM free_days WHERE user_id = ? AND date = ?', ctx.user.id, date);
+  let parts;
   if (part === null) {
-    if (clearDay() === 0) {
-      setDay('all');
-    }
+    parts = current ? [] : ['all'];
   } else if (part === 'none') {
-    clearDay();
+    parts = [];
   } else if (part === 'all') {
-    setDay('all');
+    parts = ['all'];
   } else if (SLOTS.includes(part)) {
-    const current = get('SELECT part, part2 FROM free_days WHERE user_id = ? AND date = ?', ctx.user.id, date);
-    const parts = toggleSlot(current ? freeParts(current) : [], part);
+    parts = toggleSlot(current ? freeParts(current) : [], part);
     if (parts === null) {
       const error = t(ctx.lang, 'errors.tooManySlots', { max: MAX_SLOTS_PER_DAY });
       return showCalendar(ctx, postedMonth(ctx), { status: 400, error });
-    }
-    if (parts.length === 0) {
-      clearDay();
-    } else {
-      setDay(...parts);
     }
   } else {
     return showCalendar(ctx, postedMonth(ctx), { status: 400, error: t(ctx.lang, 'errors.invalidPart') });
   }
   // set by hand: the calendar sync (src/sync.js) leaves this day alone from now on
-  run('INSERT OR IGNORE INTO manual_days(user_id, date) VALUES (?, ?)', ctx.user.id, date);
+  setFreeParts(ctx.user.id, date, parts);
   ctx.redirect(backToMonth(ctx));
 });
 
@@ -633,11 +539,6 @@ function readEventForm(ctx, creatorGroups, currentSharing, { repeat = true, back
   }
   return { event, series, rule, errors };
 }
-
-// The times of a repeating event changed or skipped on their own (event_changes), as one JSON object for each
-// events row aliased `e`: { [on_date]: changes }, what occurrences and timeOn read.
-const WITH_CHANGES = `(SELECT json_group_object(on_date, json(changes)) FROM event_changes WHERE event_id = e.id)
-                      AS changes`;
 
 /** The event with this id, if the member may change it: their own, or any event if they are an admin. */
 const editableEvent = ctx => {
@@ -1550,10 +1451,12 @@ onGroups('POST', '/groups/(?<id>\\d+)/delete', ctx => {
 // ---- settings ----
 
 /** The settings page; after a rejected form, `errors` shows under its fields and opens its panel. */
-const showSettings = (ctx, { status = 200, errors = {} } = {}) => ctx.html(views.settingsPage(ctx.user, {
+const showSettings = (ctx, { status = 200, errors = {}, newToken } = {}) => ctx.html(views.settingsPage(ctx.user, {
   base: BASE_URL,
   groups: myGroups(ctx.user.id),
   invites: auth.openInvites(ctx.user.id),
+  apiTokens: auth.apiTokens(ctx.user.id),
+  newToken,
   calendarLinks: all(`SELECT id, url, label, count_free, last_synced_at, last_error FROM calendar_links
                       WHERE user_id = ? ORDER BY id`, ctx.user.id),
   msg: ctx.url.searchParams.get('msg'),
@@ -1566,6 +1469,34 @@ on('POST', '/settings/rotate-feed', ctx => {
   run('UPDATE users SET feed_token = ? WHERE id = ?', auth.token(), ctx.user.id);
   logUser(ctx, 'feed links rotated');
   ctx.redirect('/settings?msg=rotated');
+});
+
+// AI access (src/api.js): a token is shown on the page this answers with, and never again (only its hash is kept),
+// so the page is not cached.
+const MAX_API_TOKENS = 10;
+
+on('POST', '/settings/ai-tokens', ctx => {
+  const label = cleanText(ctx.body.get('label'), 40);
+  let error;
+  if (!label) {
+    error = t(ctx.lang, 'errors.tokenLabel');
+  } else if (auth.apiTokens(ctx.user.id).length >= MAX_API_TOKENS) {
+    error = t(ctx.lang, 'errors.tooManyTokens', { max: MAX_API_TOKENS });
+  }
+  if (error) {
+    return showSettings(ctx, { status: 400, errors: { aiToken: error } });
+  }
+  const newToken = auth.createApiToken(ctx.user.id, label);
+  logUser(ctx, `AI access token created ${JSON.stringify(label)}`);
+  ctx.res?.setHeader('Cache-Control', 'no-store');
+  showSettings(ctx, { newToken });
+});
+
+on('POST', '/settings/ai-tokens/(?<id>\\d+)/delete', ctx => {
+  if (auth.deleteApiToken(ctx.user.id, Number(ctx.params.id))) {
+    logUser(ctx, 'AI access token turned off');
+  }
+  ctx.redirect('/settings?msg=ai_token_removed');
 });
 
 // A new-account link from any member, while an admin allows it (Administration → Options). The page hides the
