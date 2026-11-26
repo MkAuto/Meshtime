@@ -51,11 +51,13 @@ test('verifyWebAuthn accepts a genuine assertion and rejects every tampered one'
   assert.equal(verifyWebAuthn({ ...assertion(), publicKey: Buffer.alloc(0) }), false, 'unparseable key');
   assert.equal(verifyWebAuthn({ ...assertion(), clientDataJSON: Buffer.from('not json') }), false, 'junk client data');
 
-  // A signature over a different authenticator data must not carry over to this one.
-  const other = assertion();
-  assert.equal(verifyWebAuthn({ ...assertion(), signature: sign('sha256', Buffer.from('x'), privateKey) }), false,
-    'signature over other data');
-  assert.equal(verifyWebAuthn(other), true, 'still valid untouched');
+  // A genuine signature by the right key, over other authenticator data, must not carry over to this one.
+  const signedOver = (authenticatorData, clientDataJSON) => sign('sha256', Buffer.concat(
+    [authenticatorData, createHash('sha256').update(clientDataJSON).digest()]), privateKey);
+  rejected({ ...assertion(), signature: signedOver(authData(RP_ID, 0x05), clientData()) },
+    'signature over other authenticator data');
+  rejected({ ...assertion(), signature: signedOver(authData(), clientData({ challenge: 'some-other-challenge' })) },
+    'signature over other client data');
 
   // Registration has no signature to check (attestation "none"), but the other checks still apply.
   const registration = { ...assertion(), signature: undefined, type: 'webauthn.create',

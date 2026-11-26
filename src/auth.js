@@ -1,7 +1,9 @@
 import { scrypt, randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { get, run, all, now } from './db.js';
-import { verifyWebAuthn, COSE_ALGS } from './lib.js';
+import { verifyWebAuthn, COSE_ALGS, NO_EXPIRY } from './lib.js';
+
+export { NO_EXPIRY };
 
 const scryptAsync = promisify(scrypt);
 const DAY_MS = 86400000;
@@ -65,33 +67,59 @@ export const sessionOwner = sessionId => get(`SELECT u.name FROM sessions s
 export const deleteSession = sessionId => run('DELETE FROM sessions WHERE id_hash = ?', sha256(sessionId));
 export const deleteUserSessions = userId => run('DELETE FROM sessions WHERE user_id = ?', userId);
 
-// ---- invites: a link that creates an account, or resets one user's password when userId is given ----
+// ---- invites: a link that creates an account, resets one user's password when userId is given, or brings
+// someone into a group when groupId is (a group link) ----
 
-export function createInvite({ createdBy = null, isAdmin = 0, userId = null } = {}) {
+/**
+ * A new link, valid 7 days unless `expiresAt` (an ISO timestamp) says otherwise. `multiUse`: a group link anyone
+ * can follow until then, instead of once.
+ */
+export function createInvite({ createdBy = null, isAdmin = 0, userId = null, groupId = null, multiUse = 0,
+  expiresAt = isoIn(7 * DAY_MS) } = {}) {
   const inviteToken = token();
-  run('INSERT INTO invites(token, created_by, is_admin, user_id, expires_at) VALUES (?,?,?,?,?)',
-    inviteToken, createdBy, isAdmin, userId, isoIn(7 * DAY_MS));
+  run(`INSERT INTO invites(token, created_by, is_admin, user_id, group_id, multi_use, expires_at)
+       VALUES (?,?,?,?,?,?,?)`, inviteToken, createdBy, isAdmin, userId, groupId, multiUse ? 1 : 0, expiresAt);
   return inviteToken;
 }
 
-/** The invite row plus the target user's name, only while it is unused and unexpired. */
+/**
+ * The invite row plus the target user's name, only while it is unused and unexpired. A group link also has its
+ * group's name, and `can_create`: whether it may still make an account (its creator is an admin, or new-account
+ * links are allowed for members right now).
+ */
 export const getInvite = inviteToken => get(`
-  SELECT i.*, u.name AS user_name FROM invites i
+  SELECT i.*, u.name AS user_name, g.name AS group_name,
+    (c.is_admin = 1 OR (SELECT member_invites FROM app_settings) = 1) AS can_create FROM invites i
   LEFT JOIN users u ON u.id = i.user_id
+  LEFT JOIN users c ON c.id = i.created_by
+  LEFT JOIN member_groups g ON g.id = i.group_id
   WHERE i.token = ? AND i.used_at IS NULL AND i.expires_at > ?`, inviteToken, now());
 
-/** Marks an invite used. Returns false if it was already used, so two racing requests cannot both win. */
+/**
+ * Marks an invite used. Returns false if it was already used (or has expired), so two racing requests cannot both
+ * win. A link anyone can follow (multi_use) is only checked, never used up.
+ */
 export const consumeInvite = inviteToken =>
-  run('UPDATE invites SET used_at = ? WHERE token = ? AND used_at IS NULL AND expires_at > ?',
-    now(), inviteToken, now()).changes === 1;
+  run(`UPDATE invites SET used_at = CASE WHEN multi_use = 1 THEN NULL ELSE ? END
+       WHERE token = ? AND used_at IS NULL AND expires_at > ?`, now(), inviteToken, now()).changes === 1;
 
-/** Unused, unexpired links: everyone's (Administration), or only those `createdBy` made (their Settings). */
+/**
+ * Unused, unexpired account and reset links: everyone's (Administration), or only those `createdBy` made (their
+ * Settings). Group links are listed on Groups instead (groupLinks).
+ */
 export const openInvites = (createdBy = null) => all(`
   SELECT i.token, i.is_admin, i.created_by, u.name AS user_name, c.name AS creator FROM invites i
   LEFT JOIN users u ON u.id = i.user_id
   LEFT JOIN users c ON c.id = i.created_by
-  WHERE i.used_at IS NULL AND i.expires_at > ? AND (? IS NULL OR i.created_by = ?)
+  WHERE i.group_id IS NULL AND i.used_at IS NULL AND i.expires_at > ? AND (? IS NULL OR i.created_by = ?)
   ORDER BY i.expires_at`, now(), createdBy, createdBy);
+
+/** A group's links still open, with who made each: only those `createdBy` made, or every one for null. */
+export const groupLinks = (groupId, createdBy = null) => all(`
+  SELECT i.token, i.multi_use, i.expires_at, i.created_by, c.name AS creator FROM invites i
+  LEFT JOIN users c ON c.id = i.created_by
+  WHERE i.group_id = ? AND (? IS NULL OR i.created_by = ?) AND i.used_at IS NULL AND i.expires_at > ?
+  ORDER BY i.expires_at`, groupId, createdBy, createdBy, now());
 
 // ---- passkeys ----
 // The crypto lives in lib.js (verifyWebAuthn); this is only the database around it.

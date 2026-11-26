@@ -37,7 +37,11 @@
     "createButton": "Create account",
     "resetButton": "Set password",
     "yourName": "Your name",
-    "password": "Password (min {{min}} characters)"
+    "password": "Password (min {{min}} characters)",
+    "groupHeading": "Join the group {{group}}",
+    "haveAccount": "Already have an account? <a href=\"{{url}}\">Log in to join</a>.",
+    "logInToJoin": "<a href=\"{{url}}\">Log in</a> to join it.",
+    "joinButton": "Join {{group}}"
   },
   "error": {
     "title": "Error {{status}}"
@@ -175,9 +179,7 @@
   },
   "shareWith": {
     "legend": "Who sees it",
-    "public": "Public: everyone who sees your free time (all your groups)",
-    "private": "Private: only the groups you pick",
-    "noGroups": "Not in any <a href=\"/groups\">group</a> yet: there is nobody to share it with privately."
+    "noGroups": "Not in any <a href=\"/groups\">group</a> yet: only you will see it."
   },
   "polls": {
     "title": "Polls",
@@ -210,16 +212,23 @@
     "activities": "Proposed activities (max {{max}})",
     "openChoices": "Let everyone add choices",
     "openChoicesHint": "Everyone it is for can propose more while it is open. Off: only you can.",
-    "planFrom": "Pick dates for {{activity}}, the winner of “{{title}}”."
+    "planFrom": "Pick dates for {{activity}}, the winner of “{{title}}”.",
+    "needsGroup": "Polls are shared with your groups, and you are not in any yet: <a href=\"/groups\">join or create a group</a> first."
   },
   "poll": {
     "closed": "Poll closed.",
     "everyoneAnswered": "Everyone has answered.",
     "waitingFor": "Waiting for: {{names}}",
+    "waitingForOthers": "Waiting for: {{names}} and {{others}}",
     "whoSees": "Who sees it: {{label}}",
     "private": "Private: only the groups it is shared with",
     "public": "Public",
     "you": "{{name}} (you)",
+    "others": {
+      "one": "1 other",
+      "other": "{{count}} others"
+    },
+    "hiddenRow": "{{others}} you share no group with: {{answered}} answered everything",
     "answers": {
       "yes": "yes",
       "maybe": "maybe",
@@ -259,7 +268,7 @@
   },
   "groups": {
     "title": "Groups",
-    "intro": "Members of a group see each other's free time and events on the calendar, even with a private account.",
+    "intro": "Members of a group see each other's free time and events on the calendar: you only see the people you share a group with.",
     "invitesForYou": "Invites for you",
     "from": "from {{name}}",
     "accept": "Accept",
@@ -279,7 +288,6 @@
     "pickSomeone": "Pick someone…",
     "sendInvite": "Send invite",
     "addDirectly": "Add directly",
-    "typeName": "Type a name…",
     "feed": "Calendar feed",
     "feedHint": "This group's events only. For how to subscribe go to <a href=\"/settings#subscribe-help\">Settings</a>",
     "manage": "Manage",
@@ -292,7 +300,21 @@
     "none": "You are not in any group yet. Create one, or ask someone to invite you.",
     "newGroup": "New group",
     "create": "Create",
-    "invitedTo": "Invite sent to {{name}}."
+    "invitedTo": "Invite sent to {{name}}.",
+    "linkHint": "Not in the list? Send them a link: following it, they join the group.",
+    "createLink": "Create link",
+    "links": "Invite links",
+    "linkOnce": "Single use · until {{date}}",
+    "linkUntil": "Anyone · until {{date}}",
+    "linkAlways": "Anyone · until turned off",
+    "linkKind": "Who the link is for",
+    "linkKinds": {
+      "once": "Single use, 7 days",
+      "until": "Anyone, until a date",
+      "always": "Anyone, until turned off"
+    },
+    "linkUntilDate": "Last day",
+    "turnOff": "Turn off"
   },
   "settings": {
     "title": "Settings",
@@ -385,10 +407,6 @@
     "color": "My color",
     "preview": "Preview",
     "colorLabel": "Color",
-    "account": "Account",
-    "private": "Private",
-    "public": "Public",
-    "privateHint": "In private mode, only group members can see your free time slots and events.",
     "security": "Security",
     "changePassword": "Change password",
     "currentPassword": "Current password",
@@ -485,7 +503,9 @@
     "event_deleted": "Event deleted.",
     "answers_saved": "Answers saved.",
     "choice_added": "Choice added.",
-    "banner": "Banner saved."
+    "banner": "Banner saved.",
+    "already_member": "You are already in this group.",
+    "link_off": "Link turned off."
   },
   "errors": {
     "generic": "Something went wrong.",
@@ -507,10 +527,9 @@
     "invalidDate": "Invalid date.",
     "tooManySlots": "You can be free at most {{max}} times in a day. Take one off first.",
     "invalidPart": "Invalid part of the day.",
-    "pickVisibility": "Pick public or private.",
-    "privateNeedsGroup": {
-      "event": "A private event needs at least one group to share it with.",
-      "poll": "A private poll needs at least one group to share it with."
+    "needsGroup": {
+      "event": "Pick at least one group to share this event with.",
+      "poll": "Pick at least one group to share this poll with."
     },
     "titleRequired": "A title is required.",
     "pickStartTime": "Pick a start time, or tick All day.",
@@ -528,8 +547,6 @@
     "notInGroup": "You are not in this group.",
     "groupForbidden": "Only its creator or an admin can change this group.",
     "pickInvitee": "Pick someone to invite.",
-    "typeInvitee": "Type the name of who to invite.",
-    "noSuchMember": "No member called {{name}}.",
     "alreadyInGroup": "{{name}} is already in this group.",
     "groupNameRequired": "A group needs a name.",
     "adminsOnlyAdd": "Only admins can add members directly.",
@@ -545,7 +562,6 @@
     "weekStart": "Invalid first day of the week.",
     "dateFormat": "Invalid date format.",
     "birthdayFuture": "Your birthday cannot be in the future.",
-    "pickPrivacy": "Pick private or public.",
     "adminsOnly": "Admins only.",
     "memberGone": "That member no longer exists.",
     "removeSelf": "You cannot remove yourself.",
@@ -568,7 +584,8 @@
     "cannotPlan": "Dates can no longer be planned from that poll.",
     "badDateTime": "Invalid date and time.",
     "bannerEndPast": "This end has already passed: change it, or clear it to keep the banner up.",
-    "bannerEndBeforeStart": "The end must come after the start."
+    "bannerEndBeforeStart": "The end must come after the start.",
+    "linkUntil": "Pick the last day the link works, from today on."
   },
   "sync": {
     "unreachable": "Could not reach that link.",

@@ -64,7 +64,7 @@ test('every key the templates and the code use is in en.json', () => {
     ...['one', 'following', 'all'].map(scope => ['views.js', `event.scope.${scope}`]),
     ...BUSY_CHOICES.map(minutes => ['views.js', `settings.busyChoices.${minutes}`]),
     ...SYNC_DAYS_CHOICES.map(days => ['views.js', `settings.syncDaysChoices.${days}`]),
-    ...['event', 'poll'].map(kind => ['routes.js', `errors.privateNeedsGroup.${kind}`]),
+    ...['event', 'poll'].map(kind => ['routes.js', `errors.needsGroup.${kind}`]),
   );
   assert.ok(used.length > 300, 'the scan finds the keys');
   for (const [file, key] of used) {

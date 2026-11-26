@@ -27,7 +27,7 @@ async function call(userId, method, path, body) {
   return out;
 }
 
-test('groups off shows everything without touching the private flags; a form without the field changes nothing',
+test('groups off shows everything but keeps who it was shared with; back on, what was made meanwhile goes to groups',
   async () => {
     const addUser = (name, isAdmin) => run(`INSERT INTO users(name, password_hash, feed_token, is_admin, created_at)
                                             VALUES (?, 'x', ?, ?, ?)`, name, 'tok-' + name, isAdmin, now()).lastInsertRowid;
@@ -55,8 +55,17 @@ test('groups off shows everything without touching the private flags; a form wit
     await call(bob, 'POST', `/events/${event}`, 'title=Secret plan&date=2026-10-15&all_day=1');
     assert.deepEqual(sharing(), [1, 1]);
 
+    // made while groups are off: public, shared with no group
+    const meanwhile = run(`INSERT INTO events(title, date, end_date, created_by, created_at, is_private)
+                           VALUES ('Open plan', '2026-10-16', '2026-10-16', ?, ?, 0)`, bob, now()).lastInsertRowid;
+    assert.equal((await call(ada, 'GET', '/?m=2026-10&g=')).html.includes('Open plan'), true);
+
     await call(ada, 'POST', '/admin/options', 'groups_enabled=0&groups_enabled=1');
     assert.equal(groupsOn(), 1);
     assert.equal(await adaSees(), false);
     assert.deepEqual(sharing(), [1, 1]);
+    assert.equal(get('SELECT is_private FROM events WHERE id = ?', meanwhile).is_private, 1, 'nothing public');
+    assert.equal(get('SELECT group_id FROM event_groups WHERE event_id = ?', meanwhile).group_id, Number(group),
+      "shared with Bob's group");
+    assert.equal((await call(ada, 'GET', '/?m=2026-10&g=')).html.includes('Open plan'), false);
   });

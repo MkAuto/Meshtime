@@ -8,7 +8,7 @@ import {
   wallClock, BUSY_CHOICES, DEFAULT_BUSY_MINUTES, SLOTS, DATE_FORMATS, WEEK_START_CHOICES, ANSWERS, COLORS, MAX_CHOICES,
   SYNC_DAYS_CHOICES, DEFAULT_SYNC_DAYS, MIN_PASSWORD, LANGUAGES, DEFAULT_LANGUAGE, isValidLanguage, randomColor,
   DEFAULT_WEEK_START, REPEAT_PRESETS, FREQS, WEEKDAY_CODES, parseRrule, repeatForm, weekdayInMonth, formatMonthDayLong,
-  isValidDate, MAX_ACTIVITY, BANNER_TONES, MAX_BANNER,
+  isValidDate, MAX_ACTIVITY, BANNER_TONES, MAX_BANNER, NO_EXPIRY,
 } from './lib.js';
 import { t, dictionary, hasText, syncErrorText } from './i18n.js';
 
@@ -52,7 +52,7 @@ const initials = name => name.trim().split(/\s+/).map(word => word[0]).join('').
 const notices = (msg, lang) => ({ notice: msg && hasText(`notices.${msg}`) ? t(lang, `notices.${msg}`) : undefined });
 
 /**
- * Is the groups feature on (Administration → Options)? Off, pages show no groups and no public / private choice.
+ * Is the groups feature on (Administration → Options)? Off, pages show no groups and no Who sees it.
  * A user without the field (a test's hand-made one) counts as on, the default.
  */
 const groupsEnabled = user => user?.groups_enabled !== 0;
@@ -110,23 +110,42 @@ export const errorPage = (status, message, user, visitor = user ?? {}) =>
 
 // ---- auth pages ----
 
-export const loginPage = (lang, error, banner = null) =>
-  page(t(lang, 'login.title'), null, 'login', { error, banner }, { lang, path: '/login' });
+// `next`: where a successful login goes (routes.js afterLogin): kept in the form when it is not home.
+export const loginPage = (lang, error, banner = null, next = '/') =>
+  page(t(lang, 'login.title'), null, 'login', { error, banner, next: next === '/' ? null : next },
+    { lang, path: '/login' });
 
-// One page for both invite kinds: resetName is set only for a password-reset link.
+// One page for every invite kind: resetName is set only for a password-reset link, groupName only for a group
+// link, which also offers to log in instead, and only shows the account form while it may make one (canCreate).
 // After a rejected form, `errors` ({ name, password }) shows under each field and `name` is kept.
-export function invitePage(lang, token, resetName, { errors = {}, name = '' } = {}) {
+export function invitePage(lang, token, resetName, { errors = {}, name = '', groupName = null, canCreate = true } = {}) {
+  let heading = t(lang, 'invite.createHeading');
+  if (resetName) {
+    heading = t(lang, 'invite.resetHeading', { name: resetName });
+  } else if (groupName) {
+    heading = t(lang, 'invite.groupHeading', { group: groupName });
+  }
+  const loginUrl = `/login?next=/invite/${token}`;
   return page(t(lang, resetName ? 'invite.resetTitle' : 'invite.joinTitle'), null, 'invite', {
     token,
     errors,
     name,
     isReset: Boolean(resetName),
-    heading: resetName ? t(lang, 'invite.resetHeading', { name: resetName }) : t(lang, 'invite.createHeading'),
+    showForm: canCreate,
+    logIn: groupName && t(lang, canCreate ? 'invite.haveAccount' : 'invite.logInToJoin', { url: loginUrl }),
+    heading,
     button: t(lang, resetName ? 'invite.resetButton' : 'invite.createButton'),
     minPassword: MIN_PASSWORD,
     passwordLabel: t(lang, 'invite.password', { min: MIN_PASSWORD }),
   }, { lang, path: `/invite/${token}` });
 }
+
+/** A group link opened while logged in: one button to join (POST /invite/<token>/join). */
+export const joinGroupPage = (user, token, groupName) => page(t(user.lang, 'invite.joinTitle'), user, 'join-group', {
+  token,
+  heading: t(user.lang, 'invite.groupHeading', { group: groupName }),
+  button: t(user.lang, 'invite.joinButton', { group: groupName }),
+});
 
 // ---- calendar ----
 
@@ -400,7 +419,30 @@ export function calendarPage(user, yearMonth, {
 
 // ---- groups ----
 
-// `groups` are mine, each with members / invited / invitable / canManage (see showGroups in routes.js);
+/**
+ * One of a group's links still open, as its card lists it (only those I may see: seesLink in routes.js, so I may
+ * turn each off): who may follow it until when (its last day, in TIME_ZONE), and who made it when not me.
+ */
+function groupLink(user, group, link) {
+  const { lang } = user;
+  const lastDay = wallClock(new Date(Date.parse(link.expires_at) - 1)).slice(0, 10);
+  const date = formatDate(lastDay, user.date_format, lang);
+  let rule = t(lang, 'groups.linkOnce', { date });
+  if (link.expires_at === NO_EXPIRY) {
+    rule = t(lang, 'groups.linkAlways');
+  } else if (link.multi_use) {
+    rule = t(lang, 'groups.linkUntil', { date });
+  }
+  return {
+    groupId: group.id,
+    token: link.token,
+    url: link.url,
+    rule,
+    by: link.created_by !== user.id && t(lang, 'common.by', { name: link.creator ?? t(lang, 'groups.removedMember') }),
+  };
+}
+
+// `groups` are mine, each with members / invited / invitable / canManage / links (see showGroups in routes.js);
 // `invites` are the ones waiting for my answer. errors[groupId] shows in that group, errors.create in New group.
 // `base` is BASE_URL, for each group's private calendar feed link. `invitedName`: who an invite just went to.
 export function groupsPage(user, { groups, invites, base, msg, invitedName, errors = {} }) {
@@ -414,6 +456,7 @@ export function groupsPage(user, { groups, invites, base, msg, invitedName, erro
     })),
     createError: errors.create,
     newGroupColor: randomColor(),
+    today: today(), // the first day a group link can last until
     isAdmin: Boolean(user.is_admin),
     groups: groups.map(group => ({
       id: group.id,
@@ -447,6 +490,7 @@ export function groupsPage(user, { groups, invites, base, msg, invitedName, erro
         calendarUrl: `/?m=${group.headlineEvent.date.slice(0, 7)}&g=${group.id}`,
       },
       invitable: group.invitable,
+      links: (group.links ?? []).map(link => groupLink(user, group, link)),
     })),
   });
 }
@@ -454,16 +498,16 @@ export function groupsPage(user, { groups, invites, base, msg, invitedName, erro
 // ---- events ----
 
 /**
- * The "Who sees it" values of an event or poll form (templates/share-with.html): public or private, and
- * `groups` (its creator's) each ticked when its id is in `groupIds`.
+ * The "Who sees it" values of an event or poll form (templates/share-with.html): `groups` (its creator's) each
+ * ticked when its id is in `groupIds`. A creator in one group only has it ticked from the start (readSharing
+ * picks it too when none is posted).
  */
-const sharingValues = (isPrivate, groupIds = [], groups = []) => ({
-  isPrivate: Boolean(isPrivate),
+const sharingValues = (groupIds = [], groups = []) => ({
   groupChoices: groups.map(group => ({
     id: group.id,
     name: group.name,
     color: group.color,
-    checked: groupIds.includes(group.id),
+    checked: groupIds.includes(group.id) || (groups.length === 1 && groupIds.length === 0),
   })),
 });
 
@@ -549,7 +593,7 @@ export function eventPage(user, { event, errors = {}, groups = [] }) {
       colorChoice('', t(lang, 'event.defaultColor')),
       ...Array.from({ length: COLORS }, (_, i) => colorChoice(i, t(lang, 'event.colorN', { n: i + 1 }))),
     ],
-    ...sharingValues(event.is_private, event.groupIds, groups),
+    ...sharingValues(event.groupIds, groups),
     month: (event.date || today()).slice(0, 7),
   });
 }
@@ -624,7 +668,8 @@ export function newPollPage(user, {
     activitiesLegend: t(lang, 'newPoll.activities', { max: MAX_CHOICES }),
     from,
     fromHint: from && t(lang, 'newPoll.planFrom', { activity: from.activity, title: from.title }),
-    ...sharingValues(sharing.isPrivate, sharing.groupIds, groups),
+    ...sharingValues(sharing.groupIds, groups),
+    needsGroup: groupsEnabled(user) && groups.length === 0,
   });
 }
 
@@ -633,7 +678,8 @@ export function newPollPage(user, {
 // (it can be made private): `event` for a date poll, `datePoll` ({ id, title }) for an activity poll; then only
 // the winner shows. `creatorGroups` and `groupIds` fill Who sees it.
 export function pollPage(user, {
-  poll, choices, members, votes, missing, complete, best, event, datePoll, groupIds = [], creatorGroups = [],
+  poll, choices, members, votes, missing, hidden = { count: 0, answered: 0, missing: 0 }, complete, best, event,
+  datePoll, groupIds = [], creatorGroups = [],
   errors = {}, suggested = {}, msg,
 }) {
   const { lang } = user;
@@ -657,9 +703,19 @@ export function pollPage(user, {
   const sortedMembers = members.toSorted((a, b) =>
     (b.id === user.id) - (a.id === user.id) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 
+  // Who it is for that I share no group with: a count, never a name (loadPoll in routes.js).
+  const others = count => t(lang, count === 1 ? 'poll.others.one' : 'poll.others.other', { count });
   let status = t(lang, 'poll.closed');
   if (isOpen) {
-    status = complete ? t(lang, 'poll.everyoneAnswered') : t(lang, 'poll.waitingFor', { names: missing.join(', ') });
+    if (complete) {
+      status = t(lang, 'poll.everyoneAnswered');
+    } else if (!hidden.missing) {
+      status = t(lang, 'poll.waitingFor', { names: missing.join(', ') });
+    } else if (!missing.length) {
+      status = t(lang, 'poll.waitingFor', { names: others(hidden.missing) });
+    } else {
+      status = t(lang, 'poll.waitingForOthers', { names: missing.join(', '), others: others(hidden.missing) });
+    }
     if (poll.deadline) {
       status += ' ' + t(lang, 'poll.until', { date: formatted(poll.deadline) });
     }
@@ -718,7 +774,7 @@ export function pollPage(user, {
         label: t(lang, 'poll.planDates', { activity: choice }) })),
   };
 
-  const sharing = canManage && groupsEnabled(user) && sharingValues(poll.is_private, groupIds, creatorGroups);
+  const sharing = canManage && groupsEnabled(user) && sharingValues(groupIds, creatorGroups);
   return page(poll.title, user, 'poll', {
     ...notices(msg, lang),
     errors,
@@ -746,6 +802,8 @@ export function pollPage(user, {
       classes: [isDate ? '' : 'activity', isBest(choice) ? 'best' : ''].join(' ').trim(),
     })),
     rows,
+    hiddenRow: hidden.count > 0 && t(lang, 'poll.hiddenRow', { others: others(hidden.count), answered: hidden.answered }),
+    span: choices.length + 1,
     totals: choices.map(choice => ({
       classes: isBest(choice) ? 'best' : '',
       yes: countAnswer(choice, 'yes'),
@@ -861,7 +919,6 @@ export function profilePage(user, { passkeys, msg, errors = {}, about = user }) 
     birthday: about.birthday ?? '',
     today: today(),
     color: about.color,
-    isPrivate: Boolean(about.is_private ?? user.is_private),
     maxColor: COLORS - 1,
     initials: initials(about.name || user.name),
     minPassword: MIN_PASSWORD,

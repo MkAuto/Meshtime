@@ -26,15 +26,19 @@ async function call(userId, method, path, body) {
   return out;
 }
 
-const addUser = (name, isPrivate) => run(`INSERT INTO users(name, password_hash, feed_token, is_private, created_at)
-                                          VALUES (?, 'x', ?, ?, ?)`, name, 'tok-' + name, isPrivate, now()).lastInsertRowid;
+const addUser = name => run(`INSERT INTO users(name, password_hash, feed_token, created_at) VALUES (?, 'x', ?, ?)`,
+  name, 'tok-' + name, now()).lastInsertRowid;
 const free = (userId, date) => run(`INSERT INTO free_days(user_id, date) VALUES (?, ?)`, userId, date);
 
 test('Custom view: shows me and the people I ticked, keeps them for next time, and can be the default', async () => {
-  const ada = addUser('Ada', 1), bob = addUser('Bob', 0), cy = addUser('Cy', 1), di = addUser('Di', 1);
+  const [ada, bob, cy, di] = ['Ada', 'Bob', 'Cy', 'Di'].map(name => addUser(name));
   const group = run(`INSERT INTO member_groups(name, created_at) VALUES ('Climbers', ?)`, now()).lastInsertRowid;
   for (const member of [ada, di]) {
     run('INSERT INTO group_members(group_id, user_id, joined_at) VALUES (?, ?, ?)', group, member, now());
+  }
+  const games = run(`INSERT INTO member_groups(name, created_at) VALUES ('Games', ?)`, now()).lastInsertRowid;
+  for (const member of [ada, bob]) {
+    run('INSERT INTO group_members(group_id, user_id, joined_at) VALUES (?, ?, ?)', games, member, now());
   }
   for (const member of [ada, bob, cy, di]) {
     free(member, '2026-10-14');
@@ -44,7 +48,7 @@ test('Custom view: shows me and the people I ticked, keeps them for next time, a
   run(`INSERT INTO events(title, date, end_date, created_by, created_at) VALUES ('Di party', '2026-10-20', '2026-10-20', ?, ?)`,
     di, now());
 
-  // Cy is private and shares no group with Ada: not hers to pick, and a forged id for them or for herself is dropped
+  // Cy shares no group with Ada: not hers to pick, and a forged id for them or for herself is dropped
   const saved = await call(ada, 'POST', '/calendar/custom', `m=2026-10&u=${bob}&u=${cy}&u=${ada}`);
   assert.equal(saved.location, '/?m=2026-10&g=custom');
   assert.deepEqual(all('SELECT member_id FROM custom_view_members WHERE user_id = ?', ada).map(row => row.member_id),

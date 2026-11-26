@@ -92,6 +92,16 @@ const wallClockFormat = new Intl.DateTimeFormat('sv-SE', {
 /** A Date as "YYYY-MM-DD HH:MM" in TIME_ZONE. */
 export const wallClock = date => wallClockFormat.format(date);
 
+/** Never: the expires_at of a group link that lasts until it is turned off. */
+export const NO_EXPIRY = '9999-12-31T23:59:59.999Z';
+
+/** The first moment after `isoDate` ends in TIME_ZONE, as an ISO timestamp: a link valid "until" that day. */
+export function endOfDay(isoDate) {
+  const guess = new Date(addDays(isoDate, 1) + 'T00:00:00Z');
+  const onTheWall = new Date(wallClock(guess).replace(' ', 'T') + ':00Z'); // that instant's wall clock, read as UTC
+  return new Date(2 * guess.getTime() - onTheWall.getTime()).toISOString();
+}
+
 export function addDays(isoDate, days) {
   const date = new Date(isoDate + 'T00:00:00Z');
   date.setUTCDate(date.getUTCDate() + days);

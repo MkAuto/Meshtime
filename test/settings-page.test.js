@@ -24,7 +24,6 @@ test('settingsPage: one feed card per group I am in, with Add to calendar, and t
   assert.match(page, /<span class="feed-badge " aria-hidden="true">🎉<\/span>/);
   assert.doesNotMatch(page, /<input class="feed-link"/, 'the address itself is not shown');
   assert.ok(page.indexOf('birthdays.ics') < page.indexOf('groups/7.ics'), 'birthdays first');
-  assert.doesNotMatch(page, /events\.ics/, 'no all-events feed any more');
   assert.match(settingsPage(user, { base: 'https://x.test' }), /each <a href="\/groups">group<\/a> you are in/);
 });
 

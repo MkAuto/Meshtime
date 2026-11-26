@@ -67,7 +67,7 @@ test('bestChoices: every date tied on yes and no is proposed, earliest first', (
 
 test('eventError: every rule', () => {
   const d = `${thisYear}-10-03`, next = `${thisYear}-10-05`;
-  const ok = when => assert.equal(eventError({ date: d, ...when }), null, JSON.stringify(when));
+  const ok = (when, why = JSON.stringify(when)) => assert.equal(eventError({ date: d, ...when }), null, why);
   const bad = when => assert.notEqual(eventError({ date: d, ...when }), null, JSON.stringify(when));
   ok({});
   ok({ endDate: d, startTime: '19:00' });

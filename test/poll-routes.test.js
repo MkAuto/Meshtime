@@ -13,8 +13,8 @@ const { routes, pendingPolls } = await import('../src/routes.js');
 const { pollsPage, pollPage } = await import('../src/views.js');
 const { addDays, today } = await import('../src/lib.js');
 
-const addUser = (name, isAdmin = 0) => run(`INSERT INTO users(name, password_hash, feed_token, created_at, is_private,
-  is_admin) VALUES (?, 'x', ?, ?, 0, ?)`, name, 'tok-' + name, now(), isAdmin).lastInsertRowid;
+const addUser = (name, isAdmin = 0) => run(`INSERT INTO users(name, password_hash, feed_token, created_at, is_admin)
+  VALUES (?, 'x', ?, ?, ?)`, name, 'tok-' + name, now(), isAdmin).lastInsertRowid;
 
 /** Runs one route the way server.js would, as member `userId`; returns what it answered. */
 async function request(method, path, userId, body = []) {
@@ -32,9 +32,20 @@ async function request(method, path, userId, body = []) {
 }
 
 const [ada, bob, cy] = ['Ada', 'Bob', 'Cy'].map(name => addUser(name));
+/** A group of `userIds` (the first one made it); returns its id. */
+function addGroup(name, ...userIds) {
+  const groupId = run('INSERT INTO member_groups(name, created_by, created_at) VALUES (?,?,?)', name, userIds[0], now())
+    .lastInsertRowid;
+  for (const userId of userIds) {
+    run('INSERT INTO group_members(group_id, user_id, joined_at) VALUES (?,?,?)', groupId, userId, now());
+  }
+  return groupId;
+}
+// While groups are on a poll goes to groups: these three share one, so Ada's polls (shared with it) reach the others.
+const friends = addGroup('Friends', ada, bob, cy);
 const day = offset => addDays(today(), offset);
 const newPoll = (userId, deadline) => request('POST', '/polls/new', userId,
-  [['title', 'Climb'], ['dates', day(10)], ['dates', day(11)], ['deadline', deadline], ['visibility', 'public']]);
+  [['title', 'Climb'], ['dates', day(10)], ['dates', day(11)], ['deadline', deadline], ['group_ids', String(friends)]]);
 
 test('a deadline from today on, or none; a poll past it closes and stops taking answers', async () => {
   const refused = await newPoll(ada, day(-1));
@@ -63,6 +74,8 @@ test('only its creator or an admin moves or removes the deadline, of an open pol
   assert.equal((await request('POST', `/polls/${poll}/deadline`, ada, [['deadline', day(9)]])).status, 303);
   assert.equal(get('SELECT deadline FROM polls WHERE id = ?', poll).deadline, day(9));
   const admin = addUser('Root', 1);
+  // an admin manages the polls they can see: those shared with a group they are in
+  run('INSERT INTO group_members(group_id, user_id, joined_at) VALUES (?,?,?)', friends, admin, now());
   await request('POST', `/polls/${poll}/deadline`, admin, [['deadline', '']]);
   assert.equal(get('SELECT deadline FROM polls WHERE id = ?', poll).deadline, null, 'removed');
 
@@ -85,7 +98,8 @@ test('pendingPolls: open polls I can see with a date I have not answered', async
   run('UPDATE polls SET deadline = NULL, closed_at = ? WHERE id = ?', now(), poll);
   assert.equal(pendingPolls(ada), 0, 'closed');
 
-  run('UPDATE polls SET closed_at = NULL, is_private = 1 WHERE id = ?', poll); // shared with no group of Bob's
+  run('UPDATE polls SET closed_at = NULL WHERE id = ?', poll);
+  run('DELETE FROM poll_groups WHERE poll_id = ?', poll); // shared with no group of Bob's
   assert.equal(pendingPolls(bob), 0, 'one I cannot see');
 });
 
@@ -110,7 +124,7 @@ test('the nav counts them, the list marks them, the poll says until when', () =>
 
 const newActivityPoll = (userId, fields = []) => request('POST', '/polls/new', userId, [['title', 'Saturday?'],
   ['kind', 'activity'], ['activities', 'Bowling'], ['activities', ' bowling '], ['activities', 'Climb'],
-  ['dates', 'ignored'], ['visibility', 'public'], ...fields]);
+  ['dates', 'ignored'], ['group_ids', String(friends)], ...fields]);
 const idOf = answer => Number(answer.location.split('/').pop());
 
 test('an activity poll: its activities once each, whatever their case; answered like dates', async () => {
@@ -121,7 +135,7 @@ test('an activity poll: its activities once each, whatever their case; answered 
   await request('POST', `/polls/${poll}`, bob, [['v_Bowling', 'yes'], ['v_Climb', 'no']]);
   assert.equal(get('SELECT COUNT(*) AS n FROM poll_votes WHERE poll_id = ? AND user_id = ?', poll, bob).n, 2);
   assert.equal((await request('POST', '/polls/new', ada, [['title', 'x'], ['kind', 'activity'],
-    ['visibility', 'public']])).status, 400, 'at least one activity');
+    ['group_ids', String(friends)]])).status, 400, 'at least one activity');
 });
 
 test('adding a choice: its creator or an admin, everyone once the poll lets them; not twice, not once closed', async () => {
@@ -137,7 +151,7 @@ test('adding a choice: its creator or an admin, everyone once the poll lets them
   assert.equal((await request('POST', `/polls/${poll}/choices`, bob, [['choice', ' ']])).status, 400);
 
   const dates = idOf(await request('POST', '/polls/new', ada, [['title', 'When'], ['dates', day(3)],
-    ['open_choices', '1'], ['visibility', 'public']]));
+    ['open_choices', '1'], ['group_ids', String(friends)]]));
   assert.equal((await request('POST', `/polls/${dates}/choices`, bob, [['choice', 'soon']])).status, 400);
   await request('POST', `/polls/${dates}/choices`, bob, [['choice', day(4)]]);
   assert.equal(get('SELECT COUNT(*) AS n FROM poll_choices WHERE poll_id = ?', dates).n, 2);
@@ -149,7 +163,7 @@ test('an activity poll\'s winner gets a date poll: once, after everyone answered
   run('DELETE FROM polls');
   const poll = idOf(await newActivityPoll(ada));
   const plan = (userId, activity) => request('POST', '/polls/new', userId, [['from', String(poll)],
-    ['activity', activity], ['title', activity], ['kind', 'activity'], ['dates', day(8)], ['visibility', 'public']]);
+    ['activity', activity], ['title', activity], ['kind', 'activity'], ['dates', day(8)], ['group_ids', String(friends)]]);
   assert.equal((await plan(ada, 'Bowling')).status, 409, 'not everyone answered yet');
   for (const { id: member } of all('SELECT id FROM users')) { // Root, the admin above, too
     await request('POST', `/polls/${poll}`, member, [['v_Bowling', 'yes'], ['v_Climb', 'maybe']]);

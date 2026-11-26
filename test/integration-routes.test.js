@@ -103,7 +103,7 @@ test('Automatic: the day is no longer set by hand and keeps what it shows until 
 
 test('Birthdays feed: my own and my groups\' members\' only, everyone\'s while groups are off', async () => {
   const [cy, dee, eve] = ['Cy', 'Dee', 'Eve'].map(addUser);
-  run(`UPDATE users SET birthday = '1990-05-17', is_private = 0 WHERE id IN (?, ?, ?)`, cy, dee, eve);
+  run(`UPDATE users SET birthday = '1990-05-17' WHERE id IN (?, ?, ?)`, cy, dee, eve);
   const group = run(`INSERT INTO member_groups(name, created_at) VALUES ('Friends', ?)`, now()).lastInsertRowid;
   for (const member of [cy, dee]) {
     run('INSERT INTO group_members(group_id, user_id, joined_at) VALUES (?, ?, ?)', group, member, now());
@@ -117,7 +117,7 @@ test('Birthdays feed: my own and my groups\' members\' only, everyone\'s while g
   };
 
   assert.match(await feed('tok-Cy'), /Dee's birthday/, 'in my group');
-  assert.doesNotMatch(await feed('tok-Cy'), /Eve's birthday/, 'public but in none of my groups');
+  assert.doesNotMatch(await feed('tok-Cy'), /Eve's birthday/, 'in none of my groups');
   assert.match(await feed('tok-Eve'), /Eve's birthday/, 'my own, with no group');
   assert.doesNotMatch(await feed('tok-Eve'), /Cy's birthday/);
 

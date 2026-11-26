@@ -23,7 +23,6 @@ test('pollPage: Who sees it shows to everyone, the form only to its creator or a
   const creator = pollPage({ id: 1, name: 'A' }, data);
   assert.match(creator, /Who sees it: Private: only the groups it is shared with/);
   assert.match(creator, /action="\/polls\/1\/visibility"/);
-  assert.match(creator, /value="private" id="visibility-private" checked>/);
   assert.match(creator, /name="group_ids" value="5">/);
   assert.match(creator, /name="group_ids" value="6" checked>/);
 
@@ -31,6 +30,22 @@ test('pollPage: Who sees it shows to everyone, the form only to its creator or a
   assert.match(member, /Who sees it: Private/);
   assert.doesNotMatch(member, /\/visibility"|group_ids|Manage/, 'no form, no group names for a plain member');
   assert.match(pollPage({ id: 3, name: 'C', is_admin: 1 }, data), /action="\/polls\/1\/visibility"/, 'admins too');
+});
+
+test('pollPage: members I share no group with are a count, in the table and in who it is waiting for', () => {
+  const data = {
+    poll: { id: 1, title: 't', created_by: 1 }, choices: ['2026-09-29'], members: [{ id: 1, name: 'Ana' }],
+    votes: [{ choice: '2026-09-29', user_id: null, answer: 'yes' }], missing: ['Ana'],
+    hidden: { count: 3, answered: 1, missing: 2 }, complete: false, best: [], event: null,
+  };
+  const page = pollPage({ id: 1, name: 'Ana' }, data);
+  assert.match(page, /<tr class="unseen"><td colspan="2">3 others you share no group with: 1 answered everything<\/td><\/tr>/);
+  assert.match(page, /Waiting for: Ana and 2 others/);
+  assert.match(page, /<span class="yes">1<\/span>/, 'their answers still count');
+  assert.match(pollPage({ id: 1, name: 'Ana' }, { ...data, missing: [], hidden: { count: 1, answered: 0, missing: 1 } }),
+    /Waiting for: 1 other</);
+  assert.doesNotMatch(pollPage({ id: 1, name: 'Ana' }, { ...data, hidden: undefined }), /class="unseen"|others/,
+    'everyone seen: no count');
 });
 
 test('pollPage: a confirmed poll whose event I may not see shows only its date', () => {

@@ -37,7 +37,11 @@
     "createButton": "Créer le compte",
     "resetButton": "Définir le mot de passe",
     "yourName": "Votre nom",
-    "password": "Mot de passe ({{min}} caractères minimum)"
+    "password": "Mot de passe ({{min}} caractères minimum)",
+    "groupHeading": "Rejoindre le groupe {{group}}",
+    "haveAccount": "Déjà un compte? <a href=\"{{url}}\">Connectez-vous pour le rejoindre</a>.",
+    "logInToJoin": "<a href=\"{{url}}\">Connectez-vous</a> pour le rejoindre.",
+    "joinButton": "Rejoindre {{group}}"
   },
   "error": {
     "title": "Erreur {{status}}"
@@ -175,9 +179,7 @@
   },
   "shareWith": {
     "legend": "Qui le voit",
-    "public": "Public : tous ceux qui voient vos disponibilités (tous vos groupes)",
-    "private": "Privé : seulement les groupes choisis",
-    "noGroups": "Vous n'êtes dans aucun <a href=\"/groups\">groupe</a> pour l'instant : personne avec qui le partager en privé."
+    "noGroups": "Dans aucun <a href=\"/groups\">groupe</a> pour l'instant : vous seul le verrez."
   },
   "polls": {
     "title": "Sondages",
@@ -210,16 +212,23 @@
     "activities": "Activités proposées ({{max}} maximum)",
     "openChoices": "Permettre à tous d'ajouter des choix",
     "openChoicesHint": "Tous ceux à qui il s'adresse peuvent en proposer d'autres tant qu'il est ouvert. Désactivé : vous seul le pouvez.",
-    "planFrom": "Choisissez des dates pour {{activity}}, le choix gagnant de « {{title}} »."
+    "planFrom": "Choisissez des dates pour {{activity}}, le choix gagnant de « {{title}} ».",
+    "needsGroup": "Les sondages sont partagés avec vos groupes, et vous n'êtes dans aucun pour l'instant : <a href=\"/groups\">rejoignez ou créez un groupe</a> d'abord."
   },
   "poll": {
     "closed": "Sondage fermé.",
     "everyoneAnswered": "Tout le monde a répondu.",
     "waitingFor": "En attente de : {{names}}",
+    "waitingForOthers": "En attente de : {{names}} et {{others}}",
     "whoSees": "Qui le voit : {{label}}",
     "private": "Privé : seulement les groupes avec qui il est partagé",
     "public": "Public",
     "you": "{{name}} (vous)",
+    "others": {
+      "one": "1 autre",
+      "other": "{{count}} autres"
+    },
+    "hiddenRow": "{{others}} avec qui vous ne partagez aucun groupe : {{answered}} ont tout répondu",
     "answers": {
       "yes": "oui",
       "maybe": "peut-être",
@@ -259,7 +268,7 @@
   },
   "groups": {
     "title": "Groupes",
-    "intro": "Les membres d'un groupe voient les disponibilités et les événements des uns et des autres sur le calendrier, même avec un compte privé.",
+    "intro": "Les membres d'un groupe voient les disponibilités et les événements des uns et des autres sur le calendrier : vous ne voyez que les gens avec qui vous partagez un groupe.",
     "invitesForYou": "Invitations pour vous",
     "from": "de la part de {{name}}",
     "accept": "Accepter",
@@ -279,7 +288,6 @@
     "pickSomeone": "Choisissez quelqu'un…",
     "sendInvite": "Envoyer l'invitation",
     "addDirectly": "Ajouter directement",
-    "typeName": "Tapez un nom…",
     "feed": "Flux de calendrier",
     "feedHint": "Les événements de ce groupe seulement. Pour savoir comment vous abonner, allez dans les <a href=\"/settings#subscribe-help\">Paramètres</a>",
     "manage": "Gérer",
@@ -292,7 +300,21 @@
     "none": "Vous n'êtes dans aucun groupe pour l'instant. Créez-en un, ou demandez à quelqu'un de vous inviter.",
     "newGroup": "Nouveau groupe",
     "create": "Créer",
-    "invitedTo": "Invitation envoyée à {{name}}."
+    "invitedTo": "Invitation envoyée à {{name}}.",
+    "linkHint": "Pas dans la liste? Envoyez-lui un lien : en le suivant, la personne rejoint le groupe.",
+    "createLink": "Créer un lien",
+    "links": "Liens d'invitation",
+    "linkOnce": "Une fois · jusqu'au {{date}}",
+    "linkUntil": "Tout le monde · jusqu'au {{date}}",
+    "linkAlways": "Tout le monde · jusqu'à désactivation",
+    "linkKind": "Pour qui est le lien",
+    "linkKinds": {
+      "once": "Une fois, 7 jours",
+      "until": "Tout le monde, jusqu'à une date",
+      "always": "Tout le monde, jusqu'à désactivation"
+    },
+    "linkUntilDate": "Dernier jour",
+    "turnOff": "Désactiver"
   },
   "settings": {
     "title": "Paramètres",
@@ -385,10 +407,6 @@
     "color": "Ma couleur",
     "preview": "Aperçu",
     "colorLabel": "Couleur",
-    "account": "Compte",
-    "private": "Privé",
-    "public": "Public",
-    "privateHint": "En mode privé, seuls les membres de vos groupes voient vos disponibilités et vos événements.",
     "security": "Sécurité",
     "changePassword": "Changer le mot de passe",
     "currentPassword": "Mot de passe actuel",
@@ -485,7 +503,9 @@
     "event_deleted": "Événement supprimé.",
     "answers_saved": "Réponses enregistrées.",
     "choice_added": "Choix ajouté.",
-    "banner": "Bannière enregistrée."
+    "banner": "Bannière enregistrée.",
+    "already_member": "Vous êtes déjà dans ce groupe.",
+    "link_off": "Lien désactivé."
   },
   "errors": {
     "generic": "Une erreur est survenue.",
@@ -507,10 +527,9 @@
     "invalidDate": "Date invalide.",
     "tooManySlots": "Vous pouvez être disponible au plus {{max}} fois dans une journée. Retirez-en une d'abord.",
     "invalidPart": "Partie de la journée invalide.",
-    "pickVisibility": "Choisissez public ou privé.",
-    "privateNeedsGroup": {
-      "event": "Un événement privé doit être partagé avec au moins un groupe.",
-      "poll": "Un sondage privé doit être partagé avec au moins un groupe."
+    "needsGroup": {
+      "event": "Choisissez au moins un groupe avec qui partager cet événement.",
+      "poll": "Choisissez au moins un groupe avec qui partager ce sondage."
     },
     "titleRequired": "Un titre est obligatoire.",
     "pickStartTime": "Choisissez une heure de début, ou cochez Toute la journée.",
@@ -528,8 +547,6 @@
     "notInGroup": "Vous n'êtes pas dans ce groupe.",
     "groupForbidden": "Seul son créateur ou un admin peut modifier ce groupe.",
     "pickInvitee": "Choisissez qui inviter.",
-    "typeInvitee": "Tapez le nom de la personne à inviter.",
-    "noSuchMember": "Aucun membre ne s'appelle {{name}}.",
     "alreadyInGroup": "{{name}} est déjà dans ce groupe.",
     "groupNameRequired": "Un groupe doit avoir un nom.",
     "adminsOnlyAdd": "Seuls les admins peuvent ajouter des membres directement.",
@@ -545,7 +562,6 @@
     "weekStart": "Premier jour de la semaine invalide.",
     "dateFormat": "Format de date invalide.",
     "birthdayFuture": "Votre date de naissance ne peut pas être dans le futur.",
-    "pickPrivacy": "Choisissez privé ou public.",
     "adminsOnly": "Réservé aux admins.",
     "memberGone": "Ce membre n'existe plus.",
     "removeSelf": "Vous ne pouvez pas vous retirer vous-même.",
@@ -568,7 +584,8 @@
     "cannotPlan": "On ne peut plus planifier de dates à partir de ce sondage.",
     "badDateTime": "Date et heure invalides.",
     "bannerEndPast": "Cette fin est déjà passée : changez-la, ou effacez-la pour garder la bannière.",
-    "bannerEndBeforeStart": "La fin doit venir après le début."
+    "bannerEndBeforeStart": "La fin doit venir après le début.",
+    "linkUntil": "Choisissez le dernier jour où le lien fonctionne, à partir d'aujourd'hui."
   },
   "sync": {
     "unreachable": "Impossible de joindre ce lien.",
